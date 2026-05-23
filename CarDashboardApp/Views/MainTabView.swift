@@ -6,7 +6,7 @@ import UIKit
 
 // MARK: - Enrutador de pestañas (mismo módulo que `CarsView` / `DashboardView`)
 
-enum CarHubMainTab: Hashable {
+enum UpsoledMainTab: Hashable {
     case home
     case cars
     case chat
@@ -16,7 +16,7 @@ enum CarHubMainTab: Hashable {
 
 @MainActor
 final class MainTabRouter: ObservableObject {
-    @Published var selected: CarHubMainTab = .home
+    @Published var selected: UpsoledMainTab = .home
 }
 
 /// Abre un hilo concreto al cambiar a la pestaña Chat (p. ej. grupo «Mi equipo» desde Inicio).
@@ -41,32 +41,32 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: $tabRouter.selected) {
-            Tab("Inicio", systemImage: "house.fill", value: CarHubMainTab.home) {
+            Tab("Dashboard", systemImage: "square.grid.2x2.fill", value: UpsoledMainTab.home) {
                 NavigationStack {
                     DashboardView()
                 }
             }
 
-            Tab("Coches", systemImage: "car.fill", value: CarHubMainTab.cars) {
+            Tab("Collection", systemImage: "shoe.fill", value: UpsoledMainTab.cars) {
                 NavigationStack {
                     CarsView()
                 }
             }
 
-            Tab("Chat", systemImage: "bubble.left.and.bubble.right.fill", value: CarHubMainTab.chat) {
+            Tab("Soled", systemImage: "shippingbox.fill", value: UpsoledMainTab.chat) {
                 ChatView(searchText: $chatSearchText)
             }
             .badge(chatInbox.totalUnansweredMessageCount)
 
             if auth.canAccessIASection {
-                Tab("IA", systemImage: "sparkles", value: CarHubMainTab.ai) {
+                Tab("Pricing Tier", systemImage: "dollarsign.circle.fill", value: UpsoledMainTab.ai) {
                     TeamAITabView()
                         .toolbar(.hidden, for: .tabBar)
                         .toolbarBackground(.hidden, for: .tabBar)
                 }
             }
 
-            Tab("Ajustes", systemImage: "gearshape.fill", value: CarHubMainTab.settings) {
+            Tab("Ajustes", systemImage: "gearshape.fill", value: UpsoledMainTab.settings) {
                 NavigationStack {
                     SettingsView()
                 }
@@ -280,7 +280,7 @@ private final class TeamAIAssistantSession: ObservableObject {
             let rec = try AVAudioRecorder(url: url, settings: settings)
             rec.prepareToRecord()
             guard rec.record() else {
-                throw NSError(domain: "CarHub", code: 1, userInfo: [NSLocalizedDescriptionKey: "No se pudo grabar audio."])
+                throw NSError(domain: "Upsoled", code: 1, userInfo: [NSLocalizedDescriptionKey: "No se pudo grabar audio."])
             }
             voiceNoteRecorder = rec
             isRecordingVoiceNote = true
@@ -974,9 +974,12 @@ struct TeamAITabView: View {
     private var chatGPTTopChrome: some View {
         HStack(spacing: 10) {
             Menu {
-                Button("Inicio") { tabRouter.selected = .home }
-                Button("Coches") { tabRouter.selected = .cars }
-                Button("Chat") { tabRouter.selected = .chat }
+                Button("Dashboard") { tabRouter.selected = .home }
+                Button("Collection") { tabRouter.selected = .cars }
+                Button("Soled") { tabRouter.selected = .chat }
+                if auth.canAccessIASection {
+                    Button("Pricing Tier") { tabRouter.selected = .ai }
+                }
                 Button("Ajustes") { tabRouter.selected = .settings }
             } label: {
                 Image(systemName: "line.3.horizontal")
@@ -992,7 +995,7 @@ struct TeamAITabView: View {
 
             Menu {
                 Section("Modelo") {
-                    Text("Viera IA — asistente CarHub")
+                    Text("Viera IA — asistente Upsoled")
                 }
             } label: {
                 HStack(spacing: 6) {
@@ -1520,7 +1523,7 @@ private struct TeamAIPlusMenuSheet: View {
                     plusFeatureRow(
                         icon: "paintbrush.pointed",
                         title: "Crea una imagen",
-                        subtitle: "Próximamente en CarHub"
+                        subtitle: "Próximamente en Upsoled"
                     )
                     plusFeatureRow(
                         icon: "text.bubble",

@@ -416,7 +416,7 @@ final class DashboardNotificationsStore: ObservableObject {
 
     @Published private(set) var items: [Item] = []
 
-    private let key = "CarHub.dashboardNotifications.v1"
+    private let key = "Upsoled.dashboardNotifications.v1"
 
     init() {
         load()

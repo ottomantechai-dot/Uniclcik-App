@@ -21,8 +21,8 @@ enum AIContractDocumentKind: String, CaseIterable, Identifiable, Sendable {
 
     var shortHint: String {
         switch self {
-        case .venta: return "CarHub vende el coche al cliente: entrega, precio y transferencia DGT."
-        case .compra: return "CarHub compra el coche al particular: pago al vendedor y entrega del vehículo."
+        case .venta: return "Upsoled vende el coche al cliente: entrega, precio y transferencia DGT."
+        case .compra: return "Upsoled compra el coche al particular: pago al vendedor y entrega del vehículo."
         case .gv: return "Garantía del vehículo (GV): plazo, alcance y exclusiones; no es compraventa."
         }
     }

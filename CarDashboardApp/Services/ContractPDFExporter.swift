@@ -18,7 +18,7 @@ enum ContractPDFExporter {
 
     /// Loads brand logo from Assets. Tries PNG first (LogoACCAR), then SVG (AccarLogo).
     static func loadBrandLogoForPDF() -> UIImage? {
-        for name in ["LogoACCAR", "AccarLogo", "CarHubLogo"] {
+        for name in ["LogoACCAR", "AccarLogo", "UpsoledLogo"] {
             guard let img = UIImage(named: name)?.withRenderingMode(.alwaysOriginal) else { continue }
             // Rasterise at 2× for retina quality in PDF context
             let targetH: CGFloat = 90

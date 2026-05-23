@@ -14,7 +14,7 @@ final class InvoiceHistoryStore: ObservableObject {
 
     @Published private(set) var entries: [Entry] = []
 
-    private let storageKey = "CarHub.invoiceHistory.v1"
+    private let storageKey = "Upsoled.invoiceHistory.v1"
 
     init() {
         load()

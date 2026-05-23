@@ -836,7 +836,7 @@ struct VieraAssistantRichCardsView: View {
         let summary = visible.trimmingCharacters(in: .whitespacesAndNewlines)
         let summaryBlock: String
         if summary.isEmpty {
-            summaryBlock = "Contexto: resumen generado desde Viera en CarHub."
+            summaryBlock = "Contexto: resumen generado desde Viera en Upsoled."
         } else if summary.count > 850 {
             summaryBlock = String(summary.prefix(850)) + "…"
         } else {

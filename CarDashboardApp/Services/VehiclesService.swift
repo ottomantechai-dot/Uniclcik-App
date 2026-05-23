@@ -1056,7 +1056,7 @@ private enum StorageSiblingGallery {
     }
 }
 
-// MARK: - Galería desde listado de Storage (paridad con API stock CarHub)
+// MARK: - Galería desde listado de Storage (paridad con API stock Upsoled)
 
 private enum LocalVehicleStorageGallery {
     /// Lista `vehicle-media/{user_id}/{vehicle_id}/` aunque `user_id` falte en la fila si se infiere de `storage_path` o de la URL pública.
@@ -1303,7 +1303,7 @@ private struct VehicleStorageCoverPathsParams: Encodable, Sendable {
     let p_vehicle_ids: [UUID]
 }
 
-/// RPC definido en CarHub: `supabase/migrations/20260329231000_vehicle_storage_media_paths.sql`
+/// RPC definido en Upsoled: `supabase/migrations/20260329231000_vehicle_storage_media_paths.sql`
 private enum VehicleStorageMediaPathsRPC {
     private static let chunkSize = 80
 

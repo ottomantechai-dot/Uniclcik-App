@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         #if DEBUG
-        print("[CarHub APNs] Registro fallido: \(error.localizedDescription)")
+        print("[Upsoled APNs] Registro fallido: \(error.localizedDescription)")
         #endif
     }
 

@@ -79,7 +79,7 @@ struct LoginView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                Text("Carhub365")
+                Text("Upsoled")
                     .font(.system(size: horizontalSizeClass == .regular ? 34 : 28, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.45), radius: 8, y: 4)

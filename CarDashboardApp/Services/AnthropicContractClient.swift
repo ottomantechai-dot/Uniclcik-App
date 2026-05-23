@@ -77,9 +77,9 @@ enum AnthropicContractClient {
 
     // MARK: - Prompts por tipo (edita aquí el “estilo” de cada documento)
 
-    /// CarHub vende al cliente: compraventa clásica con entrega y tráfico.
+    /// Upsoled vende al cliente: compraventa clásica con entrega y tráfico.
     private static let systemPromptVenta = """
-    ROL: Generador de cuerpo de CONTRATO DE VENTA en España. EL VENDEDOR es «CarHub». EL COMPRADOR es el particular.
+    ROL: Generador de cuerpo de CONTRATO DE VENTA en España. EL VENDEDOR es «Upsoled». EL COMPRADOR es el particular.
 
     IMPORTANTE: La aplicación genera AUTOMÁTICAMENTE el encabezado (logo, título, fecha), REUNIDOS, tabla de datos del vehículo \
     y líneas de firma. Tú SOLO debes generar el TEXTO DEL CONTRATO a partir de la sección «EXPONEN:» hasta el final.
@@ -100,9 +100,9 @@ enum AnthropicContractClient {
     REGLAS: no inventar matrícula, bastidor, km. NO incluyas encabezado, fecha, REUNIDOS ni tabla de vehículo. Solo texto desde EXPONEN.
     """
 
-    /// CarHub compra al particular: el cliente es el vendedor del vehículo.
+    /// Upsoled compra al particular: el cliente es el vendedor del vehículo.
     private static let systemPromptCompra = """
-    ROL: Generador de cuerpo de CONTRATO DE COMPRA DE VEHÍCULO USADO en España. EL COMPRADOR es «CarHub». \
+    ROL: Generador de cuerpo de CONTRATO DE COMPRA DE VEHÍCULO USADO en España. EL COMPRADOR es «Upsoled». \
     EL VENDEDOR es el particular.
 
     IMPORTANTE: La aplicación genera AUTOMÁTICAMENTE el encabezado (logo, título, fecha), REUNIDOS, tabla de datos del vehículo \
@@ -135,7 +135,7 @@ enum AnthropicContractClient {
 
     /// Documento de garantía del vehículo (GV), no es compraventa.
     private static let systemPromptGV = """
-    ROL: Generador de cuerpo de DOCUMENTO DE GARANTÍA DEL VEHÍCULO (GV) en España, emitido por «CarHub». \
+    ROL: Generador de cuerpo de DOCUMENTO DE GARANTÍA DEL VEHÍCULO (GV) en España, emitido por «Upsoled». \
     No es contrato de compraventa: son condiciones de garantía.
 
     IMPORTANTE: La aplicación genera AUTOMÁTICAMENTE el encabezado (logo, título, fecha), REUNIDOS, tabla de datos del vehículo \
@@ -273,14 +273,14 @@ enum AnthropicContractClient {
         let roles: String
         switch kind {
         case .venta:
-            tipo = "CONTRATO DE VENTA (CarHub vende al cliente)."
-            roles = "VENDEDOR: CarHub. COMPRADOR: el cliente con los datos siguientes."
+            tipo = "CONTRATO DE VENTA (Upsoled vende al cliente)."
+            roles = "VENDEDOR: Upsoled. COMPRADOR: el cliente con los datos siguientes."
         case .compra:
-            tipo = "CONTRATO DE COMPRA (CarHub compra el coche al particular)."
-            roles = "COMPRADOR: CarHub. VENDEDOR del vehículo: el particular con los datos siguientes."
+            tipo = "CONTRATO DE COMPRA (Upsoled compra el coche al particular)."
+            roles = "COMPRADOR: Upsoled. VENDEDOR del vehículo: el particular con los datos siguientes."
         case .gv:
             tipo = "DOCUMENTO GV — GARANTÍA DEL VEHÍCULO (no compraventa)."
-            roles = "BENEFICIARIO de la garantía: el cliente con los datos siguientes. Emisor: CarHub."
+            roles = "BENEFICIARIO de la garantía: el cliente con los datos siguientes. Emisor: Upsoled."
         }
 
         var prompt = """
@@ -399,7 +399,7 @@ enum OpenAIChatClient {
     }
 
     private static let vieraSystemPrompt = """
-    Eres Viera, asistente de IA de la app CarHub (concesionario / gestión de vehículos en España). \
+    Eres Viera, asistente de IA de la app Upsoled (concesionario / gestión de vehículos en España). \
     Hablas en español con tono claro, profesional y elegante, como en una app de chat de primera calidad: fluido, directo y agradable de leer.
 
     FORMATO DE SALIDA (obligatorio): la app muestra texto plano, sin motor Markdown. \

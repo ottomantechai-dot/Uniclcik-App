@@ -10,18 +10,18 @@ enum TabItem: Int, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .home: return "Inicio"
-        case .cars: return "Coches"
-        case .chat: return "Chat"
+        case .home: return "Dashboard"
+        case .cars: return "Collection"
+        case .chat: return "Soled"
         case .settings: return "Ajustes"
         }
     }
 
     var icon: String {
         switch self {
-        case .home: return "house.fill"
-        case .cars: return "car.fill"
-        case .chat: return "bubble.left.and.bubble.right.fill"
+        case .home: return "square.grid.2x2.fill"
+        case .cars: return "shoe.fill"
+        case .chat: return "shippingbox.fill"
         case .settings: return "gearshape.fill"
         }
     }
@@ -49,7 +49,7 @@ struct LiquidGlassTabBar: View {
         .padding(.bottom, 12)
     }
 
-    /// Cápsula principal: Inicio, Coches, Chat, Ajustes.
+    /// Cápsula principal: Dashboard, Collection, Soled, Ajustes.
     private var mainCapsule: some View {
         HStack(spacing: 0) {
             ForEach(TabItem.allCases) { tab in

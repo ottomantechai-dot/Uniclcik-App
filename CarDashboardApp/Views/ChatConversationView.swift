@@ -1104,7 +1104,7 @@ struct ChatConversationView: View {
             let rec = try AVAudioRecorder(url: url, settings: settings)
             rec.prepareToRecord()
             guard rec.record() else {
-                throw NSError(domain: "CarHub", code: 2, userInfo: [NSLocalizedDescriptionKey: "No se pudo grabar audio."])
+                throw NSError(domain: "Upsoled", code: 2, userInfo: [NSLocalizedDescriptionKey: "No se pudo grabar audio."])
             }
             teamVoiceRecorder = rec
             isRecordingTeamVoice = true
@@ -1889,7 +1889,7 @@ private struct TeamDirectVoiceBubbleView: View {
         let p = try AVAudioPlayer(contentsOf: temp)
         p.prepareToPlay()
         guard p.play() else {
-            throw NSError(domain: "CarHub", code: 3, userInfo: [NSLocalizedDescriptionKey: "Reproducción no disponible."])
+            throw NSError(domain: "Upsoled", code: 3, userInfo: [NSLocalizedDescriptionKey: "Reproducción no disponible."])
         }
         player = p
         isPlaying = true

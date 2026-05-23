@@ -1,7 +1,7 @@
 import Foundation
 import Supabase
 
-/// Credenciales del proyecto (misma base que `carhubapp` / `app.env`).
+/// Credenciales del proyecto (misma base que `Upsoled` / `app.env`).
 enum SupabaseClientProvider {
     static let supabaseURL = URL(string: "https://fwdfhbgcurimqufbwkux.supabase.co")!
     static let anonKey =

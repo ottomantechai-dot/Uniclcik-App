@@ -82,7 +82,7 @@ struct ChatView: View {
         if others.isEmpty {
             return "Cuando haya más personas en el directorio, verás aquí el grupo y los chats privados del equipo (tú no apareces en la lista)."
         }
-        return "Abre un chat desde Inicio o espera a que el directorio se actualice."
+        return "Abre un chat desde Dashboard o espera a que el directorio se actualice."
     }
 
     private var generalEmptyFootnote: String {
