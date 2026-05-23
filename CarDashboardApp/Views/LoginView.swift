@@ -112,16 +112,6 @@ struct LoginView: View {
                     .offset(x: -140, y: 220)
             }
 
-            if phase != .welcome {
-                Image("AuthSneakerHero")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 280, height: 280)
-                    .rotationEffect(.degrees(-26))
-                    .offset(x: 90, y: -200)
-                    .shadow(color: upsoledAccent.opacity(0.28), radius: 36, y: 20)
-                    .allowsHitTesting(false)
-            }
         }
         .ignoresSafeArea()
     }
@@ -682,11 +672,11 @@ struct LoginView: View {
 
             authOrSeparator
 
-            socialAuthButton(icon: "g.circle.fill", title: "Continuar con Google", style: .light) {
+            socialAuthButton(icon: "applelogo", title: "Continuar con Apple", style: .dark) {
                 showComingSoonAlert = true
             }
 
-            socialAuthButton(icon: "applelogo", title: "Continuar con Apple", style: .dark) {
+            socialAuthButton(icon: "g.circle.fill", title: "Continuar con Google", style: .light) {
                 showComingSoonAlert = true
             }
 
@@ -854,39 +844,56 @@ private struct AuthDarkGlassPanel: View {
     var cornerRadius: CGFloat
 
     var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(.ultraThinMaterial)
-            .environment(\.colorScheme, .dark)
-            .background {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.10),
-                                Color.white.opacity(0.03),
-                                upsoledAccent.opacity(0.10),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+        ZStack {
+            // Capa base ultraThinMaterial — blur del fondo
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .environment(\.colorScheme, .dark)
+
+            // Tinte azul premium
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            upsoledAccent.opacity(0.20),
+                            Color.white.opacity(0.04),
+                            upsoledAccent.opacity(0.14),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     )
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                upsoledAccentBright.opacity(0.50),
-                                upsoledAccent.opacity(0.22),
-                                Color.white.opacity(0.08),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
+                )
+
+            // Highlight superior (gloss de cristal)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.18), .clear],
+                        startPoint: .top,
+                        endPoint: .center
                     )
-            }
-            .shadow(color: upsoledAccent.opacity(0.14), radius: 24, y: 12)
+                )
+                .blendMode(.plusLighter)
+                .opacity(0.55)
+
+            // Borde con gradiente cyan refinado
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            upsoledAccentBright.opacity(0.60),
+                            Color.white.opacity(0.15),
+                            upsoledAccent.opacity(0.35),
+                            upsoledAccentBright.opacity(0.20),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.2
+                )
+        }
+        .shadow(color: upsoledAccent.opacity(0.35), radius: 32, y: 18)
+        .shadow(color: .black.opacity(0.45), radius: 24, y: 14)
     }
 }
 
