@@ -1,10 +1,10 @@
 import SwiftUI
+import UIKit
 
 struct DashboardView: View {
     @EnvironmentObject private var auth: AuthViewModel
     @EnvironmentObject private var carsVM: CarsViewModel
     @EnvironmentObject private var tabRouter: MainTabRouter
-    @EnvironmentObject private var invoiceHistory: InvoiceHistoryStore
     @EnvironmentObject private var notificationsStore: DashboardNotificationsStore
 
     @StateObject private var vm = DealershipStatsViewModel()
@@ -13,75 +13,33 @@ struct DashboardView: View {
     @EnvironmentObject private var chatNav: ChatNavigationCoordinator
     @StateObject private var locationHub = DashboardLocationHub()
     @State private var homeSearchText = ""
-    @State private var showFinancialDetail = false
     @State private var showFinancialStatsSheet = false
     @State private var showNotificationsSheet = false
-    @State private var showAddCarSheet = false
-    @State private var showRankingSheet = false
-    @State private var showInvoiceHub = false
-    @State private var showBlitzSheet = false
 
     var body: some View {
         ZStack {
-            DashboardHomeBackdropImage()
+            Color.white
+                .ignoresSafeArea()
+
             VStack(spacing: 0) {
-                    // Cabecera fija (no se desplaza con el contenido), como en la referencia.
                     DashboardHomeTopBar(
                         initials: auth.userInitials,
                         profileImage: auth.profileAvatarImage,
                         searchText: $homeSearchText,
                         onStats: { showFinancialStatsSheet = true },
-                        onNotifications: { showNotificationsSheet = true }
+                        onNotifications: { showNotificationsSheet = true },
+                        lightSurface: true
                     )
                     .appChromeHeaderOuterPadding()
 
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 22) {
-                            DashboardKPICarousel(vm: vm)
-                                .frame(maxWidth: .infinity)
+                            DashboardHeroBannerCard(onExplore: { tabRouter.selected = .cars })
                                 .padding(.top, 16)
 
-                            DashboardQuickActionsRow(
-                                onAddCar: { showAddCarSheet = true },
-                                onRanking: { showRankingSheet = true },
-                                onBudgets: { showInvoiceHub = true },
-                                onMore: { showBlitzSheet = true }
-                            )
+                            DashboardLatestSaleSection(cars: carsVM.cars)
 
-                            DashboardPendingCoordinatorTasksSection(
-                                myUserId: auth.session?.user.id,
-                                directory: communityVM.directory
-                            )
-
-                            DashboardFinancialSummaryCard(stats: vm, showDetail: $showFinancialDetail)
-
-                            if auth.canAccessTeamLocationSection {
-                                DashboardTeamMapCard(
-                                    community: communityVM,
-                                    locationHub: locationHub,
-                                    currentUserId: auth.session?.user.id,
-                                    accessToken: auth.session?.accessToken,
-                                    currentUserProfileImage: auth.profileAvatarImage,
-                                    currentUserInitials: auth.userInitials
-                                )
-                            }
-
-                            DashboardConnectedUsersStrip(
-                                members: communityVM.directory,
-                                currentUserId: auth.session?.user.id,
-                                accessToken: auth.session?.accessToken,
-                                currentUserProfileImage: auth.profileAvatarImage,
-                                currentUserInitials: auth.userInitials
-                            )
-
-                            if let err = communityVM.lastError, !err.isEmpty {
-                                Text(err)
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(.orange.opacity(0.9))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-
-                            DashboardHomeNotificationsSection(cars: carsVM.cars)
+                            DashboardConnectAccountsSection()
                         }
                         .padding(.horizontal, 16)
                         .padding(.bottom, 36)
@@ -90,34 +48,14 @@ struct DashboardView: View {
                 }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .environment(\.colorScheme, .dark)
-        .preferredColorScheme(.dark)
+        .environment(\.dashboardLightSurface, true)
+        .preferredColorScheme(.light)
         .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showFinancialDetail) {
-            DashboardFinancialDetailSheet(stats: vm)
-        }
         .sheet(isPresented: $showFinancialStatsSheet) {
             DashboardFinancialDetailSheet(stats: vm)
         }
         .sheet(isPresented: $showNotificationsSheet) {
             DashboardNotificationsSheet(store: notificationsStore)
-        }
-        .sheet(isPresented: $showAddCarSheet) {
-            AddVehicleSheet()
-                .environmentObject(tabRouter)
-                .environmentObject(auth)
-                .environmentObject(carsVM)
-        }
-        .sheet(isPresented: $showRankingSheet) {
-            CommercialRankingSheet(profiles: communityVM.directory)
-        }
-        .sheet(isPresented: $showInvoiceHub) {
-            InvoiceAndContractsHubSheet()
-                .environmentObject(invoiceHistory)
-        }
-        .sheet(isPresented: $showBlitzSheet) {
-            BlitzHubSheet()
-                .environmentObject(tabRouter)
         }
         .task(id: auth.session?.user.id) {
             if let uid = auth.session?.user.id {
@@ -142,283 +80,271 @@ struct DashboardView: View {
     }
 }
 
-// MARK: - Carrusel KPI (tipo Revolut)
+// MARK: - Backdrop claro (no usado actualmente — se mantiene por si se reactiva)
 
-private struct DashboardKPISlide: Identifiable {
-    let id: String
-    let eyebrow: String
-    let value: String
-    let pill: String?
+/// Fondo claro tipo UPSOLED. Sustituye `DashboardHomeBackdropImage` (video oscuro)
+/// pero NO modifica ninguno de los modificadores `.ultraThinMaterial` / glass
+/// presentes en la jerarquía superior, así que las tarjetas glass siguen
+/// renderizándose como frosted glass sobre el fondo blanco.
+struct DashboardHomeLightBackdrop: View {
+    var body: some View {
+        LinearGradient(
+            colors: [
+                Color(red: 0.98, green: 0.99, blue: 1.00),
+                Color(red: 0.93, green: 0.96, blue: 1.00),
+                Color(red: 0.99, green: 0.99, blue: 1.00),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
 }
 
-private struct DashboardKPICarousel: View {
-    @ObservedObject var vm: DealershipStatsViewModel
-    @State private var selection: String = "stock_value"
+// MARK: - Hero banner (estilo UPSOLED)
 
-    private var slides: [DashboardKPISlide] {
-        [
-            DashboardKPISlide(
-                id: "stock_value",
-                eyebrow: "Valor total del stock",
-                value: vm.totalStockValue,
-                pill: vm.periodDisplayLabel
-            ),
-            DashboardKPISlide(
-                id: "captured",
-                eyebrow: "Coches captados",
-                value: "\(vm.capturedCars)",
-                pill: "+\(vm.capturedChangePercent)%"
-            ),
-            DashboardKPISlide(
-                id: "dealership",
-                eyebrow: "Total ganado por el concesionario",
-                value: vm.totalDealershipEarnings,
-                pill: vm.totalEarningsSubtitle
-            ),
-            DashboardKPISlide(
-                id: "commissions",
-                eyebrow: "Total ganado por comisiones",
-                value: vm.commercialCommissions,
-                pill: vm.commissionsSubtitle
-            ),
-            DashboardKPISlide(
-                id: "vehicles_stock",
-                eyebrow: "Vehículos en stock",
-                value: "\(vm.vehiclesInStock)",
-                pill: vm.vehiclesStockBadge.trimmingCharacters(in: .whitespaces)
-            ),
-            DashboardKPISlide(
-                id: "sold",
-                eyebrow: "Coches vendidos",
-                value: "\(vm.carsSold)",
-                pill: vm.periodDisplayLabel
-            ),
-            DashboardKPISlide(
-                id: "profit",
-                eyebrow: "Beneficio ventas",
-                value: vm.salesProfit,
-                pill: vm.periodDisplayLabel
-            ),
-        ]
-    }
-
-    private var selectionIndex: Int {
-        slides.firstIndex { $0.id == selection } ?? 0
-    }
+/// Tarjeta hero superior con título grande, CTA y arte del lado derecho.
+private struct DashboardHeroBannerCard: View {
+    var onExplore: () -> Void
 
     var body: some View {
-        VStack(spacing: 16) {
-            TabView(selection: $selection) {
-                ForEach(slides) { slide in
-                    VStack(spacing: 12) {
-                        Spacer(minLength: 20)
+        ZStack(alignment: .leading) {
+            // Fondo azul degradado
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.55, green: 0.78, blue: 0.95),
+                            Color(red: 0.34, green: 0.63, blue: 0.88),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.35), lineWidth: 0.8)
+                }
+                .shadow(color: Color.black.opacity(0.08), radius: 14, x: 0, y: 8)
 
-                        Text(slide.eyebrow)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.52))
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity)
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("El primer dashboard\nunificado del motor.")
+                        .font(.system(size: 19, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                        Text(slide.value)
-                            .font(.system(size: 44, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .minimumScaleFactor(0.55)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-
-                        if let pill = slide.pill, !pill.isEmpty {
-                            Text(pill)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.88))
-                                .multilineTextAlignment(.center)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.85)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 7)
-                                .background {
-                                    Capsule(style: .continuous)
-                                        .fill(.ultraThinMaterial)
-                                        .environment(\.colorScheme, .dark)
-                                }
-                                .overlay {
-                                    Capsule(style: .continuous)
-                                        .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.6)
-                                }
-                        }
-
-                        Spacer(minLength: 12)
+                    Button(action: onExplore) {
+                        Text("Explorar ahora")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.20, green: 0.30, blue: 0.55))
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 10)
+                            .background {
+                                Capsule(style: .continuous)
+                                    .fill(Color.white)
+                            }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .tag(slide.id)
+                    .buttonStyle(.plain)
                 }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 268)
+                .padding(.leading, 20)
+                .padding(.vertical, 22)
 
-            HStack(spacing: 6) {
-                ForEach(Array(slides.enumerated()), id: \.element.id) { index, _ in
-                    Capsule(style: .continuous)
-                        .fill(index == selectionIndex ? Color.white : Color.white.opacity(0.28))
-                        .frame(width: index == selectionIndex ? 9 : 6, height: 6)
-                        .animation(.easeInOut(duration: 0.2), value: selectionIndex)
-                }
+                Spacer(minLength: 0)
+
+                Image(systemName: "car.side.fill")
+                    .font(.system(size: 86, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.95))
+                    .shadow(color: Color.black.opacity(0.12), radius: 8, x: -2, y: 4)
+                    .padding(.trailing, 14)
+                    .accessibilityHidden(true)
             }
-            .frame(maxWidth: .infinity)
         }
+        .frame(height: 168)
         .frame(maxWidth: .infinity)
     }
 }
 
-// MARK: - Acciones rápidas (cristal oscuro)
+// MARK: - Última venta (estilo UPSOLED)
 
-private struct DashboardQuickActionsRow: View {
-    var onAddCar: () -> Void
-    var onRanking: () -> Void
-    var onBudgets: () -> Void
-    var onMore: () -> Void
+/// Tarjeta con el último/mejor vehículo del inventario y su precio.
+private struct DashboardLatestSaleSection: View {
+    let cars: [Car]
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            quickItem(icon: "plus.circle.fill", title: "Añadir un coche", action: onAddCar)
-            quickItem(icon: "chart.bar.xaxis", title: "Ranking", action: onRanking)
-            quickItem(icon: "doc.text.fill", title: "Facturas", action: onBudgets)
-            quickItem(icon: "ellipsis.circle.fill", title: "Más", action: onMore)
-        }
+    private var featured: Car? {
+        cars
+            .filter { ($0.listPriceEUR ?? 0) > 0 }
+            .sorted { ($0.listPriceEUR ?? 0) > ($1.listPriceEUR ?? 0) }
+            .first
+            ?? cars.first
     }
 
-    private func quickItem(icon: String, title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .environment(\.colorScheme, .dark)
-                        .frame(width: 58, height: 58)
-                        .overlay {
-                            Circle()
-                                .strokeBorder(
-                                    LinearGradient(
-                                        colors: [
-                                            Color.white.opacity(0.35),
-                                            Color.white.opacity(0.08),
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    ),
-                                    lineWidth: 0.75
-                                )
-                        }
-                        .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 6)
-
-                    Image(systemName: icon)
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.92))
-                }
-
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.78))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Tareas coordinador asignadas a ti
-
-private struct DashboardPendingCoordinatorTasksSection: View {
-    @EnvironmentObject private var chatInbox: ChatInboxStore
-    @EnvironmentObject private var chatNav: ChatNavigationCoordinator
-    @EnvironmentObject private var tabRouter: MainTabRouter
-    let myUserId: UUID?
-    let directory: [CommunityProfilesService.DirectoryRow]
-
-    private var tasks: [CoordinatorOutboundTask] {
-        guard let myUserId else { return [] }
-        return chatInbox.myPendingAssignedCoordinatorTasks(myUserId: myUserId)
-    }
-
-    private static let deadlineFmt: DateFormatter = {
-        let f = DateFormatter()
+    private static let priceFmt: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "EUR"
+        f.maximumFractionDigits = 0
         f.locale = Locale(identifier: "es_ES")
-        f.dateStyle = .short
-        f.timeStyle = .short
         return f
     }()
 
-    private func senderName(for task: CoordinatorOutboundTask) -> String {
-        directory.first { $0.userId == task.senderUserId }?.resolvedDisplayName ?? "Compañero"
-    }
-
     var body: some View {
-        if tasks.isEmpty {
-            EmptyView()
-        } else {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Tareas por hacer")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Última operación")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.92))
-                VStack(spacing: 10) {
-                    ForEach(tasks.prefix(12)) { task in
-                        Button {
-                            openThread(for: task.senderUserId)
-                        } label: {
-                            HStack(alignment: .top, spacing: 12) {
-                                Image(systemName: "checklist")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundStyle(Color.cyan.opacity(0.9))
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(task.title)
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(.white.opacity(0.95))
-                                        .multilineTextAlignment(.leading)
-                                    Text("De: \(senderName(for: task))")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundStyle(.white.opacity(0.5))
-                                    Text("Límite: \(Self.deadlineFmt.string(from: task.deadline))")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundStyle(
-                                            task.deadline < Date() && !task.isComplete
-                                                ? Color.orange.opacity(0.95)
-                                                : Color.white.opacity(0.45)
-                                        )
-                                }
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(.white.opacity(0.35))
-                            }
-                            .padding(14)
-                            .background {
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(Color.white.opacity(0.08))
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.8)
-                                    }
-                            }
-                        }
-                        .buttonStyle(.plain)
+                    .foregroundStyle(Color.black.opacity(0.85))
+                Spacer()
+                Button {} label: {
+                    Text("Ver todas")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(red: 0.96, green: 0.97, blue: 0.99))
+                        .frame(width: 86, height: 86)
+                    Image(systemName: featured?.icon ?? "car.fill")
+                        .font(.system(size: 34, weight: .regular))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(featuredTitle)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.88))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    Text(featuredPriceText)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.55))
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
+                        Image(systemName: "triangle.fill")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
+                        Text("3.2%")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
                     }
                 }
+
+                Spacer(minLength: 0)
+            }
+            .padding(14)
+            .background {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color.white)
+                    .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 4)
             }
         }
     }
 
-    private func openThread(for senderId: UUID) {
-        if let thread = chatInbox.teamDirectChatThreads.first(where: { $0.peerUserId == senderId }) {
-            chatNav.threadToOpen = thread
-        } else if let row = directory.first(where: { $0.userId == senderId }) {
-            chatNav.threadToOpen = ChatThread.makeTeamDirect(from: row)
+    private var featuredTitle: String {
+        guard let f = featured else { return "Sin operaciones todavía" }
+        let brand = f.brandName ?? f.name
+        return "\(brand) \(f.model)"
+    }
+
+    private var featuredPriceText: String {
+        guard let f = featured, let price = f.listPriceEUR,
+              let str = Self.priceFmt.string(from: NSNumber(value: price))
+        else { return "—" }
+        return str
+    }
+}
+
+// MARK: - Conecta tus cuentas (estilo UPSOLED)
+
+/// Fila con portales del motor (Coches.net / AutoScout24 / Wallapop) para conectar.
+private struct DashboardConnectAccountsSection: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Conecta tus cuentas")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.85))
+                Spacer()
+                Button {} label: {
+                    Text("Ver todas")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(spacing: 12) {
+                ConnectAccountCard(
+                    badgeAsset: "BadgeCochesNet",
+                    fallbackSymbol: "car.2.fill",
+                    title: "Coches.net"
+                )
+                ConnectAccountCard(
+                    badgeAsset: "BadgeAutoScout24",
+                    fallbackSymbol: "magnifyingglass.circle.fill",
+                    title: "AutoScout24"
+                )
+                ConnectAccountCard(
+                    badgeAsset: "BadgeWallapop",
+                    fallbackSymbol: "tag.fill",
+                    title: "Wallapop"
+                )
+            }
         }
-        tabRouter.selected = .chat
+    }
+}
+
+private struct ConnectAccountCard: View {
+    let badgeAsset: String
+    let fallbackSymbol: String
+    let title: String
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Group {
+                if UIImage(named: badgeAsset) != nil {
+                    Image(badgeAsset)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 32)
+                } else {
+                    Image(systemName: fallbackSymbol)
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.75))
+                        .frame(height: 32)
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.78))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+            Text("Conectar")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white)
+                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 3)
+        }
     }
 }
 

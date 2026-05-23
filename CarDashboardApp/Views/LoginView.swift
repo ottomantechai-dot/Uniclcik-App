@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Revolut-style auth (bienvenida + inicio / registro)
+// MARK: - Auth Upsoled
 
 private enum AuthPhase {
     case welcome
@@ -8,8 +8,10 @@ private enum AuthPhase {
     case signUp
 }
 
-private let authNavyTop = Color(red: 0.04, green: 0.07, blue: 0.16)
-private let authLinkBlue = Color(red: 0.35, green: 0.55, blue: 1.0)
+private let authBlack = Color(red: 0.02, green: 0.04, blue: 0.09)
+private let authNavy = Color(red: 0.05, green: 0.09, blue: 0.18)
+private let upsoledAccent = Color(red: 0.22, green: 0.55, blue: 0.98)
+private let upsoledAccentBright = Color(red: 0.45, green: 0.78, blue: 1.0)
 
 struct LoginView: View {
     @ObservedObject var auth: AuthViewModel
@@ -19,6 +21,7 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var isBusy = false
+    @State private var showPassword = false
     @State private var showResetSheet = false
     @State private var resetEmail = ""
     @State private var resetInfo: String?
@@ -29,13 +32,14 @@ struct LoginView: View {
         email.contains("@") && email.contains(".") && password.count >= 6
     }
 
-    /// Ancho máximo del contenido en iPad / ventanas anchas (legible y centrado).
-    private var authColumnMaxWidth: CGFloat {
-        horizontalSizeClass == .regular ? 560 : .infinity
+    private var contentMaxWidth: CGFloat {
+        horizontalSizeClass == .regular ? 420 : 360
     }
 
     var body: some View {
         ZStack {
+            authBackground
+
             switch phase {
             case .welcome:
                 welcomeLayer
@@ -45,7 +49,7 @@ struct LoginView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .preferredColorScheme(.dark)
-        .animation(.easeInOut(duration: 0.25), value: phase)
+        .animation(.easeInOut(duration: 0.3), value: phase)
         .sheet(isPresented: $showResetSheet) {
             resetPasswordSheet
         }
@@ -61,251 +65,680 @@ struct LoginView: View {
         }
     }
 
-    // MARK: Welcome (fondo actual, CTA abajo)
+    // MARK: - Fondo
 
-    private var welcomeLayer: some View {
+    private var authBackground: some View {
         ZStack {
-            Image("ChatBackdropBase")
-                .resizable()
-                .scaledToFill()
-                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .clipped()
-                .ignoresSafeArea()
+            // Base oscura con un toque de azul muy profundo
             LinearGradient(
-                colors: [.clear, .black.opacity(0.55)],
-                startPoint: .center,
-                endPoint: .bottom
+                colors: [
+                    Color(red: 0.04, green: 0.07, blue: 0.18),
+                    authNavy,
+                    authBlack,
+                    Color.black,
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                Text("Upsoled")
-                    .font(.system(size: horizontalSizeClass == .regular ? 34 : 28, weight: .bold, design: .rounded))
+            // Glow azul principal detrás de la sneaker
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [upsoledAccent.opacity(0.35), upsoledAccent.opacity(0.08), .clear],
+                        center: .center,
+                        startRadius: 20,
+                        endRadius: 300
+                    )
+                )
+                .frame(width: 560, height: 560)
+                .blur(radius: 10)
+                .offset(y: phase == .welcome ? -20 : -120)
+
+            // Glow secundario violeta-cian en la esquina opuesta para añadir profundidad
+            if phase == .welcome {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color(red: 0.45, green: 0.30, blue: 0.95).opacity(0.22), .clear],
+                            center: .center,
+                            startRadius: 10,
+                            endRadius: 220
+                        )
+                    )
+                    .frame(width: 380, height: 380)
+                    .blur(radius: 22)
+                    .offset(x: -140, y: 220)
+            }
+
+            if phase != .welcome {
+                Image("AuthSneakerHero")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 280, height: 280)
+                    .rotationEffect(.degrees(-26))
+                    .offset(x: 90, y: -200)
+                    .shadow(color: upsoledAccent.opacity(0.28), radius: 36, y: 20)
+                    .allowsHitTesting(false)
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    // MARK: - Bienvenida (login premium estilo referencia)
+
+    private var welcomeLayer: some View {
+        VStack(spacing: 0) {
+            // Header con margen seguro bajo el notch
+            welcomeProHeader
+                .padding(.top, 12)
+                .padding(.horizontal, 20)
+
+            // Spacer flexible empuja el form al fondo pero mantiene un mínimo
+            Spacer(minLength: 4)
+
+            // Form siempre completamente visible
+            welcomeLoginForm
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+        }
+        .frame(maxWidth: contentMaxWidth)
+        .frame(maxWidth: .infinity)
+    }
+
+    // Header premium: solo LOGO XL + sneaker (sin tagline)
+    private var welcomeProHeader: some View {
+        VStack(spacing: 0) {
+            // LOGO XL centrado con halo (más grande aún)
+            ZStack {
+                Ellipse()
+                    .fill(
+                        RadialGradient(
+                            colors: [upsoledAccent.opacity(0.45), .clear],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 220
+                        )
+                    )
+                    .frame(width: 460, height: 200)
+                    .blur(radius: 18)
+
+                Image("UpsoledWordmark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 210)
+                    .padding(.horizontal, 8)
+                    .shadow(color: upsoledAccent.opacity(0.60), radius: 26, y: 6)
+                    .accessibilityLabel("Upsoled")
+            }
+
+            // SNEAKER protagonista
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                upsoledAccent.opacity(0.58),
+                                upsoledAccent.opacity(0.20),
+                                .clear,
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 240
+                        )
+                    )
+                    .frame(width: 500, height: 500)
+                    .blur(radius: 12)
+
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [upsoledAccentBright.opacity(0.38), .clear],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 130
+                        )
+                    )
+                    .frame(width: 280, height: 280)
+                    .blur(radius: 4)
+
+                welcomeLightStreaks
+                    .scaleEffect(1.1)
+
+                VStack(spacing: 0) {
+                    Image("AuthSneakerHero")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 320, height: 320)
+                        .rotationEffect(.degrees(-22))
+                        .shadow(color: .black.opacity(0.60), radius: 36, y: 22)
+                        .shadow(color: upsoledAccent.opacity(0.60), radius: 70, y: 34)
+
+                    // Reflejo
+                    Image("AuthSneakerHero")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 240, height: 80)
+                        .rotationEffect(.degrees(-22))
+                        .scaleEffect(y: -1)
+                        .mask {
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.22), .clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        }
+                        .blur(radius: 2.5)
+                        .offset(y: -40)
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(height: 170)
+            .padding(.top, 0)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // Formulario de login (sin card, mejor jerarquía y tamaños)
+    private var welcomeLoginForm: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Título con accent line cyan
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 10) {
+                    Capsule()
+                        .fill(upsoledAccentBright)
+                        .frame(width: 4, height: 22)
+                        .shadow(color: upsoledAccentBright.opacity(0.6), radius: 6, x: 0, y: 0)
+                    Text("Iniciar sesión")
+                        .font(.system(size: 23, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                Text("Accede a tu cuenta de UPSOLED.")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .padding(.leading, 14)
+            }
+            .padding(.bottom, 2)
+
+            // Grupo de campos
+            VStack(spacing: 10) {
+                // Email
+                authGlassField(icon: "envelope.fill") {
+                TextField("", text: $email, prompt: Text("Correo electrónico").foregroundStyle(.white.opacity(0.40)))
+                    .textContentType(.emailAddress)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
-                    .padding(.top, horizontalSizeClass == .regular ? 28 : 20)
-                    .frame(maxWidth: .infinity)
+            }
 
-                Spacer(minLength: 0)
-
-                VStack(spacing: 14) {
+            // Password
+            authGlassField(
+                icon: "lock.fill",
+                trailing: {
                     Button {
-                        phase = .signUp
-                        auth.lastErrorMessage = nil
+                        showPassword.toggle()
                     } label: {
-                        Text("Crear cuenta")
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(Color.white)
-                            .foregroundStyle(.black)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        phase = .signIn
-                        auth.lastErrorMessage = nil
-                    } label: {
-                        Text("Iniciar sesión")
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(Color.black)
-                            .foregroundStyle(.white)
-                            .clipShape(Capsule())
+                        Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.50))
                     }
                     .buttonStyle(.plain)
                 }
-                .frame(maxWidth: authColumnMaxWidth)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
-                .padding(.bottom, horizontalSizeClass == .regular ? 48 : 36)
+            ) {
+                Group {
+                    if showPassword {
+                        TextField("", text: $password, prompt: Text("Contraseña").foregroundStyle(.white.opacity(0.40)))
+                    } else {
+                        SecureField("", text: $password, prompt: Text("Contraseña").foregroundStyle(.white.opacity(0.40)))
+                    }
+                }
+                .textContentType(.password)
+                .foregroundStyle(.white)
             }
+            } // cierra VStack de campos
+
+            // Error
+            if let msg = auth.lastErrorMessage {
+                Text(msg)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.red.opacity(0.92))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // Olvidaste contraseña
+            Button("¿Olvidaste tu contraseña?") {
+                resetEmail = email
+                showResetSheet = true
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(upsoledAccentBright)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+
+            // Login button — siempre activo y brillante (cyan saturado)
+            Button {
+                Task {
+                    isBusy = true
+                    defer { isBusy = false }
+                    await auth.signIn(email: email, password: password)
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    if isBusy {
+                        ProgressView().tint(.white)
+                    }
+                    Spacer(minLength: 0)
+                    Text("Iniciar sesión")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.white)
+                    Spacer(minLength: 0)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 15, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Color.white.opacity(0.30)))
+                }
+                .padding(.leading, 20)
+                .padding(.trailing, 8)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity)
+                .background {
+                    ZStack {
+                        // Capa sólida base para evitar que el glass detrás mute el color
+                        Capsule(style: .continuous)
+                            .fill(Color(red: 0.10, green: 0.32, blue: 0.85))
+
+                        // Gradiente cyan → azul brillante SATURADO
+                        Capsule(style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.30, green: 0.78, blue: 1.0),
+                                        Color(red: 0.18, green: 0.55, blue: 1.0),
+                                        Color(red: 0.10, green: 0.32, blue: 0.85),
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+
+                        // Gloss superior brillante
+                        Capsule(style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.42), .clear],
+                                    startPoint: .top,
+                                    endPoint: .center
+                                )
+                            )
+                            .blendMode(.plusLighter)
+                            .opacity(0.60)
+
+                        Capsule(style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.32), lineWidth: 1)
+                    }
+                }
+                .shadow(color: upsoledAccent.opacity(0.65), radius: 22, y: 12)
+                .shadow(color: upsoledAccentBright.opacity(0.40), radius: 40, y: 18)
+            }
+            .disabled(!canSubmit || isBusy)
+            .buttonStyle(.plain)
+
+            // Separador
+            authOrSeparator
+                .padding(.top, 2)
+
+            // Social (Apple + Google como en la referencia)
+            socialAuthButton(icon: "applelogo", title: "Continuar con Apple", style: .dark) {
+                showComingSoonAlert = true
+            }
+            socialAuthButton(icon: "g.circle.fill", title: "Continuar con Google", style: .light) {
+                showComingSoonAlert = true
+            }
+
+            // Link a signup
+            HStack(spacing: 5) {
+                Text("¿No tienes cuenta?")
+                    .foregroundStyle(.white.opacity(0.60))
+                Button("Regístrate") {
+                    phase = .signUp
+                    auth.lastErrorMessage = nil
+                }
+                .foregroundStyle(upsoledAccentBright)
+                .fontWeight(.bold)
+            }
+            .font(.system(size: 13, weight: .medium))
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
 
-    // MARK: Inner (gradiente oscuro + misma imagen de base)
+    // Haces de luz horizontales tipo "speed lines" tras la sneaker
+    private var welcomeLightStreaks: some View {
+        ZStack {
+            // Halo radial detrás de la sneaker
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [upsoledAccent.opacity(0.45), upsoledAccent.opacity(0.12), .clear],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 200
+                    )
+                )
+                .frame(width: 400, height: 400)
+                .blur(radius: 6)
+
+            ForEach(0..<6, id: \.self) { i in
+                Capsule(style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                .clear,
+                                upsoledAccentBright.opacity(0.85),
+                                upsoledAccent.opacity(0.35),
+                                .clear,
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: 320, height: i % 2 == 0 ? 2 : 1)
+                    .blur(radius: 1.2)
+                    .rotationEffect(.degrees(-6))
+                    .offset(x: -20, y: CGFloat(i * 26 - 65))
+                    .opacity(0.85)
+            }
+        }
+        .frame(width: 320, height: 320)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private var welcomeSneakerSize: CGFloat {
+        horizontalSizeClass == .regular ? 320 : min(UIScreen.main.bounds.width * 0.72, 300)
+    }
+
+    private var welcomeLogoHeight: CGFloat {
+        horizontalSizeClass == .regular ? 220 : min(UIScreen.main.bounds.width * 0.50, 200)
+    }
+
+    // MARK: - Registro (mismo estilo centrado que welcome)
 
     private var innerAuthLayer: some View {
-        ZStack {
-            Image("ChatBackdropBase")
-                .resizable()
-                .scaledToFill()
-                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .clipped()
-                .ignoresSafeArea()
-
-            LinearGradient(
-                colors: [authNavyTop.opacity(0.94), Color.black.opacity(0.97)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-
-            VStack(spacing: 0) {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 18) {
+                // Back button arriba a la izquierda
                 HStack {
                     circleNavButton(systemName: "chevron.left") {
                         phase = .welcome
                         auth.lastErrorMessage = nil
                     }
                     Spacer()
-                    circleNavButton(systemName: "questionmark") {
-                        showHelpAlert = true
-                    }
                 }
-                .frame(maxWidth: authColumnMaxWidth)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
+                .padding(.horizontal, 22)
                 .padding(.top, 8)
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 18) {
-                        if phase == .signIn {
-                            SectionHeader(
-                                title: "Nos alegra volver a verte",
-                                subtitle: "Introduce el correo y la contraseña de tu cuenta CarDashboard.",
-                                lightOnDark: true
-                            )
-                        } else {
-                            SectionHeader(
-                                title: "Crea tu cuenta",
-                                subtitle: "Regístrate con tu correo para guardar tu garaje y sincronizar datos.",
-                                lightOnDark: true
-                            )
-                        }
+                signUpProHeader
+                    .padding(.horizontal, 24)
 
-                        authPillField {
-                            TextField(
-                                "",
-                                text: $email,
-                                prompt: Text("Correo electrónico").foregroundStyle(.white.opacity(0.42))
-                            )
-                            .textContentType(.emailAddress)
-                            .keyboardType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .foregroundStyle(.white)
-                        }
-
-                        authPillField {
-                            SecureField(
-                                "",
-                                text: $password,
-                                prompt: Text("Contraseña").foregroundStyle(.white.opacity(0.42))
-                            )
-                            .textContentType(phase == .signUp ? .newPassword : .password)
-                            .foregroundStyle(.white)
-                        }
-
-                        if let msg = auth.lastErrorMessage {
-                            Text(msg)
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(.red.opacity(0.9))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-
-                        if phase == .signIn {
-                            Button("¿Olvidaste la contraseña?") {
-                                resetEmail = email
-                                showResetSheet = true
-                            }
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(authLinkBlue)
-
-                            Button("¿No tienes cuenta? Crear cuenta") {
-                                phase = .signUp
-                                auth.lastErrorMessage = nil
-                            }
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(authLinkBlue)
-                        } else {
-                            Button("¿Ya tienes cuenta? Iniciar sesión") {
-                                phase = .signIn
-                                auth.lastErrorMessage = nil
-                            }
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(authLinkBlue)
-                        }
-                    }
-                    .frame(maxWidth: authColumnMaxWidth)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
-                    .padding(.top, 20)
+                authGlassFormCard
+                    .padding(.horizontal, 20)
                     .padding(.bottom, 24)
-                }
+            }
+            .frame(maxWidth: contentMaxWidth)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
 
-                VStack(spacing: 14) {
-                    Button {
-                        Task {
-                            isBusy = true
-                            defer { isBusy = false }
-                            if phase == .signUp {
-                                await auth.signUp(email: email, password: password)
-                            } else {
-                                await auth.signIn(email: email, password: password)
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isBusy {
-                                ProgressView()
-                                    .tint(canSubmit ? .black : .white.opacity(0.4))
-                            }
-                            Text("Continuar")
-                                .font(.system(size: 17, weight: .semibold))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(canSubmit && !isBusy ? Color.white : Color.white.opacity(0.14))
-                        .foregroundStyle(canSubmit && !isBusy ? Color.black : Color.white.opacity(0.38))
-                        .clipShape(Capsule())
+    // Header centrado para signIn/signUp
+    private var signUpProHeader: some View {
+        VStack(spacing: 14) {
+            // Logo
+            Image("UpsoledWordmark")
+                .resizable()
+                .scaledToFit()
+                .frame(height: welcomeLogoHeight * 0.6)
+                .padding(.horizontal, 24)
+                .shadow(color: upsoledAccent.opacity(0.50), radius: 14, y: 4)
+                .accessibilityLabel("Upsoled")
+
+            // Sneaker
+            ZStack {
+                welcomeLightStreaks
+                    .scaleEffect(0.45)
+                Image("AuthSneakerHero")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 130, height: 130)
+                    .rotationEffect(.degrees(-22))
+                    .shadow(color: .black.opacity(0.55), radius: 20, y: 12)
+                    .shadow(color: upsoledAccent.opacity(0.55), radius: 36, y: 18)
+            }
+            .frame(height: 140)
+
+            // Titular + subtítulo centrados
+            VStack(spacing: 8) {
+                Text(phase == .signIn ? "Bienvenido de nuevo" : "Crea tu cuenta")
+                    .font(.system(size: 28, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .tracking(-0.4)
+                    .multilineTextAlignment(.center)
+                    .shadow(color: upsoledAccent.opacity(0.30), radius: 12, y: 4)
+
+                Group {
+                    if phase == .signIn {
+                        (
+                            Text("Accede a tu ")
+                                .foregroundStyle(.white.opacity(0.62))
+                            + Text("imperio de sneakers")
+                                .foregroundStyle(upsoledAccentBright)
+                                .fontWeight(.bold)
+                            + Text(".")
+                                .foregroundStyle(.white.opacity(0.62))
+                        )
+                    } else {
+                        (
+                            Text("Empieza a construir ")
+                                .foregroundStyle(.white.opacity(0.62))
+                            + Text("tu colección")
+                                .foregroundStyle(upsoledAccentBright)
+                                .fontWeight(.bold)
+                            + Text(".")
+                                .foregroundStyle(.white.opacity(0.62))
+                        )
                     }
-                    .disabled(!canSubmit || isBusy)
-                    .buttonStyle(.plain)
-
-                    authOrSeparator
-
-                    VStack(spacing: 12) {
-                        secondaryAuthRow(icon: "key.fill", title: "Continuar con passkey") {
-                            showComingSoonAlert = true
-                        }
-                        secondaryAuthRow(icon: "g.circle.fill", title: "Continuar con Google") {
-                            showComingSoonAlert = true
-                        }
-                        secondaryAuthRow(icon: "apple.logo", title: "Continuar con Apple") {
-                            showComingSoonAlert = true
-                        }
-                    }
                 }
-                .frame(maxWidth: authColumnMaxWidth)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, horizontalSizeClass == .regular ? 40 : 20)
-                .padding(.top, 8)
-                .padding(.bottom, 28)
-                .background(
-                    LinearGradient(
-                        colors: [Color.black.opacity(0), Color.black.opacity(0.45)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .ignoresSafeArea(edges: .bottom)
-                )
+                .font(.system(size: 14, weight: .medium))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var authGlassFormCard: some View {
+        VStack(spacing: 16) {
+            authGlassField(icon: "envelope.fill") {
+                TextField("", text: $email, prompt: Text("Correo electrónico").foregroundStyle(.white.opacity(0.38)))
+                    .textContentType(.emailAddress)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .foregroundStyle(.white)
+            }
+
+            authGlassField(
+                icon: "lock.fill",
+                trailing: {
+                    Button {
+                        showPassword.toggle()
+                    } label: {
+                        Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.45))
+                    }
+                    .buttonStyle(.plain)
+                }
+            ) {
+                Group {
+                    if showPassword {
+                        TextField("", text: $password, prompt: Text("Contraseña").foregroundStyle(.white.opacity(0.38)))
+                    } else {
+                        SecureField("", text: $password, prompt: Text("Contraseña").foregroundStyle(.white.opacity(0.38)))
+                    }
+                }
+                .textContentType(phase == .signUp ? .newPassword : .password)
+                .foregroundStyle(.white)
+            }
+
+            if let msg = auth.lastErrorMessage {
+                Text(msg)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.red.opacity(0.92))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if phase == .signIn {
+                Button("¿Olvidaste la contraseña?") {
+                    resetEmail = email
+                    showResetSheet = true
+                }
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(upsoledAccentBright)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+
+            Button {
+                Task {
+                    isBusy = true
+                    defer { isBusy = false }
+                    if phase == .signUp {
+                        await auth.signUp(email: email, password: password)
+                    } else {
+                        await auth.signIn(email: email, password: password)
+                    }
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    if isBusy {
+                        ProgressView().tint(.white)
+                    }
+                    Spacer(minLength: 0)
+                    Text(phase == .signIn ? "Iniciar sesión" : "Crear cuenta")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(.white)
+                    Spacer(minLength: 0)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 13, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Color.white.opacity(0.28)))
+                }
+                .padding(.leading, 18)
+                .padding(.trailing, 8)
+                .padding(.vertical, 11)
+                .frame(maxWidth: .infinity)
+                .background {
+                    ZStack {
+                        Capsule(style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        upsoledAccentBright,
+                                        upsoledAccent,
+                                        Color(red: 0.14, green: 0.36, blue: 0.85),
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+
+                        Capsule(style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.34), .clear],
+                                    startPoint: .top,
+                                    endPoint: .center
+                                )
+                            )
+                            .blendMode(.plusLighter)
+                            .opacity(0.5)
+
+                        Capsule(style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.30), lineWidth: 0.8)
+                    }
+                }
+                .shadow(color: upsoledAccent.opacity(0.55), radius: 22, y: 12)
+                .shadow(color: upsoledAccentBright.opacity(0.30), radius: 36, y: 18)
+            }
+            .disabled(!canSubmit || isBusy)
+            .buttonStyle(.plain)
+
+            authOrSeparator
+
+            socialAuthButton(icon: "g.circle.fill", title: "Continuar con Google", style: .light) {
+                showComingSoonAlert = true
+            }
+
+            socialAuthButton(icon: "applelogo", title: "Continuar con Apple", style: .dark) {
+                showComingSoonAlert = true
+            }
+
+            HStack(spacing: 4) {
+                Text(phase == .signIn ? "¿No tienes cuenta?" : "¿Ya tienes cuenta?")
+                    .foregroundStyle(.white.opacity(0.55))
+                Button(phase == .signIn ? "Regístrate" : "Inicia sesión") {
+                    phase = phase == .signIn ? .signUp : .signIn
+                    auth.lastErrorMessage = nil
+                }
+                .foregroundStyle(upsoledAccentBright)
+            }
+            .font(.system(size: 14, weight: .medium))
+            .frame(maxWidth: .infinity)
+        }
+        .padding(20)
+        .background {
+            AuthDarkGlassPanel(cornerRadius: 28)
+        }
+        .padding(.top, 6)
+    }
+
+    private var authHighlightedSubtitle: some View {
+        Group {
+            if phase == .signIn {
+                Text("Inicia sesión para acceder a tu \(Text("imperio de sneakers").foregroundStyle(upsoledAccentBright)).")
+                    .foregroundStyle(.white.opacity(0.62))
+            } else {
+                Text("Regístrate con tu correo para guardar tu colección y sincronizar tus datos.")
+                    .foregroundStyle(.white.opacity(0.62))
+            }
+        }
+        .font(.system(size: 15, weight: .medium))
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var upsoledWordmark: some View {
+        Image("UpsoledWordmark")
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: .infinity)
+            .frame(height: horizontalSizeClass == .regular ? 64 : 56)
+            .accessibilityLabel("Upsoled")
     }
 
     private var authOrSeparator: some View {
         HStack(spacing: 10) {
-            Rectangle()
-                .fill(Color.white.opacity(0.18))
-                .frame(height: 1)
-            Text("o")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.45))
-            Rectangle()
-                .fill(Color.white.opacity(0.18))
-                .frame(height: 1)
+            Rectangle().fill(Color.white.opacity(0.14)).frame(height: 1)
+            Text("o continúa con")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.42))
+            Rectangle().fill(Color.white.opacity(0.14)).frame(height: 1)
         }
     }
 
@@ -315,41 +748,65 @@ struct LoginView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 44, height: 44)
-                .background(Circle().fill(Color.white.opacity(0.12)))
+                .background {
+                    DashboardChromeHeaderCircleBackground(size: 44)
+                }
         }
         .buttonStyle(.plain)
     }
 
-    private func authPillField<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white.opacity(0.10))
-            )
+    private func authGlassField<Content: View, Trailing: View>(
+        icon: String,
+        @ViewBuilder trailing: () -> Trailing = { EmptyView() },
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(upsoledAccentBright)
+                .frame(width: 22)
+            content()
+                .font(.system(size: 15, weight: .medium))
+            trailing()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.black.opacity(0.32))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.75)
+                }
+        }
     }
 
-    private func secondaryAuthRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
+    private enum SocialAuthButtonStyle { case dark, light }
+
+    private func socialAuthButton(
+        icon: String,
+        title: String,
+        style: SocialAuthButtonStyle,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white)
-                    .frame(width: 24, alignment: .center)
+                    .foregroundStyle(style == .light ? .black : .white)
+                    .frame(width: 22, alignment: .center)
                 Text(title)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(style == .light ? .black : .white)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
             .frame(maxWidth: .infinity)
-            .background(
-                Capsule()
-                    .fill(Color.white.opacity(0.10))
-            )
+            .background {
+                Capsule(style: .continuous)
+                    .fill(style == .light ? Color.white : Color(red: 0.08, green: 0.14, blue: 0.28))
+            }
         }
         .buttonStyle(.plain)
     }
@@ -365,8 +822,7 @@ struct LoginView: View {
                 }
                 if let resetInfo {
                     Section {
-                        Text(resetInfo)
-                            .font(.footnote)
+                        Text(resetInfo).font(.footnote)
                     }
                 }
             }
@@ -389,6 +845,48 @@ struct LoginView: View {
             }
         }
         .presentationDetents([.medium])
+    }
+}
+
+// MARK: - Glass helpers
+
+private struct AuthDarkGlassPanel: View {
+    var cornerRadius: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .environment(\.colorScheme, .dark)
+            .background {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.10),
+                                Color.white.opacity(0.03),
+                                upsoledAccent.opacity(0.10),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                upsoledAccentBright.opacity(0.50),
+                                upsoledAccent.opacity(0.22),
+                                Color.white.opacity(0.08),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            }
+            .shadow(color: upsoledAccent.opacity(0.14), radius: 24, y: 12)
     }
 }
 

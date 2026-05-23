@@ -244,6 +244,17 @@ enum DashboardChromeSearchFieldStyle {
     static let iconClearOpacity: Double = 0.48
 }
 
+private struct DashboardLightSurfaceKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var dashboardLightSurface: Bool {
+        get { self[DashboardLightSurfaceKey.self] }
+        set { self[DashboardLightSurfaceKey.self] = newValue }
+    }
+}
+
 /// Misma posición y anchura del buscador que en Inicio (avatar + pastilla flexible + 2 círculos).
 enum AppChromeHeaderMetrics {
     static let horizontalPadding: CGFloat = 16

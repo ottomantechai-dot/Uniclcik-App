@@ -8,7 +8,6 @@ enum RemoteAssets {
     /// Fondos hero del dashboard (semillas fijas para caché estable).
     static var dashboardHeroStock: URL { carShowroomImageURL }
     static let dashboardHeroValue = URL(string: "https://picsum.photos/seed/upsoled_value/800/640")!
-    static let dashboardHeroCaptured = URL(string: "https://picsum.photos/seed/upsoled_capture/800/640")!
     static let dashboardHeroCommission = URL(string: "https://picsum.photos/seed/upsoled_comm/800/640")!
 
     /// Miniatura circular estable por hilo (listado tipo marketplace).

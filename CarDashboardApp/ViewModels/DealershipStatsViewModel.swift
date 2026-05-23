@@ -21,10 +21,8 @@ final class DealershipStatsViewModel: ObservableObject {
     @Published var totalStockBadge: String = ""
     @Published var carsSold: Int = 42
     @Published var salesProfit: String = "128.400 €"
-    @Published var capturedCars: Int = 0
-    @Published var capturedChangePercent: Int = 7
     @Published var commercialCommissions: String = "300€"
-    @Published var commissionsSubtitle: String = "+100€ captación + 100€ venta agregado a vendedor"
+    @Published var commissionsSubtitle: String = "+100€ venta agregado a vendedor"
     @Published var totalDealershipEarnings: String = "4100 €"
     @Published var totalEarningsSubtitle: String = "Beneficio ventas + beneficios agregados"
 

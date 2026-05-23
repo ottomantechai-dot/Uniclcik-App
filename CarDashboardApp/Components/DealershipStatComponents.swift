@@ -333,12 +333,17 @@ struct AppChromeSearchCapsuleField: View {
     var prompt: Text
     var showsClearButton: Bool
     @FocusState.Binding var isSearchFocused: Bool
+    @Environment(\.dashboardLightSurface) private var lightSurface
 
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.iconOpacity))
+                .foregroundStyle(
+                    lightSurface
+                        ? Color.black.opacity(0.45)
+                        : .white.opacity(DashboardChromeSearchFieldStyle.iconOpacity)
+                )
 
             TextField("", text: $text, prompt: prompt)
                 .focused($isSearchFocused)
@@ -346,8 +351,8 @@ struct AppChromeSearchCapsuleField: View {
                 .autocorrectionDisabled()
                 .submitLabel(.search)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.white)
-                .tint(.white)
+                .foregroundStyle(lightSurface ? Color.black.opacity(0.88) : .white)
+                .tint(lightSurface ? Color(red: 0.20, green: 0.45, blue: 0.85) : .white)
 
             if showsClearButton, !text.isEmpty {
                 Button {
@@ -355,7 +360,11 @@ struct AppChromeSearchCapsuleField: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 16))
-                        .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.iconClearOpacity))
+                        .foregroundStyle(
+                            lightSurface
+                                ? Color.black.opacity(0.35)
+                                : .white.opacity(DashboardChromeSearchFieldStyle.iconClearOpacity)
+                        )
                 }
                 .buttonStyle(.plain)
             }
@@ -363,7 +372,11 @@ struct AppChromeSearchCapsuleField: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .background {
-            DashboardChromeSearchCapsuleBackground()
+            if lightSurface {
+                LiquidGlassSearchPillBackground()
+            } else {
+                DashboardChromeSearchCapsuleBackground()
+            }
         }
         .frame(minWidth: 0, maxWidth: .infinity)
     }
@@ -373,14 +386,25 @@ struct AppChromeHeaderCircleIconButton: View {
     let systemName: String
     var accessibilityLabel: LocalizedStringKey
     var action: () -> Void
+    @Environment(\.dashboardLightSurface) private var lightSurface
 
     var body: some View {
         Button(action: action) {
             ZStack {
-                DashboardChromeHeaderCircleBackground()
+                if lightSurface {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .overlay {
+                            Circle()
+                                .strokeBorder(Color.black.opacity(0.08), lineWidth: 0.75)
+                        }
+                        .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
+                } else {
+                    DashboardChromeHeaderCircleBackground()
+                }
                 Image(systemName: systemName)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.95))
+                    .foregroundStyle(lightSurface ? Color.black.opacity(0.82) : .white.opacity(0.95))
             }
         }
         .buttonStyle(ChromeCirclePressButtonStyle())
@@ -420,6 +444,7 @@ struct DashboardHomeTopBar: View {
     @FocusState private var searchFieldFocused: Bool
     var onStats: () -> Void = {}
     var onNotifications: () -> Void = {}
+    var lightSurface: Bool = false
 
     var body: some View {
         AppChromeHeaderRow(
@@ -427,7 +452,11 @@ struct DashboardHomeTopBar: View {
             profileImage: profileImage,
             searchText: $searchText,
             prompt: Text("Buscar")
-                .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.promptOpacity)),
+                .foregroundStyle(
+                    lightSurface
+                        ? Color.black.opacity(0.42)
+                        : .white.opacity(DashboardChromeSearchFieldStyle.promptOpacity)
+                ),
             showsSearchClearButton: true,
             searchFieldFocused: $searchFieldFocused
         ) {
@@ -444,6 +473,7 @@ struct DashboardHomeTopBar: View {
                 )
             }
         }
+        .environment(\.dashboardLightSurface, lightSurface)
     }
 }
 

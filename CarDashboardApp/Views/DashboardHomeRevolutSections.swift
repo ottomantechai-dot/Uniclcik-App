@@ -8,6 +8,7 @@ import UIKit
 struct DashboardFinancialSummaryCard: View {
     @ObservedObject var stats: DealershipStatsViewModel
     @Binding var showDetail: Bool
+    var lightSurface: Bool = false
 
     private let corner: CGFloat = 24
 
@@ -19,20 +20,20 @@ struct DashboardFinancialSummaryCard: View {
                 HStack {
                     Text("Información financiera")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.52))
+                        .foregroundStyle(lightSurface ? Color.black.opacity(0.48) : .white.opacity(0.52))
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.38))
+                        .foregroundStyle(lightSurface ? Color.black.opacity(0.32) : .white.opacity(0.38))
                 }
 
                 Text(stats.totalStockValue)
                     .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(lightSurface ? Color.black.opacity(0.88) : .white)
 
                 Text("Valor stock · \(stats.periodDisplayLabel)")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(lightSurface ? Color.black.opacity(0.42) : .white.opacity(0.45))
 
                 HStack(spacing: 14) {
                     miniPill(title: "Vendidos", value: "\(stats.carsSold)")
@@ -43,7 +44,11 @@ struct DashboardFinancialSummaryCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(18)
             .background {
-                DashboardChromeCardBackground(cornerRadius: corner)
+                if lightSurface {
+                    LiquidGlassCardBackground(cornerRadius: corner)
+                } else {
+                    DashboardChromeCardBackground(cornerRadius: corner)
+                }
             }
         }
         .buttonStyle(.plain)
@@ -53,17 +58,17 @@ struct DashboardFinancialSummaryCard: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.42))
+                .foregroundStyle(lightSurface ? Color.black.opacity(0.42) : .white.opacity(0.42))
             Text(value)
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(lightSurface ? Color.black.opacity(0.88) : .white)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
         .background {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.06))
+                .fill(lightSurface ? Color.black.opacity(0.04) : Color.white.opacity(0.06))
         }
     }
 }
@@ -82,7 +87,6 @@ struct DashboardFinancialDetailSheet: View {
             ("eurosign.circle.fill", "Beneficio ventas", stats.periodDisplayLabel, stats.salesProfit, "Neto", .mint),
             ("person.2.fill", "Comisiones", stats.commissionsSubtitle, stats.commercialCommissions, "Comercial", .orange),
             ("chart.line.uptrend.xyaxis", "Ingresos concesión", stats.totalEarningsSubtitle, stats.totalDealershipEarnings, "Total", .purple),
-            ("camera.metering.centered", "Captación", "+\(stats.capturedChangePercent)% vs periodo", "\(stats.capturedCars) coches", "CRM", .pink),
         ]
     }
 
