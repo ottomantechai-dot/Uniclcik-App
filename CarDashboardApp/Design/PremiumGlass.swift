@@ -150,6 +150,7 @@ struct ChromeSettingsCard<Content: View>: View {
     var cornerRadius: CGFloat
     var padding: CGFloat
     @ViewBuilder var content: () -> Content
+    @Environment(\.dashboardLightSurface) private var lightSurface
 
     init(
         cornerRadius: CGFloat = 22,
@@ -165,7 +166,18 @@ struct ChromeSettingsCard<Content: View>: View {
         content()
             .padding(padding)
             .background {
-                DashboardChromeCardBackground(cornerRadius: cornerRadius)
+                if lightSurface {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(Color.white)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                                .strokeBorder(Color.black.opacity(0.04), lineWidth: 0.6)
+                        }
+                        .shadow(color: Color.black.opacity(0.06), radius: 12, y: 4)
+                        .shadow(color: Color.black.opacity(0.02), radius: 2, y: 1)
+                } else {
+                    DashboardChromeCardBackground(cornerRadius: cornerRadius)
+                }
             }
     }
 }
@@ -299,18 +311,46 @@ private let liquidGlassStroke = LinearGradient(
 /// Campo de búsqueda tipo pastilla (referencia Liquid Glass).
 struct LiquidGlassSearchPillBackground: View {
     var body: some View {
-        Capsule(style: .continuous)
-            .fill(.ultraThinMaterial)
-            .background {
-                Capsule(style: .continuous)
-                    .fill(liquidGlassFill)
-            }
-            .overlay {
-                Capsule(style: .continuous)
-                    .strokeBorder(liquidGlassStroke, lineWidth: 0.75)
-            }
-            .shadow(color: .black.opacity(0.06), radius: 14, x: 0, y: 6)
-            .shadow(color: .black.opacity(0.03), radius: 2, x: 0, y: 1)
+        ZStack {
+            // Base sólida con gradiente vertical suave
+            Capsule(style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.97, green: 0.98, blue: 1.0),
+                            Color(red: 0.93, green: 0.96, blue: 1.0),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+            // Highlight superior tipo cristal
+            Capsule(style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.65), .clear],
+                        startPoint: .top,
+                        endPoint: .center
+                    )
+                )
+
+            // Borde sutil con gradiente azul
+            Capsule(style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.95),
+                            Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.18),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.8
+                )
+        }
+        .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.12), radius: 14, x: 0, y: 5)
+        .shadow(color: .black.opacity(0.04), radius: 2, x: 0, y: 1)
     }
 }
 

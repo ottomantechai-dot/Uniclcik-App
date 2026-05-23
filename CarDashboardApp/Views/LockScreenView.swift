@@ -8,16 +8,49 @@ struct LockScreenView: View {
 
     var body: some View {
         ZStack {
-            Image("ChatBackdropBase")
+            // Fondo gradiente azul oscuro tipo Upsoled
+            LinearGradient(
+                colors: [
+                    Color(red: 0.04, green: 0.07, blue: 0.18),
+                    Color(red: 0.05, green: 0.09, blue: 0.18),
+                    Color(red: 0.02, green: 0.04, blue: 0.09),
+                    Color.black,
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            // Glow azul principal
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color(red: 0.22, green: 0.55, blue: 0.98).opacity(0.35),
+                            Color(red: 0.22, green: 0.55, blue: 0.98).opacity(0.08),
+                            .clear,
+                        ],
+                        center: .center,
+                        startRadius: 20,
+                        endRadius: 320
+                    )
+                )
+                .frame(width: 560, height: 560)
+                .blur(radius: 16)
+                .offset(y: -160)
+                .allowsHitTesting(false)
+
+            // Sneaker decorativa en el fondo, sutil y desenfocada
+            Image("AuthSneakerHero")
                 .resizable()
-                .scaledToFill()
-                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                .clipped()
-                .ignoresSafeArea()
+                .scaledToFit()
+                .frame(width: 360, height: 360)
+                .rotationEffect(.degrees(-22))
+                .opacity(0.10)
+                .blur(radius: 1.5)
+                .offset(x: 90, y: -200)
                 .allowsHitTesting(false)
-            Color.black.opacity(0.42)
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
+                .accessibilityHidden(true)
 
             VStack(spacing: 0) {
                 Spacer(minLength: 24)

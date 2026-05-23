@@ -486,40 +486,76 @@ struct LoginView: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
-    // Header centrado para signIn/signUp
+    // Header centrado para signIn/signUp — logo XL + sneaker grande + titular
     private var signUpProHeader: some View {
-        VStack(spacing: 14) {
-            // Logo
-            Image("UpsoledWordmark")
-                .resizable()
-                .scaledToFit()
-                .frame(height: welcomeLogoHeight * 0.6)
-                .padding(.horizontal, 24)
-                .shadow(color: upsoledAccent.opacity(0.50), radius: 14, y: 4)
-                .accessibilityLabel("Upsoled")
-
-            // Sneaker
+        VStack(spacing: 10) {
+            // Logo XL con halo (como en welcome)
             ZStack {
+                Ellipse()
+                    .fill(
+                        RadialGradient(
+                            colors: [upsoledAccent.opacity(0.42), .clear],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 180
+                        )
+                    )
+                    .frame(width: 400, height: 170)
+                    .blur(radius: 16)
+
+                Image("UpsoledWordmark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 180)
+                    .padding(.horizontal, 12)
+                    .shadow(color: upsoledAccent.opacity(0.60), radius: 22, y: 6)
+                    .accessibilityLabel("Upsoled")
+            }
+
+            // Sneaker más grande con halos
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                upsoledAccent.opacity(0.50),
+                                upsoledAccent.opacity(0.15),
+                                .clear,
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 180
+                        )
+                    )
+                    .frame(width: 380, height: 380)
+                    .blur(radius: 10)
+
                 welcomeLightStreaks
-                    .scaleEffect(0.45)
+                    .scaleEffect(0.7)
+
                 Image("AuthSneakerHero")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 130, height: 130)
+                    .frame(width: 200, height: 200)
                     .rotationEffect(.degrees(-22))
-                    .shadow(color: .black.opacity(0.55), radius: 20, y: 12)
-                    .shadow(color: upsoledAccent.opacity(0.55), radius: 36, y: 18)
+                    .shadow(color: .black.opacity(0.55), radius: 24, y: 14)
+                    .shadow(color: upsoledAccent.opacity(0.55), radius: 50, y: 24)
             }
-            .frame(height: 140)
+            .frame(height: 170)
 
-            // Titular + subtítulo centrados
-            VStack(spacing: 8) {
-                Text(phase == .signIn ? "Bienvenido de nuevo" : "Crea tu cuenta")
-                    .font(.system(size: 28, weight: .heavy))
-                    .foregroundStyle(.white)
-                    .tracking(-0.4)
-                    .multilineTextAlignment(.center)
-                    .shadow(color: upsoledAccent.opacity(0.30), radius: 12, y: 4)
+            // Titular + subtítulo centrados con accent line
+            VStack(spacing: 6) {
+                HStack(spacing: 10) {
+                    Capsule()
+                        .fill(upsoledAccentBright)
+                        .frame(width: 4, height: 22)
+                        .shadow(color: upsoledAccentBright.opacity(0.6), radius: 6, x: 0, y: 0)
+                    Text(phase == .signIn ? "Bienvenido de nuevo" : "Crea tu cuenta")
+                        .font(.system(size: 26, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .tracking(-0.4)
+                        .shadow(color: upsoledAccent.opacity(0.30), radius: 12, y: 4)
+                }
 
                 Group {
                     if phase == .signIn {
@@ -553,38 +589,41 @@ struct LoginView: View {
     }
 
     private var authGlassFormCard: some View {
-        VStack(spacing: 16) {
-            authGlassField(icon: "envelope.fill") {
-                TextField("", text: $email, prompt: Text("Correo electrónico").foregroundStyle(.white.opacity(0.38)))
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .foregroundStyle(.white)
-            }
+        VStack(spacing: 12) {
+            // Grupo de campos
+            VStack(spacing: 10) {
+                authGlassField(icon: "envelope.fill") {
+                    TextField("", text: $email, prompt: Text("Correo electrónico").foregroundStyle(.white.opacity(0.40)))
+                        .textContentType(.emailAddress)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .foregroundStyle(.white)
+                }
 
-            authGlassField(
-                icon: "lock.fill",
-                trailing: {
-                    Button {
-                        showPassword.toggle()
-                    } label: {
-                        Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.45))
+                authGlassField(
+                    icon: "lock.fill",
+                    trailing: {
+                        Button {
+                            showPassword.toggle()
+                        } label: {
+                            Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.50))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                }
-            ) {
-                Group {
-                    if showPassword {
-                        TextField("", text: $password, prompt: Text("Contraseña").foregroundStyle(.white.opacity(0.38)))
-                    } else {
-                        SecureField("", text: $password, prompt: Text("Contraseña").foregroundStyle(.white.opacity(0.38)))
+                ) {
+                    Group {
+                        if showPassword {
+                            TextField("", text: $password, prompt: Text("Contraseña").foregroundStyle(.white.opacity(0.40)))
+                        } else {
+                            SecureField("", text: $password, prompt: Text("Contraseña").foregroundStyle(.white.opacity(0.40)))
+                        }
                     }
+                    .textContentType(phase == .signUp ? .newPassword : .password)
+                    .foregroundStyle(.white)
                 }
-                .textContentType(phase == .signUp ? .newPassword : .password)
-                .foregroundStyle(.white)
             }
 
             if let msg = auth.lastErrorMessage {
@@ -595,11 +634,11 @@ struct LoginView: View {
             }
 
             if phase == .signIn {
-                Button("¿Olvidaste la contraseña?") {
+                Button("¿Olvidaste tu contraseña?") {
                     resetEmail = email
                     showResetSheet = true
                 }
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(upsoledAccentBright)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -621,51 +660,57 @@ struct LoginView: View {
                     }
                     Spacer(minLength: 0)
                     Text(phase == .signIn ? "Iniciar sesión" : "Crear cuenta")
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(.white)
                     Spacer(minLength: 0)
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 13, weight: .heavy))
+                        .font(.system(size: 15, weight: .heavy))
                         .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(Circle().fill(Color.white.opacity(0.28)))
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Color.white.opacity(0.30)))
                 }
-                .padding(.leading, 18)
+                .padding(.leading, 20)
                 .padding(.trailing, 8)
-                .padding(.vertical, 11)
+                .padding(.vertical, 14)
                 .frame(maxWidth: .infinity)
                 .background {
                     ZStack {
+                        // Capa sólida base para que el color no se mute
+                        Capsule(style: .continuous)
+                            .fill(Color(red: 0.10, green: 0.32, blue: 0.85))
+
+                        // Gradiente cyan → azul saturado
                         Capsule(style: .continuous)
                             .fill(
                                 LinearGradient(
                                     colors: [
-                                        upsoledAccentBright,
-                                        upsoledAccent,
-                                        Color(red: 0.14, green: 0.36, blue: 0.85),
+                                        Color(red: 0.30, green: 0.78, blue: 1.0),
+                                        Color(red: 0.18, green: 0.55, blue: 1.0),
+                                        Color(red: 0.10, green: 0.32, blue: 0.85),
                                     ],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
                             )
 
+                        // Gloss superior
                         Capsule(style: .continuous)
                             .fill(
                                 LinearGradient(
-                                    colors: [Color.white.opacity(0.34), .clear],
+                                    colors: [Color.white.opacity(0.42), .clear],
                                     startPoint: .top,
                                     endPoint: .center
                                 )
                             )
                             .blendMode(.plusLighter)
-                            .opacity(0.5)
+                            .opacity(0.60)
 
                         Capsule(style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.30), lineWidth: 0.8)
+                            .strokeBorder(Color.white.opacity(0.32), lineWidth: 1)
                     }
                 }
-                .shadow(color: upsoledAccent.opacity(0.55), radius: 22, y: 12)
-                .shadow(color: upsoledAccentBright.opacity(0.30), radius: 36, y: 18)
+                .shadow(color: upsoledAccent.opacity(0.65), radius: 22, y: 12)
+                .shadow(color: upsoledAccentBright.opacity(0.40), radius: 40, y: 18)
             }
             .disabled(!canSubmit || isBusy)
             .buttonStyle(.plain)
@@ -692,10 +737,8 @@ struct LoginView: View {
             .font(.system(size: 14, weight: .medium))
             .frame(maxWidth: .infinity)
         }
-        .padding(20)
-        .background {
-            AuthDarkGlassPanel(cornerRadius: 28)
-        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .padding(.top, 6)
     }
 

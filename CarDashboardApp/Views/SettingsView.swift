@@ -11,14 +11,16 @@ struct SettingsView: View {
     @FocusState private var settingsSearchFieldFocused: Bool
 
     var body: some View {
-        RevolutChromeContainer {
+        ZStack {
+            Color.white.ignoresSafeArea()
+
             VStack(spacing: 0) {
                 AppChromeHeaderRow(
                     initials: auth.userInitials,
                     profileImage: auth.profileAvatarImage,
                     searchText: $settingsSearchText,
                     prompt: Text("Buscar")
-                        .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.promptOpacity)),
+                        .foregroundStyle(Color.black.opacity(0.42)),
                     showsSearchClearButton: true,
                     searchFieldFocused: $settingsSearchFieldFocused
                 ) {
@@ -36,6 +38,7 @@ struct SettingsView: View {
                     }
                 }
                 .appChromeHeaderOuterPadding()
+                .environment(\.dashboardLightSurface, true)
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 12) {
@@ -56,6 +59,8 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity)
         }
+        .preferredColorScheme(.light)
+        .environment(\.dashboardLightSurface, true)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -82,7 +87,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Notificaciones")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(Color.black.opacity(0.50))
 
                 Toggle(
                     isOn: Binding(
@@ -104,12 +109,12 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Avisos del equipo y tareas")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color.black.opacity(0.85))
                         Text(
                             "Recibir push cuando te envíen un mensaje directo, aviso de grupo o una tarea desde Viera. Desactívalo si no quieres notificaciones en este dispositivo."
                         )
                         .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(Color.black.opacity(0.50))
                         .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -139,7 +144,7 @@ struct SettingsView: View {
                             )
                         Text(String(auth.userDisplayName.prefix(1)).uppercased())
                             .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color.black.opacity(0.85))
                     }
                 }
                 .frame(width: 60, height: 60)
@@ -148,7 +153,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(auth.userDisplayName)
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color.black.opacity(0.85))
 
                     Text("Sesión Supabase")
                         .font(.system(size: 13, weight: .medium))
@@ -159,7 +164,7 @@ struct SettingsView: View {
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(Color.black.opacity(0.35))
             }
         }
     }
@@ -171,18 +176,18 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Desarrollo")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(Color.black.opacity(0.50))
 
                 Toggle(isOn: $logVehicleImageDiagnostics) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Diagnóstico de imágenes (consola Xcode)")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color.black.opacity(0.85))
                         Text(
                             "Al cargar Coches se imprimen columnas JSON, rutas Storage, user_id y cuántos slots ve la UI. Abre la consola con ⌘⇧Y y tira hacia abajo para refrescar el listado."
                         )
                         .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(Color.black.opacity(0.50))
                         .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -202,20 +207,15 @@ struct SettingsView: View {
                     HStack(spacing: 14) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(.ultraThinMaterial)
-                                .environment(\.colorScheme, .dark)
+                                .fill(Color.red.opacity(0.10))
                                 .frame(width: 32, height: 32)
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5)
-                                }
                             Image(systemName: "rectangle.portrait.and.arrow.right")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.red.opacity(0.95))
+                                .foregroundStyle(Color.red.opacity(0.92))
                         }
                         Text("Cerrar sesión")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color.black.opacity(0.85))
                         Spacer()
                     }
                     .padding(.horizontal, 16)
@@ -238,7 +238,7 @@ struct SettingsView: View {
                 ) {
                     Text("\(settingsVM.appVersion) (\(settingsVM.buildNumber))")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(Color.black.opacity(0.50))
                 }
             }
         }
@@ -270,7 +270,7 @@ struct SettingsView: View {
 
             Text(title)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.black.opacity(0.85))
 
             Spacer()
 

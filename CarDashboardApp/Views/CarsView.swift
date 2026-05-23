@@ -38,23 +38,29 @@ struct CarsView: View {
     }
 
     var body: some View {
-        RevolutChromeContainer {
+        ZStack {
+            Color.white.ignoresSafeArea()
+
             VStack(spacing: 0) {
                 stickyBrowseChrome
 
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 18) {
-                        Text("\(resultCountText) resultados")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                            .padding(.horizontal, 16)
-                            .padding(.top, 6)
+                    VStack(spacing: 14) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "shoeprints.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
+                            Text("\(resultCountText) sneakers")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color.black.opacity(0.65))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
 
                         if carsVM.isLoadingVehicles && carsVM.cars.isEmpty {
                             ProgressView()
-                                .tint(.white)
+                                .tint(Color(red: 0.20, green: 0.45, blue: 0.85))
                                 .padding(.vertical, 32)
                         }
 
@@ -73,36 +79,34 @@ struct CarsView: View {
                                     systemImage: "line.3.horizontal.decrease.circle",
                                     description: Text(carsEmptyFootnote)
                                 )
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Color.black.opacity(0.75))
                                 .symbolRenderingMode(.hierarchical)
-                                .tint(.white.opacity(0.85))
+                                .tint(Color(red: 0.20, green: 0.45, blue: 0.85))
                                 .padding(.vertical, 24)
                                 .padding(.horizontal, 16)
                             } else {
-                                LazyVStack(spacing: 14) {
+                                LazyVStack(spacing: 12) {
                                     ForEach(Array(displayedCars.enumerated()), id: \.element.id) { idx, car in
-                                        CarListingCard(
-                                            car: car,
-                                            isSelected: carsVM.isSelected(car)
+                                        SneakerListingCardLight(
+                                            mock: SneakerMock.mock(for: idx)
                                         ) {
                                             carsVM.selectCar(car)
                                             editingCar = car
                                         }
                                         .frame(maxWidth: .infinity)
-                                        // Sin prefetch de vecinos: con CDN lento compite por las mismas ranuras HTTP
-                                        // que las filas visibles (`HTTPImageDownloadGate`) y deja todo en spinner.
                                     }
                                 }
+                                .padding(.horizontal, 16)
                                 .frame(maxWidth: .infinity)
                             }
 
                             if carsVM.isLoadingMoreVehicles {
                                 HStack(spacing: 8) {
                                     ProgressView()
-                                        .tint(.white.opacity(0.7))
-                                    Text("Cargando más vehículos…")
+                                        .tint(Color(red: 0.20, green: 0.45, blue: 0.85))
+                                    Text("Cargando más sneakers…")
                                         .font(.system(size: 13, weight: .medium))
-                                        .foregroundStyle(.white.opacity(0.7))
+                                        .foregroundStyle(Color.black.opacity(0.55))
                                 }
                                 .padding(.vertical, 12)
                             }
@@ -204,6 +208,7 @@ struct CarsView: View {
         )
         .appChromeHeaderOuterPadding()
         .frame(maxWidth: .infinity, alignment: .leading)
+        .environment(\.dashboardLightSurface, true)
     }
 
     /// Desplazamiento hacia abajo cuando la tab bar se minimiza (ajusta si no calza con tu simulador).
@@ -1930,6 +1935,195 @@ private enum VehicleDictationParser {
             .replacingOccurrences(of: ",", with: ".")
             .filter { "0123456789.".contains($0) }
         return Double(normalized)
+    }
+}
+
+// MARK: - Sneaker listing card light + mock data
+
+struct SneakerMock {
+    let brand: String
+    let model: String
+    let colorway: String
+    let size: String
+    let condition: String
+    let priceEUR: Int
+    let badgeColor: Color
+    let badgeText: String?
+    /// Tinta de fondo de la imagen — da variedad visual a la lista
+    let tint: Color
+
+    static let catalog: [SneakerMock] = [
+        SneakerMock(brand: "Jordan",       model: "1 Off-White",    colorway: "UNC",             size: "42",   condition: "DS",   priceEUR: 1_840, badgeColor: Color(red: 0.20, green: 0.70, blue: 0.45), badgeText: "DESTACADO", tint: Color(red: 0.65, green: 0.82, blue: 1.00)),
+        SneakerMock(brand: "Yeezy",        model: "350 V2",         colorway: "Zebra",           size: "43",   condition: "DS",   priceEUR:   320, badgeColor: Color(red: 0.95, green: 0.55, blue: 0.20), badgeText: nil,         tint: Color(red: 0.90, green: 0.90, blue: 0.92)),
+        SneakerMock(brand: "Nike",         model: "Dunk Low",       colorway: "Panda",           size: "41.5", condition: "VNDS", priceEUR:   180, badgeColor: Color(red: 0.20, green: 0.45, blue: 0.85), badgeText: nil,         tint: Color(red: 0.95, green: 0.95, blue: 0.96)),
+        SneakerMock(brand: "Travis Scott", model: "Jordan 1 Low",   colorway: "Mocha",           size: "44",   condition: "DS",   priceEUR: 1_350, badgeColor: Color(red: 0.55, green: 0.30, blue: 0.85), badgeText: "RARO",      tint: Color(red: 0.86, green: 0.74, blue: 0.62)),
+        SneakerMock(brand: "Yeezy",        model: "Foam Runner",    colorway: "MX Cream Clay",   size: "42",   condition: "DS",   priceEUR:   140, badgeColor: Color(red: 0.95, green: 0.40, blue: 0.30), badgeText: nil,         tint: Color(red: 0.94, green: 0.86, blue: 0.74)),
+        SneakerMock(brand: "New Balance",  model: "550",            colorway: "White Green",     size: "43.5", condition: "DS",   priceEUR:   190, badgeColor: Color(red: 0.20, green: 0.65, blue: 0.50), badgeText: nil,         tint: Color(red: 0.78, green: 0.92, blue: 0.82)),
+        SneakerMock(brand: "Adidas",       model: "Samba OG",       colorway: "White Black Gum", size: "42",   condition: "VNDS", priceEUR:   125, badgeColor: Color(red: 0.20, green: 0.45, blue: 0.85), badgeText: nil,         tint: Color(red: 0.92, green: 0.92, blue: 0.94)),
+        SneakerMock(brand: "Jordan",       model: "4 Retro",        colorway: "Bred Reimagined", size: "44",   condition: "DS",   priceEUR:   280, badgeColor: Color(red: 0.85, green: 0.20, blue: 0.25), badgeText: nil,         tint: Color(red: 0.98, green: 0.75, blue: 0.75)),
+    ]
+
+    static func mock(for index: Int) -> SneakerMock {
+        catalog[index % catalog.count]
+    }
+
+    var priceText: String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.locale = Locale(identifier: "es_ES")
+        f.maximumFractionDigits = 0
+        let str = f.string(from: NSNumber(value: priceEUR)) ?? "\(priceEUR)"
+        return "\(str) €"
+    }
+}
+
+struct SneakerListingCardLight: View {
+    let mock: SneakerMock
+    var onTap: () -> Void
+    @State private var isFavorite = false
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(alignment: .center, spacing: 14) {
+                // Imagen sneaker con tint del modelo
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    mock.tint.opacity(0.55),
+                                    mock.tint.opacity(0.25),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 110, height: 110)
+
+                    // Highlight superior gloss
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.55), .clear],
+                                startPoint: .top,
+                                endPoint: .center
+                            )
+                        )
+                        .frame(width: 110, height: 110)
+
+                    Image("AuthSneakerHero")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 96, height: 96)
+                        .rotationEffect(.degrees(-18))
+                        .shadow(color: Color.black.opacity(0.18), radius: 8, y: 4)
+                        .shadow(color: mock.tint.opacity(0.50), radius: 14, y: 6)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        if let badge = mock.badgeText {
+                            Text(badge)
+                                .font(.system(size: 9, weight: .heavy))
+                                .tracking(1.0)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background {
+                                    Capsule().fill(mock.badgeColor)
+                                }
+                        }
+                        Text(mock.brand.uppercased())
+                            .font(.system(size: 10, weight: .heavy))
+                            .tracking(0.8)
+                            .foregroundStyle(Color.black.opacity(0.55))
+                    }
+
+                    Text("\(mock.model) · \(mock.colorway)")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.88))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(mock.priceText)
+                        .font(.system(size: 20, weight: .heavy, design: .rounded))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.20, green: 0.50, blue: 0.95),
+                                    Color(red: 0.14, green: 0.36, blue: 0.85),
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .padding(.top, 1)
+
+                    HStack(spacing: 6) {
+                        sneakerTag(icon: "ruler.fill", text: "Talla \(mock.size)")
+                        sneakerTag(icon: "checkmark.seal.fill", text: mock.condition)
+                    }
+                    .padding(.top, 2)
+                }
+
+                Spacer(minLength: 0)
+
+                // Botón favorite + chevron
+                VStack {
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                            isFavorite.toggle()
+                        }
+                    } label: {
+                        Image(systemName: isFavorite ? "heart.fill" : "heart")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(
+                                isFavorite
+                                    ? Color(red: 0.95, green: 0.30, blue: 0.40)
+                                    : Color.black.opacity(0.30)
+                            )
+                            .scaleEffect(isFavorite ? 1.15 : 1.0)
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+                }
+            }
+            .padding(14)
+            .background {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.white)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .strokeBorder(Color.black.opacity(0.04), lineWidth: 0.6)
+                    }
+                    .shadow(color: Color.black.opacity(0.06), radius: 14, x: 0, y: 5)
+                    .shadow(color: Color.black.opacity(0.02), radius: 2, x: 0, y: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func sneakerTag(icon: String, text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .bold))
+            Text(text)
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .foregroundStyle(Color.black.opacity(0.62))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background {
+            Capsule()
+                .fill(Color(red: 0.96, green: 0.97, blue: 1.0))
+                .overlay {
+                    Capsule()
+                        .strokeBorder(Color.black.opacity(0.05), lineWidth: 0.5)
+                }
+        }
     }
 }
 

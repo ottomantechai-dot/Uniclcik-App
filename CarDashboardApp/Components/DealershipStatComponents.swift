@@ -392,20 +392,52 @@ struct AppChromeHeaderCircleIconButton: View {
         Button(action: action) {
             ZStack {
                 if lightSurface {
+                    // Base con gradiente vertical
                     Circle()
-                        .fill(.ultraThinMaterial)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white,
+                                    Color(red: 0.93, green: 0.96, blue: 1.0),
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
                         .overlay {
                             Circle()
-                                .strokeBorder(Color.black.opacity(0.08), lineWidth: 0.75)
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.white.opacity(0.98),
+                                            Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.25),
+                                        ],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    ),
+                                    lineWidth: 1
+                                )
                         }
-                        .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
+                        .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.18), radius: 10, y: 4)
                 } else {
                     DashboardChromeHeaderCircleBackground()
                 }
                 Image(systemName: systemName)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(lightSurface ? Color.black.opacity(0.82) : .white.opacity(0.95))
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(
+                        lightSurface
+                            ? LinearGradient(
+                                colors: [
+                                    Color(red: 0.20, green: 0.50, blue: 0.95),
+                                    Color(red: 0.14, green: 0.36, blue: 0.85),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            : LinearGradient(colors: [.white.opacity(0.95), .white.opacity(0.95)], startPoint: .top, endPoint: .bottom)
+                    )
             }
+            .frame(width: AppChromeHeaderMetrics.circleButtonSize, height: AppChromeHeaderMetrics.circleButtonSize)
         }
         .buttonStyle(ChromeCirclePressButtonStyle())
         .accessibilityLabel(accessibilityLabel)

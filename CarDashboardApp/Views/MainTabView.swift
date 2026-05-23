@@ -54,7 +54,9 @@ struct MainTabView: View {
             }
 
             Tab("Soled", systemImage: "shippingbox.fill", value: UpsoledMainTab.chat) {
-                ChatView(searchText: $chatSearchText)
+                NavigationStack {
+                    SoldView()
+                }
             }
             .badge(chatInbox.totalUnansweredMessageCount)
 
@@ -1665,4 +1667,354 @@ private enum MainTabBarAppearance {
         .environmentObject(AuthViewModel())
         .environmentObject(CarsViewModel())
         .environmentObject(SettingsViewModel())
+}
+
+// MARK: - Vendido (sales history)
+
+struct SoldView: View {
+    @EnvironmentObject private var auth: AuthViewModel
+    @State private var searchText = ""
+    @State private var filter: SoldFilter = .all
+    @State private var didAppear = false
+    @FocusState private var searchFocused: Bool
+
+    private var filteredSales: [SoldSneakerMock] {
+        let base = SoldSneakerMock.catalog.filter { sale in
+            switch filter {
+            case .all: return true
+            case .thisMonth: return sale.daysAgo <= 30
+            case .topProfit: return sale.profitEUR >= 200
+            }
+        }
+        guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return base }
+        return base.filter { sale in
+            "\(sale.brand) \(sale.model) \(sale.colorway) \(sale.buyer)"
+                .lowercased()
+                .contains(searchText.lowercased())
+        }
+    }
+
+    private var totalRevenue: Int {
+        filteredSales.reduce(0) { $0 + $1.salePriceEUR }
+    }
+
+    private var totalProfit: Int {
+        filteredSales.reduce(0) { $0 + $1.profitEUR }
+    }
+
+    var body: some View {
+        ZStack {
+            Color.white.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                soldTopBar
+                    .appChromeHeaderOuterPadding()
+                    .environment(\.dashboardLightSurface, true)
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 18) {
+                        soldSummaryCard
+                            .padding(.horizontal, 16)
+                            .padding(.top, 8)
+                            .modifier(SoldEntranceAnimation(didAppear: didAppear, delay: 0.05))
+
+                        filterPicker
+                            .padding(.horizontal, 16)
+                            .modifier(SoldEntranceAnimation(didAppear: didAppear, delay: 0.15))
+
+                        LazyVStack(spacing: 12) {
+                            ForEach(filteredSales) { sale in
+                                SoldSneakerRow(sale: sale)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .modifier(SoldEntranceAnimation(didAppear: didAppear, delay: 0.25))
+                    }
+                    .padding(.bottom, 36)
+                }
+            }
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .preferredColorScheme(.light)
+        .environment(\.dashboardLightSurface, true)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                didAppear = true
+            }
+        }
+    }
+
+    private var soldTopBar: some View {
+        AppChromeHeaderRow(
+            initials: auth.userInitials,
+            profileImage: auth.profileAvatarImage,
+            searchText: $searchText,
+            prompt: Text("Buscar venta")
+                .foregroundStyle(Color.black.opacity(0.42)),
+            showsSearchClearButton: true,
+            searchFieldFocused: $searchFocused
+        ) {
+            HStack(spacing: AppChromeHeaderMetrics.hStackSpacing) {
+                AppChromeHeaderCircleIconButton(
+                    systemName: "arrow.up.arrow.down",
+                    accessibilityLabel: "Ordenar",
+                    action: {}
+                )
+                AppChromeHeaderCircleIconButton(
+                    systemName: "line.3.horizontal.decrease",
+                    accessibilityLabel: "Filtros",
+                    action: {}
+                )
+            }
+        }
+    }
+
+    private var soldSummaryCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
+                Text("Vendido este periodo")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.55))
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(formatEUR(totalRevenue))
+                    .font(.system(size: 32, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.92))
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+            }
+
+            HStack(spacing: 14) {
+                summaryStat(label: "Ventas", value: "\(filteredSales.count)", tint: Color(red: 0.20, green: 0.45, blue: 0.85))
+                Divider().frame(height: 28)
+                summaryStat(label: "Beneficio", value: formatEUR(totalProfit), tint: Color(red: 0.20, green: 0.70, blue: 0.45))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.white)
+                .shadow(color: Color.black.opacity(0.06), radius: 14, x: 0, y: 5)
+        }
+    }
+
+    private func summaryStat(label: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.black.opacity(0.50))
+            Text(value)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(tint)
+        }
+    }
+
+    private var filterPicker: some View {
+        HStack(spacing: 8) {
+            ForEach(SoldFilter.allCases, id: \.self) { f in
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        filter = f
+                    }
+                } label: {
+                    Text(f.label)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(filter == f ? .white : Color.black.opacity(0.60))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background {
+                            Capsule(style: .continuous)
+                                .fill(
+                                    filter == f
+                                        ? AnyShapeStyle(
+                                            LinearGradient(
+                                                colors: [
+                                                    Color(red: 0.20, green: 0.50, blue: 0.95),
+                                                    Color(red: 0.14, green: 0.36, blue: 0.85),
+                                                ],
+                                                startPoint: .topLeading,
+                                                endPoint: .bottomTrailing
+                                            )
+                                        )
+                                        : AnyShapeStyle(Color(red: 0.95, green: 0.96, blue: 0.99))
+                                )
+                                .shadow(color: filter == f ? Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.40) : .clear, radius: 8, y: 4)
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func formatEUR(_ amount: Int) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.locale = Locale(identifier: "es_ES")
+        f.maximumFractionDigits = 0
+        return (f.string(from: NSNumber(value: amount)) ?? "\(amount)") + " €"
+    }
+}
+
+private enum SoldFilter: CaseIterable {
+    case all, thisMonth, topProfit
+
+    var label: String {
+        switch self {
+        case .all: return "Todas"
+        case .thisMonth: return "Este mes"
+        case .topProfit: return "Top beneficio"
+        }
+    }
+}
+
+struct SoldSneakerRow: View {
+    let sale: SoldSneakerMock
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [sale.tint.opacity(0.55), sale.tint.opacity(0.22)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 92, height: 92)
+
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(LinearGradient(colors: [Color.white.opacity(0.50), .clear], startPoint: .top, endPoint: .center))
+                    .frame(width: 92, height: 92)
+
+                Image("AuthSneakerHero")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 78, height: 78)
+                    .rotationEffect(.degrees(-18))
+                    .shadow(color: sale.tint.opacity(0.45), radius: 10, y: 4)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(sale.brand.uppercased())
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(0.8)
+                    .foregroundStyle(Color.black.opacity(0.55))
+
+                Text("\(sale.model) · \(sale.colorway)")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.88))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 6) {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.40))
+                    Text(sale.buyer)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                    Text("·")
+                        .foregroundStyle(Color.black.opacity(0.30))
+                    Text(sale.dateLabel)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.45))
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(formatEUR(sale.salePriceEUR))
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.88))
+
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 9, weight: .bold))
+                    Text("+\(formatEUR(sale.profitEUR))")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background {
+                    Capsule()
+                        .fill(Color(red: 0.20, green: 0.70, blue: 0.45).opacity(0.12))
+                }
+            }
+        }
+        .padding(14)
+        .background {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color.white)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(Color.black.opacity(0.04), lineWidth: 0.6)
+                }
+                .shadow(color: Color.black.opacity(0.05), radius: 12, x: 0, y: 4)
+        }
+    }
+
+    private func formatEUR(_ amount: Int) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.locale = Locale(identifier: "es_ES")
+        f.maximumFractionDigits = 0
+        return (f.string(from: NSNumber(value: amount)) ?? "\(amount)") + " €"
+    }
+}
+
+struct SoldSneakerMock: Identifiable {
+    let id = UUID()
+    let brand: String
+    let model: String
+    let colorway: String
+    let buyer: String
+    let salePriceEUR: Int
+    let profitEUR: Int
+    let daysAgo: Int
+    let tint: Color
+
+    var dateLabel: String {
+        switch daysAgo {
+        case 0: return "Hoy"
+        case 1: return "Ayer"
+        case 2...6: return "Hace \(daysAgo) días"
+        case 7...13: return "Hace 1 semana"
+        case 14...29: return "Hace \(daysAgo / 7) semanas"
+        default: return "Hace \(daysAgo / 30) meses"
+        }
+    }
+
+    static let catalog: [SoldSneakerMock] = [
+        SoldSneakerMock(brand: "Jordan",       model: "1 Off-White",  colorway: "UNC",             buyer: "Carlos R.",  salePriceEUR: 1_840, profitEUR: 420, daysAgo: 1,  tint: Color(red: 0.65, green: 0.82, blue: 1.00)),
+        SoldSneakerMock(brand: "Travis Scott", model: "Jordan 1 Low", colorway: "Mocha",           buyer: "Lucía M.",   salePriceEUR: 1_350, profitEUR: 380, daysAgo: 3,  tint: Color(red: 0.86, green: 0.74, blue: 0.62)),
+        SoldSneakerMock(brand: "Yeezy",        model: "350 V2",       colorway: "Zebra",           buyer: "Marc V.",    salePriceEUR:   320, profitEUR:  85, daysAgo: 5,  tint: Color(red: 0.90, green: 0.90, blue: 0.92)),
+        SoldSneakerMock(brand: "Jordan",       model: "4 Retro",      colorway: "Bred Reimagined", buyer: "Anna L.",    salePriceEUR:   280, profitEUR:  60, daysAgo: 7,  tint: Color(red: 0.98, green: 0.75, blue: 0.75)),
+        SoldSneakerMock(brand: "Nike",         model: "Dunk Low",     colorway: "Panda",           buyer: "David P.",   salePriceEUR:   180, profitEUR:  45, daysAgo: 10, tint: Color(red: 0.95, green: 0.95, blue: 0.96)),
+        SoldSneakerMock(brand: "New Balance",  model: "550",          colorway: "White Green",     buyer: "Sara J.",    salePriceEUR:   190, profitEUR:  55, daysAgo: 12, tint: Color(red: 0.78, green: 0.92, blue: 0.82)),
+        SoldSneakerMock(brand: "Yeezy",        model: "Foam Runner",  colorway: "MX Cream Clay",   buyer: "Iván T.",    salePriceEUR:   140, profitEUR:  30, daysAgo: 18, tint: Color(red: 0.94, green: 0.86, blue: 0.74)),
+        SoldSneakerMock(brand: "Adidas",       model: "Samba OG",     colorway: "White Black Gum", buyer: "Roberto N.", salePriceEUR:   125, profitEUR:  25, daysAgo: 25, tint: Color(red: 0.92, green: 0.92, blue: 0.94)),
+        SoldSneakerMock(brand: "Jordan",       model: "1 Retro High", colorway: "Lost & Found",    buyer: "Paula G.",   salePriceEUR:   520, profitEUR: 165, daysAgo: 42, tint: Color(red: 0.95, green: 0.85, blue: 0.65)),
+    ]
+}
+
+private struct SoldEntranceAnimation: ViewModifier {
+    let didAppear: Bool
+    let delay: Double
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(didAppear ? 1 : 0)
+            .offset(y: didAppear ? 0 : 16)
+            .animation(.spring(response: 0.55, dampingFraction: 0.85).delay(delay), value: didAppear)
+    }
 }
