@@ -1,4 +1,17 @@
+import Foundation
+import SwiftData
 import SwiftUI
+
+/// SwiftData necesita que exista `Library/Application Support` antes de abrir la store en arranques “fríos”; si no, Core Data registra errores (a veces corrige después, pero mejor evitarlos).
+private enum AppSandboxDirectories {
+    static func ensureApplicationSupportAndClosetRoots() {
+        let fm = FileManager.default
+        if let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            try? fm.createDirectory(at: support, withIntermediateDirectories: true)
+        }
+        _ = ImageStore.rootDirectory
+    }
+}
 
 @main
 struct CarDashboardAppApp: App {
@@ -6,57 +19,37 @@ struct CarDashboardAppApp: App {
     @StateObject private var authVM = AuthViewModel()
     @StateObject private var carsVM = CarsViewModel()
     @StateObject private var settingsVM = SettingsViewModel()
-    @StateObject private var appLock = AppLockManager()
+
+    init() {
+        AppSandboxDirectories.ensureApplicationSupportAndClosetRoots()
+    }
 
     var body: some Scene {
         WindowGroup {
             AppShellRoot(authVM: authVM)
                 .environmentObject(carsVM)
                 .environmentObject(settingsVM)
-                .environmentObject(appLock)
-                .preferredColorScheme(.dark)
+                /// Tema claro por defecto: barra de sistema (hora, señal, batería) en negro sobre UI blanca.
+                .preferredColorScheme(.light)
+                .modelContainer(for: [ClosetItem.self, Look.self, UserProfile.self])
         }
     }
 }
 
-/// Encapsula `scenePhase` y sincroniza el bloqueo local con la sesión Supabase.
+/// Encapsula la raíz autenticada y el registro de notificaciones push.
 private struct AppShellRoot: View {
     @ObservedObject var authVM: AuthViewModel
     @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject var settingsVM: SettingsViewModel
-    @EnvironmentObject var appLock: AppLockManager
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         AuthRootView(auth: authVM)
             .environmentObject(carsVM)
             .environmentObject(settingsVM)
-            .environmentObject(appLock)
-            .onAppear {
-                syncAppLockWithSession()
-            }
-            .onChange(of: authVM.isAuthenticated) { _, _ in
-                syncAppLockWithSession()
-            }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .background {
-                    appLock.lock()
-                }
-            }
-            // Evita el diálogo de notificaciones (y posibles conflictos de ventana) durante «Crea tu PIN» o la pantalla de bloqueo.
-            .task(id: "\(authVM.isAuthenticated)-\(appLock.hasPINConfigured)-\(appLock.isUnlocked)") {
-                guard authVM.isAuthenticated, appLock.hasPINConfigured, appLock.isUnlocked else { return }
+            .task(id: authVM.isAuthenticated) {
+                guard authVM.isAuthenticated else { return }
                 await RemotePushRegistration.requestAuthorizationAndRegister()
                 await RemotePushRegistration.syncPendingTokenToSupabase()
             }
-    }
-
-    private func syncAppLockWithSession() {
-        if authVM.isAuthenticated, let uid = authVM.session?.user.id {
-            appLock.setActiveUser(uid)
-        } else {
-            // Cerrar sesión no borra el PIN en el llavero: cada usuario conserva su código en este dispositivo.
-            appLock.setActiveUser(nil)
-        }
     }
 }

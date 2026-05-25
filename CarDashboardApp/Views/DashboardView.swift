@@ -5,16 +5,11 @@ struct DashboardView: View {
     @EnvironmentObject private var auth: AuthViewModel
     @EnvironmentObject private var carsVM: CarsViewModel
     @EnvironmentObject private var tabRouter: MainTabRouter
-    @EnvironmentObject private var notificationsStore: DashboardNotificationsStore
-
     @StateObject private var vm = DealershipStatsViewModel()
     @EnvironmentObject private var communityVM: DashboardCommunityViewModel
     @EnvironmentObject private var chatInbox: ChatInboxStore
     @EnvironmentObject private var chatNav: ChatNavigationCoordinator
     @StateObject private var locationHub = DashboardLocationHub()
-    @State private var homeSearchText = ""
-    @State private var showFinancialStatsSheet = false
-    @State private var showNotificationsSheet = false
     @State private var didAppear = false
 
     var body: some View {
@@ -22,48 +17,22 @@ struct DashboardView: View {
             Color.white
                 .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                    DashboardHomeTopBar(
-                        initials: auth.userInitials,
-                        profileImage: auth.profileAvatarImage,
-                        searchText: $homeSearchText,
-                        onStats: { showFinancialStatsSheet = true },
-                        onNotifications: { showNotificationsSheet = true },
-                        lightSurface: true
-                    )
-                    .appChromeHeaderOuterPadding()
-                    .opacity(didAppear ? 1 : 0)
-                    .offset(y: didAppear ? 0 : -8)
-                    .animation(.easeOut(duration: 0.4), value: didAppear)
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    DashboardHeroBannerCard(onExplore: { tabRouter.selected = .cars })
+                        .padding(.top, 12)
+                        .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.05))
 
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 20) {
-                            DashboardStatsOverview(stats: vm)
-                                .padding(.top, 12)
-                                .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.05))
+                    DashboardStatsOverview(stats: vm)
+                        .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.15))
 
-                            DashboardHeroBannerCard(onExplore: { tabRouter.selected = .cars })
-                                .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.15))
-
-                            DashboardQuickActionsLightRow(
-                                onAddCar: { tabRouter.selected = .cars },
-                                onInvoices: {},
-                                onStats: { showFinancialStatsSheet = true },
-                                onMore: {}
-                            )
-                            .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.25))
-
-                            DashboardLatestSaleSection(cars: carsVM.cars)
-                                .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.35))
-
-                            DashboardConnectAccountsSection()
-                                .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.45))
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 36)
-                        .frame(minWidth: 0, maxWidth: .infinity)
-                    }
+                    DashboardLatestSaleSection(cars: carsVM.cars)
+                        .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.25))
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 36)
+                .frame(minWidth: 0, maxWidth: .infinity)
+            }
         }
         .onAppear {
             // Pequeño delay para asegurar que la transición se vea
@@ -75,12 +44,6 @@ struct DashboardView: View {
         .environment(\.dashboardLightSurface, true)
         .preferredColorScheme(.light)
         .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showFinancialStatsSheet) {
-            DashboardFinancialDetailSheet(stats: vm)
-        }
-        .sheet(isPresented: $showNotificationsSheet) {
-            DashboardNotificationsSheet(store: notificationsStore)
-        }
         .task(id: auth.session?.user.id) {
             if let uid = auth.session?.user.id {
                 await chatInbox.refreshCoordinatorTasksFromServer(currentUserId: uid)
@@ -104,137 +67,6 @@ struct DashboardView: View {
     }
 }
 
-// MARK: - Brand logos (representaciones tipográficas estilizadas)
-
-/// Insignia que recrea el estilo visual de cada marketplace usando tipografía e
-/// iniciales — no son los logos oficiales sino representaciones aproximadas.
-private struct BrandLogo: View {
-    let brand: String
-
-    var body: some View {
-        switch brand {
-        case "StockX":         stockXLogo
-        case "GOAT":           goatLogo
-        case "Grailed":        grailedLogo
-        case "eBay":           ebayLogo
-        case "Flight Club":    flightClubLogo
-        case "Stadium Goods":  stadiumGoodsLogo
-        default:               genericLogo
-        }
-    }
-
-    // StockX: negro con "X" verde lima
-    private var stockXLogo: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(red: 0.05, green: 0.05, blue: 0.06))
-            HStack(spacing: 0) {
-                Text("S")
-                    .foregroundStyle(.white)
-                Text("X")
-                    .foregroundStyle(Color(red: 0.20, green: 0.95, blue: 0.45))
-            }
-            .font(.system(size: 21, weight: .heavy, design: .rounded))
-            .tracking(-1)
-        }
-    }
-
-    // GOAT: blanco con "G" negra serif
-    private var goatLogo: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.black.opacity(0.08), lineWidth: 0.5)
-                }
-            Text("g")
-                .font(.system(size: 30, weight: .black, design: .serif))
-                .foregroundStyle(Color.black)
-                .offset(y: 1)
-        }
-    }
-
-    // Grailed: blanco con "G" negra tipo sans
-    private var grailedLogo: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.black.opacity(0.10), lineWidth: 0.5)
-                }
-            Text("G")
-                .font(.system(size: 26, weight: .heavy))
-                .foregroundStyle(Color.black)
-        }
-    }
-
-    // eBay: blanco con "e" multicolor inspirado en su paleta
-    private var ebayLogo: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.black.opacity(0.08), lineWidth: 0.5)
-                }
-            HStack(spacing: 0) {
-                Text("e").foregroundStyle(Color(red: 0.90, green: 0.20, blue: 0.20))
-                Text("b").foregroundStyle(Color(red: 0.15, green: 0.50, blue: 0.95))
-                Text("a").foregroundStyle(Color(red: 0.98, green: 0.75, blue: 0.10))
-                Text("y").foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.30))
-            }
-            .font(.system(size: 14, weight: .heavy, design: .rounded))
-            .tracking(-0.5)
-        }
-    }
-
-    // Flight Club: negro con "FC" en rojo
-    private var flightClubLogo: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(red: 0.05, green: 0.05, blue: 0.06))
-            VStack(spacing: -2) {
-                Text("FLIGHT")
-                    .font(.system(size: 7, weight: .heavy))
-                    .tracking(0.5)
-                    .foregroundStyle(.white)
-                Text("CLUB")
-                    .font(.system(size: 9, weight: .heavy))
-                    .tracking(0.4)
-                    .foregroundStyle(Color(red: 0.92, green: 0.15, blue: 0.20))
-            }
-        }
-    }
-
-    // Stadium Goods: blanco con "SG" negro
-    private var stadiumGoodsLogo: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.black.opacity(0.12), lineWidth: 0.5)
-                }
-            Text("SG")
-                .font(.system(size: 17, weight: .black, design: .serif))
-                .foregroundStyle(Color.black)
-                .tracking(-1)
-        }
-    }
-
-    private var genericLogo: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.gray.opacity(0.18))
-            Text(String(brand.prefix(2)).uppercased())
-                .font(.system(size: 14, weight: .heavy))
-                .foregroundStyle(Color.black.opacity(0.65))
-        }
-    }
-}
-
 // MARK: - Animaciones reutilizables
 
 /// Aplica fade + slide-up con delay para entrada escalonada de cada sección.
@@ -247,16 +79,6 @@ private struct EntranceAnimation: ViewModifier {
             .opacity(didAppear ? 1 : 0)
             .offset(y: didAppear ? 0 : 18)
             .animation(.spring(response: 0.55, dampingFraction: 0.85).delay(delay), value: didAppear)
-    }
-}
-
-/// Estilo de botón con scale spring al tap (efecto "press").
-private struct PressableButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .opacity(configuration.isPressed ? 0.85 : 1.0)
-            .animation(.spring(response: 0.30, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
 
@@ -309,12 +131,12 @@ private struct DashboardStatsOverview: View {
                     .lineLimit(1)
 
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.up.right")
+                    Image(systemName: "minus")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
-                    Text("+3.2%")
+                        .foregroundStyle(Color.black.opacity(0.35))
+                    Text("0%")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
+                        .foregroundStyle(Color.black.opacity(0.45))
                     Text("· \(stats.periodDisplayLabel)")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.black.opacity(0.42))
@@ -367,44 +189,6 @@ private struct DashboardStatsOverview: View {
                 .fill(Color.white)
                 .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 3)
         }
-    }
-}
-
-// MARK: - Acciones rápidas (estilo light)
-
-private struct DashboardQuickActionsLightRow: View {
-    var onAddCar: () -> Void
-    var onInvoices: () -> Void
-    var onStats: () -> Void
-    var onMore: () -> Void
-
-    var body: some View {
-        HStack(spacing: 10) {
-            quickItem(icon: "plus", title: "Añadir", color: Color(red: 0.20, green: 0.45, blue: 0.85), action: onAddCar)
-            quickItem(icon: "doc.text.fill", title: "Facturas", color: Color(red: 0.55, green: 0.40, blue: 0.90), action: onInvoices)
-            quickItem(icon: "chart.bar.fill", title: "Stats", color: Color(red: 0.95, green: 0.55, blue: 0.20), action: onStats)
-            quickItem(icon: "ellipsis", title: "Más", color: Color(red: 0.20, green: 0.70, blue: 0.45), action: onMore)
-        }
-    }
-
-    private func quickItem(icon: String, title: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(color.opacity(0.12))
-                        .frame(width: 52, height: 52)
-                    Image(systemName: icon)
-                        .font(.system(size: 19, weight: .bold))
-                        .foregroundStyle(color)
-                }
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.70))
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(PressableButtonStyle())
     }
 }
 
@@ -532,8 +316,8 @@ private struct DashboardLatestSaleSection: View {
 
     private var featured: Car? {
         cars
-            .filter { ($0.listPriceEUR ?? 0) > 0 }
-            .sorted { ($0.listPriceEUR ?? 0) > ($1.listPriceEUR ?? 0) }
+            .filter { ($0.listPriceUSD ?? 0) > 0 }
+            .sorted { ($0.listPriceUSD ?? 0) > ($1.listPriceUSD ?? 0) }
             .first
             ?? cars.first
     }
@@ -541,7 +325,8 @@ private struct DashboardLatestSaleSection: View {
     private static let priceFmt: NumberFormatter = {
         let f = NumberFormatter()
         f.numberStyle = .currency
-        f.currencyCode = "EUR"
+        f.currencyCode = "USD"
+        f.currencySymbol = "$"
         f.maximumFractionDigits = 0
         f.locale = Locale(identifier: "es_ES")
         return f
@@ -596,15 +381,12 @@ private struct DashboardLatestSaleSection: View {
                         .foregroundStyle(Color.black.opacity(0.55))
 
                     HStack(spacing: 6) {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
-                        Image(systemName: "triangle.fill")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
-                        Text("3.2%")
+                        Image(systemName: "minus.circle")
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
+                            .foregroundStyle(Color.black.opacity(0.38))
+                        Text("0%")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.black.opacity(0.45))
                     }
                 }
 
@@ -620,140 +402,20 @@ private struct DashboardLatestSaleSection: View {
     }
 
     private var featuredTitle: String {
-        // Mock sneaker data — el modelo Car aún no se ha reemplazado por Sneaker
-        "Jordan 1 Off-White UNC"
+        guard let car = featured else {
+            return "Sin artículos en stock"
+        }
+        let brand = car.brandName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let nm = car.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let combined = "\(brand) \(nm)".trimmingCharacters(in: .whitespacesAndNewlines)
+        return combined.isEmpty ? "Artículo" : combined
     }
 
     private var featuredPriceText: String {
-        "1.840 €"
-    }
-}
-
-// MARK: - Conecta tus cuentas (estilo UPSOLED)
-
-/// Fila con portales del motor (Coches.net / AutoScout24 / Wallapop) para conectar.
-private struct DashboardConnectAccountsSection: View {
-    private let platforms: [(asset: String, symbol: String, title: String, tint: Color, connected: Bool)] = [
-        ("BadgeStockX",      "chart.line.uptrend.xyaxis", "StockX",        Color(red: 0.00, green: 0.60, blue: 0.30), true),
-        ("BadgeGoat",        "star.fill",                 "GOAT",          Color(red: 0.92, green: 0.30, blue: 0.20), true),
-        ("BadgeGrailed",     "bag.fill",                  "Grailed",       Color(red: 0.20, green: 0.20, blue: 0.20), false),
-        ("BadgeEbay",        "tag.fill",                  "eBay",          Color(red: 0.95, green: 0.35, blue: 0.20), false),
-        ("BadgeFlightClub",  "airplane",                  "Flight Club",   Color(red: 0.85, green: 0.10, blue: 0.15), false),
-        ("BadgeStadium",     "building.columns.fill",     "Stadium Goods", Color(red: 0.18, green: 0.18, blue: 0.22), false),
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Dónde publicar")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(Color.black.opacity(0.88))
-                    Text("Conecta tus tiendas y publica con 1 toque")
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundStyle(Color.black.opacity(0.50))
-                }
-                Spacer()
-                Button {} label: {
-                    Text("Ver todas")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-                }
-                .buttonStyle(.plain)
-            }
-
-            // Grid de 3 columnas × 2 filas
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: 10),
-                    GridItem(.flexible(), spacing: 10),
-                    GridItem(.flexible(), spacing: 10),
-                ],
-                spacing: 10
-            ) {
-                ForEach(Array(platforms.enumerated()), id: \.offset) { _, p in
-                    ConnectAccountCard(
-                        badgeAsset: p.asset,
-                        fallbackSymbol: p.symbol,
-                        title: p.title,
-                        tint: p.tint,
-                        connected: p.connected
-                    )
-                }
-            }
+        guard let car = featured, let p = car.listPriceUSD, p > 0 else {
+            return Self.priceFmt.string(from: NSNumber(value: 0)) ?? "$0"
         }
-    }
-}
-
-private struct ConnectAccountCard: View {
-    let badgeAsset: String
-    let fallbackSymbol: String
-    let title: String
-    var tint: Color = Color(red: 0.20, green: 0.45, blue: 0.85)
-    var connected: Bool = false
-
-    var body: some View {
-        VStack(spacing: 8) {
-            // Logo real del brand
-            ZStack(alignment: .topTrailing) {
-                BrandLogo(brand: title)
-                    .frame(width: 48, height: 48)
-
-                // Badge ✓ si está conectado
-                if connected {
-                    ZStack {
-                        Circle()
-                            .fill(Color(red: 0.20, green: 0.70, blue: 0.45))
-                            .frame(width: 14, height: 14)
-                            .overlay {
-                                Circle().strokeBorder(Color.white, lineWidth: 1.5)
-                            }
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 8, weight: .heavy))
-                            .foregroundStyle(.white)
-                    }
-                    .offset(x: 7, y: -4)
-                }
-            }
-            .frame(height: 50)
-
-            Text(title)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(Color.black.opacity(0.85))
-                .lineLimit(1)
-                .minimumScaleFactor(0.80)
-
-            // Estado conectado vs CTA Conectar
-            if connected {
-                HStack(spacing: 3) {
-                    Circle()
-                        .fill(Color(red: 0.20, green: 0.70, blue: 0.45))
-                        .frame(width: 5, height: 5)
-                    Text("Conectado")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.18, green: 0.62, blue: 0.40))
-                }
-            } else {
-                Text("Conectar")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 13)
-        .padding(.horizontal, 6)
-        .background {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(
-                            connected ? Color(red: 0.20, green: 0.70, blue: 0.45).opacity(0.20) : Color.black.opacity(0.04),
-                            lineWidth: connected ? 1 : 0.6
-                        )
-                }
-                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 3)
-        }
+        return Self.priceFmt.string(from: NSNumber(value: Int(p.rounded()))) ?? "$\(Int(p.rounded()))"
     }
 }
 
@@ -766,5 +428,4 @@ private struct ConnectAccountCard: View {
         .environmentObject(ChatInboxStore())
         .environmentObject(DashboardCommunityViewModel())
         .environmentObject(InvoiceHistoryStore())
-        .environmentObject(DashboardNotificationsStore())
 }

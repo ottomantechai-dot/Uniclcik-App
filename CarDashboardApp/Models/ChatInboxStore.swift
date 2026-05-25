@@ -293,6 +293,11 @@ final class ChatInboxStore: ObservableObject {
         return leadSum + teamSum
     }
 
+    /// Tareas coordinador siguiendo vivas dirigidas al usuario (`recipient`). Para badge de solicitudes pendientes — no cuenta DMs ni grupo sin leer.
+    func openCoordinatorRequestsAssigned(toRecipient recipientId: UUID) -> Int {
+        (coordinatorTasksByPeer[recipientId] ?? []).filter { !$0.isComplete }.count
+    }
+
     /// Sincroniza hilos de equipo desde el directorio (grupo + un DM por compañero, excluyéndote).
     func syncTeamThreads(from directory: [CommunityProfilesService.DirectoryRow], currentUserId: UUID?) {
         lastTeamDirectorySnapshot = directory

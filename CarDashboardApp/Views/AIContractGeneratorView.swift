@@ -41,9 +41,9 @@ struct AIContractGeneratorView: View {
 
     private var pricePlaceholder: String {
         switch selectedDocumentKind {
-        case .venta: return "Precio de venta (€)"
-        case .compra: return "Precio de compra al particular (€)"
-        case .gv: return "Importe referencia / operación (€)"
+        case .venta: return "Precio de venta ($)"
+        case .compra: return "Precio de compra al particular ($)"
+        case .gv: return "Importe referencia / operación ($)"
         }
     }
     
@@ -575,7 +575,7 @@ struct AIContractGeneratorView: View {
             clientAddress: clientAddress.trimmingCharacters(in: .whitespacesAndNewlines),
             vehicleBrand: vehicleBrand.trimmingCharacters(in: .whitespacesAndNewlines),
             vehicleModel: vehicleModel.trimmingCharacters(in: .whitespacesAndNewlines),
-            priceEUR: price.trimmingCharacters(in: .whitespacesAndNewlines)
+            priceUSD: price.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
 
@@ -635,7 +635,7 @@ struct AIContractGeneratorView: View {
                     clientAddress: addr.isEmpty ? "[completar dirección]" : addr,
                     vehicleBrand: brand.isEmpty ? "[completar marca]" : brand,
                     vehicleModel: model.isEmpty ? "[completar modelo]" : model,
-                    priceEUR: priceStr.isEmpty ? "[completar precio]" : priceStr
+                    priceUSD: priceStr.isEmpty ? "[completar precio]" : priceStr
                 )
                 await MainActor.run {
                     generatedContractText = text

@@ -137,9 +137,9 @@ struct VehicleRow: Decodable, Sendable {
     var companyId: UUID?
 
     /// Campos opcionales de ficha / marketplace (columnas habituales en Supabase).
-    var listPriceEUR: Double?
-    var financedPriceEUR: Double?
-    var monthlyPaymentEUR: Double?
+    var listPriceUSD: Double?
+    var financedPriceUSD: Double?
+    var monthlyPaymentUSD: Double?
     var mileageKm: Int?
     var fuelTypeDecoded: String?
     var vehicleBodyType: String?
@@ -200,6 +200,7 @@ struct VehicleRow: Decodable, Sendable {
                 let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
                 let cleaned = t
                     .replacingOccurrences(of: "€", with: "")
+                    .replacingOccurrences(of: "$", with: "")
                     .replacingOccurrences(of: " ", with: "")
                     .replacingOccurrences(of: ",", with: ".")
                 if let d = Double(cleaned) { return d }
@@ -478,15 +479,16 @@ struct VehicleRow: Decodable, Sendable {
         }
         imageGalleryRaws = Self.uniqueImageStrings(galleryCandidates)
 
-        listPriceEUR = Self.optDouble(c, [
-            "price", "precio", "cash_price", "list_price", "pvp", "amount", "price_eur", "priceEUR", "asking_price",
+        listPriceUSD = Self.optDouble(c, [
+            "price", "precio", "cash_price", "list_price", "pvp", "amount", "price_eur", "priceEUR",
+            "price_usd", "precio_usd", "priceUSD", "asking_price",
         ])
-        if listPriceEUR == nil, let cents = Self.optInt(c, ["price_cents", "priceCents", "precio_centimos"]) {
-            listPriceEUR = Double(cents) / 100.0
+        if listPriceUSD == nil, let cents = Self.optInt(c, ["price_cents", "priceCents", "precio_centimos"]) {
+            listPriceUSD = Double(cents) / 100.0
         }
 
-        financedPriceEUR = Self.optDouble(c, ["financed_price", "precio_financiado", "finance_price", "financedPrice"])
-        monthlyPaymentEUR = Self.optDouble(c, [
+        financedPriceUSD = Self.optDouble(c, ["financed_price", "precio_financiado", "finance_price", "financedPrice"])
+        monthlyPaymentUSD = Self.optDouble(c, [
             "monthly_payment", "cuota_mensual", "cuota", "monthly_installment", "monthlyPayment",
         ])
         mileageKm = Self.optInt(c, ["mileage", "kilometers", "km", "odometer", "odometro", "kilometraje", "mileage_km"])
@@ -672,9 +674,9 @@ struct VehicleRow: Decodable, Sendable {
             imageBase64: b64,
             imageSlots: imageSlots,
             brandName: brandResolved,
-            listPriceEUR: listPriceEUR,
-            financedPriceEUR: financedPriceEUR,
-            monthlyPaymentEUR: monthlyPaymentEUR,
+            listPriceUSD: listPriceUSD,
+            financedPriceUSD: financedPriceUSD,
+            monthlyPaymentUSD: monthlyPaymentUSD,
             mileageKm: mileageKm,
             fuelType: trimmedNonEmpty(fuelTypeDecoded),
             bodyType: trimmedNonEmpty(vehicleBodyType),

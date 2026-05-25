@@ -262,72 +262,9 @@ struct DealershipWideStatCard: View {
 
 private let dashboardTileCorner: CGFloat = 26
 
-// MARK: - Cabecera unificada (misma geometría en Inicio, Coches, Chat, Ajustes, Buscador)
+// MARK: - Cabecera unificada (buscador + acciones — Ajustes con engranaje en la barra de navegación)
 
-/// Avatar → Ajustes (mismo que Inicio).
-struct AppChromeAvatarProfileButton: View {
-    let initials: String
-    var profileImage: UIImage? = nil
-
-    var body: some View {
-        NavigationLink {
-            SettingsView()
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    if let profileImage {
-                        Image(uiImage: profileImage)
-                            .resizable()
-                            .scaledToFill()
-                    } else {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        PremiumAccent.ice.opacity(0.9),
-                                        PremiumAccent.tabActive.opacity(0.72),
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                        Text(initials)
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                    }
-                }
-                .frame(width: AppChromeHeaderMetrics.avatarSize, height: AppChromeHeaderMetrics.avatarSize)
-                .clipShape(Circle())
-                .overlay {
-                    Circle()
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.55), Color.white.opacity(0.12)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 0.75
-                        )
-                }
-
-                Circle()
-                    .fill(Color.red.opacity(0.92))
-                    .frame(width: 9, height: 9)
-                    .overlay {
-                        Circle()
-                            .strokeBorder(Color.white.opacity(0.95), lineWidth: 1.5)
-                    }
-                    .offset(x: 3, y: -3)
-            }
-            .frame(width: AppChromeHeaderMetrics.avatarSize, height: AppChromeHeaderMetrics.avatarSize)
-        }
-        .buttonStyle(ChromeCirclePressButtonStyle(diameter: AppChromeHeaderMetrics.avatarSize))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Perfil, abrir ajustes")
-    }
-}
-
-/// Pastilla de búsqueda: ocupa el espacio flexible entre avatar y botones (igual ancho relativo que Inicio).
+/// Pastilla de búsqueda (cabeceras sin avatar — ocupa todo el ancho disponible dentro de la fila).
 struct AppChromeSearchCapsuleField: View {
     @Binding var text: String
     var prompt: Text
@@ -351,7 +288,7 @@ struct AppChromeSearchCapsuleField: View {
                 .autocorrectionDisabled()
                 .submitLabel(.search)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(lightSurface ? Color.black.opacity(0.88) : .white)
+                .foregroundStyle(lightSurface ? Color.black : .white)
                 .tint(lightSurface ? Color(red: 0.20, green: 0.45, blue: 0.85) : .white)
 
             if showsClearButton, !text.isEmpty {
@@ -444,10 +381,8 @@ struct AppChromeHeaderCircleIconButton: View {
     }
 }
 
-/// Fila: [avatar 48] [buscador flexible] [trailing]. `trailing` debe ocupar el mismo ancho que 2× círculo + spacing (Inicio).
-struct AppChromeHeaderRow<Trailing: View>: View {
-    let initials: String
-    var profileImage: UIImage? = nil
+/// Pastilla de búsqueda + vistas a la derecha (ordenar/filtros, etc.). Ajustes: engranaje en la barra de navegación del sistema.
+struct ChromeSearchTrailingHeaderRow<Trailing: View>: View {
     @Binding var searchText: String
     var prompt: Text
     var showsSearchClearButton: Bool
@@ -456,7 +391,6 @@ struct AppChromeHeaderRow<Trailing: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: AppChromeHeaderMetrics.hStackSpacing) {
-            AppChromeAvatarProfileButton(initials: initials, profileImage: profileImage)
             AppChromeSearchCapsuleField(
                 text: $searchText,
                 prompt: prompt,
@@ -465,47 +399,6 @@ struct AppChromeHeaderRow<Trailing: View>: View {
             )
             trailing()
         }
-    }
-}
-
-/// Cabecera inicio: estadísticas + notificaciones a la derecha.
-struct DashboardHomeTopBar: View {
-    let initials: String
-    var profileImage: UIImage? = nil
-    @Binding var searchText: String
-    @FocusState private var searchFieldFocused: Bool
-    var onStats: () -> Void = {}
-    var onNotifications: () -> Void = {}
-    var lightSurface: Bool = false
-
-    var body: some View {
-        AppChromeHeaderRow(
-            initials: initials,
-            profileImage: profileImage,
-            searchText: $searchText,
-            prompt: Text("Buscar")
-                .foregroundStyle(
-                    lightSurface
-                        ? Color.black.opacity(0.42)
-                        : .white.opacity(DashboardChromeSearchFieldStyle.promptOpacity)
-                ),
-            showsSearchClearButton: true,
-            searchFieldFocused: $searchFieldFocused
-        ) {
-            HStack(spacing: AppChromeHeaderMetrics.hStackSpacing) {
-                AppChromeHeaderCircleIconButton(
-                    systemName: "chart.bar.fill",
-                    accessibilityLabel: "Estadísticas",
-                    action: onStats
-                )
-                AppChromeHeaderCircleIconButton(
-                    systemName: "bell.fill",
-                    accessibilityLabel: "Notificaciones",
-                    action: onNotifications
-                )
-            }
-        }
-        .environment(\.dashboardLightSurface, lightSurface)
     }
 }
 

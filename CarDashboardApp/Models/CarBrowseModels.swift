@@ -15,17 +15,22 @@ enum CarSortOption: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Opciones mostradas al usuario (catálogo zapatillas / ropa; sin ordenar por «km» de coche).
+    static let browseSortCases: [CarSortOption] = [
+        .relevance, .priceAsc, .priceDesc, .monthlyAsc, .monthlyDesc, .yearDesc, .yearAsc,
+    ]
+
     var title: String {
         switch self {
-        case .relevance: return "Los anuncios más relevantes"
-        case .priceAsc: return "Los precios al contado más bajos"
-        case .priceDesc: return "Los precios al contado más altos"
-        case .monthlyAsc: return "Las cuotas mensuales más bajas"
-        case .monthlyDesc: return "Las cuotas mensuales más altas"
-        case .kmAsc: return "Los de menos km"
-        case .kmDesc: return "Los de más km"
-        case .yearDesc: return "Los más nuevos"
-        case .yearAsc: return "Los más antiguos"
+        case .relevance: return "Recomendados"
+        case .priceAsc: return "Precio: más baratos primero"
+        case .priceDesc: return "Precio: más caros primero"
+        case .monthlyAsc: return "Cuota o pago fraccionado: más bajo"
+        case .monthlyDesc: return "Cuota o pago fraccionado: más alto"
+        case .kmAsc: return "Campo numérico (talla-stock): menor primero"
+        case .kmDesc: return "Campo numérico (talla-stock): mayor primero"
+        case .yearDesc: return "Año / temporada: más reciente"
+        case .yearAsc: return "Año / temporada: más antiguo"
         }
     }
 }
@@ -41,8 +46,8 @@ struct CarListFilters: Equatable {
     var colors: Set<String> = []
     var locations: Set<String> = []
 
-    var minPriceEUR: Double?
-    var maxPriceEUR: Double?
+    var minPriceUSD: Double?
+    var maxPriceUSD: Double?
     var minYear: Int?
     var maxYear: Int?
     var minKm: Int?
@@ -60,8 +65,8 @@ struct CarListFilters: Equatable {
             || !dgtLabels.isEmpty
             || !colors.isEmpty
             || !locations.isEmpty
-            || minPriceEUR != nil
-            || maxPriceEUR != nil
+            || minPriceUSD != nil
+            || maxPriceUSD != nil
             || minYear != nil
             || maxYear != nil
             || minKm != nil

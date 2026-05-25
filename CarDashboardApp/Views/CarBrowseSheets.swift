@@ -8,12 +8,12 @@ struct CarsSortSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Ordenar anuncios")
+            Text("Ordenar catálogo")
                 .font(.system(size: 20, weight: .bold))
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
 
-            Text("Se ordenan automáticamente al seleccionar una opción")
+            Text("Zapatillas, ropa y accesorios — elige cómo ordenar la lista")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 20)
@@ -22,7 +22,7 @@ struct CarsSortSheet: View {
 
             ScrollView {
                 VStack(spacing: 0) {
-                    ForEach(CarSortOption.allCases) { option in
+                    ForEach(CarSortOption.browseSortCases) { option in
                         Button {
                             sort = option
                             dismiss()
@@ -46,7 +46,7 @@ struct CarsSortSheet: View {
                         }
                         .buttonStyle(.plain)
 
-                        if option != CarSortOption.allCases.last {
+                        if option != CarSortOption.browseSortCases.last {
                             Divider().padding(.leading, 56)
                         }
                     }
@@ -79,20 +79,26 @@ struct CarsFilterSheet: View {
                             .padding(.top, 8)
                             .padding(.bottom, 12)
 
-                        FilterAccordionRow(title: "Tipo de coche", systemImage: "sparkles.car") {
+                        FilterAccordionRow(title: "Categoría", systemImage: "tshirt") {
                             multiPickSection(options: bodyOptions, selection: $filters.bodyTypes)
                         }
 
-                        FilterAccordionRow(title: "Marca y modelo", systemImage: "car.side") {
+                        FilterAccordionRow(title: "Marca", systemImage: "tag") {
                             multiPickSection(options: brandOptions, selection: $filters.brands)
                         }
 
-                        FilterAccordionRow(title: "Precio", systemImage: "tag") {
+                        FilterAccordionRow(title: "Modelo o palabras clave", systemImage: "text.magnifyingglass") {
+                            TextField("Ej. Jordan, hoodie, talla M…", text: $filters.equipmentQuery)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 15, weight: .medium))
+                        }
+
+                        FilterAccordionRow(title: "Precio", systemImage: "dollarsign.circle") {
                             priceSection
                         }
 
-                        FilterAccordionRow(title: "Servicios online", systemImage: "cart") {
-                            Toggle("Solo con servicios online", isOn: $filters.onlineServicesOnly)
+                        FilterAccordionRow(title: "Solo venta online", systemImage: "cart") {
+                            Toggle("Solo anuncios con venta o reserva online", isOn: $filters.onlineServicesOnly)
                                 .font(.system(size: 15, weight: .semibold))
                                 .padding(.vertical, 4)
                         }
@@ -101,36 +107,19 @@ struct CarsFilterSheet: View {
                             multiPickSection(options: locationOptions, selection: $filters.locations)
                         }
 
-                        FilterAccordionRow(title: "Vendedores", systemImage: "checkmark.shield") {
+                        FilterAccordionRow(title: "Vendedor o tienda", systemImage: "person.2") {
                             multiPickSection(options: sellerOptions, selection: $filters.sellerKinds)
                         }
 
-                        FilterAccordionRow(title: "Año de fabricación", systemImage: "calendar") {
+                        FilterAccordionRow(title: "Año o temporada", systemImage: "calendar") {
                             yearSection
                         }
 
-                        FilterAccordionRow(title: "Kilometraje", systemImage: "gauge.with.dots.needle.bottom.50percent") {
+                        FilterAccordionRow(title: "Talla EU (campo numérico)", systemImage: "ruler") {
                             kmSection
                         }
 
-                        FilterAccordionRow(title: "Motor / combustible", systemImage: "engine.combustion") {
-                            multiPickSection(options: fuelOptions, selection: $filters.fuelTypes)
-                            Toggle("Solo eléctricos e híbridos enchufables", isOn: $filters.electricOnly)
-                                .font(.system(size: 14, weight: .semibold))
-                                .padding(.top, 10)
-                        }
-
-                        FilterAccordionRow(title: "Etiqueta DGT", systemImage: "leaf") {
-                            multiPickSection(options: dgtOptions, selection: $filters.dgtLabels)
-                        }
-
-                        FilterAccordionRow(title: "Equipamiento", systemImage: "wrench.and.screwdriver") {
-                            TextField("Palabras clave (GPS, techo, cuero…)", text: $filters.equipmentQuery)
-                                .textFieldStyle(.roundedBorder)
-                                .font(.system(size: 15, weight: .medium))
-                        }
-
-                        FilterAccordionRow(title: "Color", systemImage: "paintpalette") {
+                        FilterAccordionRow(title: "Color / acabado", systemImage: "paintpalette") {
                             multiPickSection(options: colorOptions, selection: $filters.colors)
                         }
                     }
@@ -139,7 +128,7 @@ struct CarsFilterSheet: View {
 
                 footerBar
             }
-            .navigationTitle("Filtros")
+            .navigationTitle("Filtros · calzado y ropa")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -162,7 +151,7 @@ struct CarsFilterSheet: View {
     }
 
     private var filterHintBanner: some View {
-        Text("Combina filtros para acotar el listado. El recuento se actualiza al cerrar esta pantalla.")
+        Text("Combina filtros para acotar zapatillas, ropa u otros artículos. El total se revisa al volver atrás.")
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(.white)
             .padding(14)
@@ -203,16 +192,8 @@ struct CarsFilterSheet: View {
         uniqueSorted(sourceCars.compactMap(\.bodyType).filter { !$0.isEmpty })
     }
 
-    private var fuelOptions: [String] {
-        uniqueSorted(sourceCars.compactMap(\.fuelType).filter { !$0.isEmpty })
-    }
-
     private var sellerOptions: [String] {
         uniqueSorted(sourceCars.compactMap(\.sellerKind).filter { !$0.isEmpty })
-    }
-
-    private var dgtOptions: [String] {
-        uniqueSorted(sourceCars.compactMap(\.dgtLabel).filter { !$0.isEmpty })
     }
 
     private var colorOptions: [String] {
@@ -232,7 +213,7 @@ struct CarsFilterSheet: View {
     private func multiPickSection(options: [String], selection: Binding<Set<String>>) -> some View {
         Group {
             if options.isEmpty {
-                Text("No hay valores en los anuncios cargados. Añade columnas en la base de datos o más vehículos.")
+                Text("No hay valores en los productos cargados. Cuando haya datos en Supabase, aparecerán aquí.")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 4)
@@ -269,7 +250,7 @@ struct CarsFilterSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Mín. €")
+                    Text("Mín. $")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
                     TextField("0", text: priceMinBinding)
@@ -277,7 +258,7 @@ struct CarsFilterSheet: View {
                         .textFieldStyle(.roundedBorder)
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Máx. €")
+                    Text("Máx. $")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
                     TextField("Sin límite", text: priceMaxBinding)
@@ -291,13 +272,13 @@ struct CarsFilterSheet: View {
     private var priceMinBinding: Binding<String> {
         Binding(
             get: {
-                if let v = filters.minPriceEUR { return String(format: "%.0f", v) }
+                if let v = filters.minPriceUSD { return String(format: "%.0f", v) }
                 return ""
             },
             set: { newVal in
                 var f = filters
                 let cleaned = newVal.replacingOccurrences(of: ",", with: ".").filter { $0.isNumber || $0 == "." }
-                f.minPriceEUR = cleaned.isEmpty ? nil : Double(cleaned)
+                f.minPriceUSD = cleaned.isEmpty ? nil : Double(cleaned)
                 filters = f
             }
         )
@@ -306,13 +287,13 @@ struct CarsFilterSheet: View {
     private var priceMaxBinding: Binding<String> {
         Binding(
             get: {
-                if let v = filters.maxPriceEUR { return String(format: "%.0f", v) }
+                if let v = filters.maxPriceUSD { return String(format: "%.0f", v) }
                 return ""
             },
             set: { newVal in
                 var f = filters
                 let cleaned = newVal.replacingOccurrences(of: ",", with: ".").filter { $0.isNumber || $0 == "." }
-                f.maxPriceEUR = cleaned.isEmpty ? nil : Double(cleaned)
+                f.maxPriceUSD = cleaned.isEmpty ? nil : Double(cleaned)
                 filters = f
             }
         )
@@ -321,18 +302,18 @@ struct CarsFilterSheet: View {
     private var yearSection: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Desde")
+                Text("Desde (año)")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
-                TextField("Año", text: yearMinBinding)
+                TextField("2020", text: yearMinBinding)
                     .keyboardType(.numberPad)
                     .textFieldStyle(.roundedBorder)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text("Hasta")
+                Text("Hasta (año)")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
-                TextField("Año", text: yearMaxBinding)
+                TextField("2026", text: yearMaxBinding)
                     .keyboardType(.numberPad)
                     .textFieldStyle(.roundedBorder)
             }
@@ -364,22 +345,27 @@ struct CarsFilterSheet: View {
     }
 
     private var kmSection: some View {
-        HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Filtra por el campo numérico del producto (útil como talla EU si lo guardáis así en datos).")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Mín. km")
+                Text("Mín.")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
-                TextField("0", text: kmMinBinding)
+                TextField("Ej. 40", text: kmMinBinding)
                     .keyboardType(.numberPad)
                     .textFieldStyle(.roundedBorder)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text("Máx. km")
+                Text("Máx.")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
-                TextField("Sin límite", text: kmMaxBinding)
+                TextField("Ej. 45", text: kmMaxBinding)
                     .keyboardType(.numberPad)
                     .textFieldStyle(.roundedBorder)
+            }
             }
         }
     }

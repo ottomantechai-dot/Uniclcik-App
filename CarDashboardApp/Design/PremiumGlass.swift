@@ -97,7 +97,7 @@ struct LiquidGlassCardBackground: View {
 
 // MARK: - Cabecera Inicio = Coches / Buscador (material oscuro + bisel, sin velo claro extra)
 
-/// Píldora de búsqueda igual que `DashboardHomeTopBar`.
+/// Píldora de búsqueda igual que en `ChromeSearchTrailingHeaderRow` / Collection (sin avatar).
 struct DashboardChromeSearchCapsuleBackground: View {
     var body: some View {
         Capsule(style: .continuous)

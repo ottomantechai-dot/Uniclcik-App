@@ -212,20 +212,20 @@ struct CarListingCard: View {
 
     @ViewBuilder
     private var secondaryPriceLine: some View {
-        if let cuota = car.monthlyPaymentEUR {
-            Text("\(formatDecimalES(cuota)) €/mes*")
+        if let cuota = car.monthlyPaymentUSD {
+            Text("\(formatDecimalES(cuota)) $/mes*")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(ListingPalette.secondary)
-        } else if let fin = car.financedPriceEUR {
-            Text("Financiado \(formatEUR(fin))")
+        } else if let fin = car.financedPriceUSD {
+            Text("Financiado \(formatUSD(fin))")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(ListingPalette.tertiary)
         }
     }
 
     private var listPriceText: String {
-        guard let p = car.listPriceEUR else { return "Consultar" }
-        return "\(formatIntegerES(Int(p.rounded()))) €"
+        guard let p = car.listPriceUSD else { return "Consultar" }
+        return formatUSD(p)
     }
 
     /// Resumen técnico principal visible en listado (datos de tabla `vehicles`).
@@ -309,8 +309,15 @@ struct CarListingCard: View {
             }
     }
 
-    private func formatEUR(_ value: Double) -> String {
-        "\(formatIntegerES(Int(value.rounded()))) €"
+    private func formatUSD(_ value: Double) -> String {
+        let nf = NumberFormatter()
+        nf.numberStyle = .currency
+        nf.currencyCode = "USD"
+        nf.currencySymbol = "$"
+        nf.maximumFractionDigits = 0
+        nf.locale = Locale(identifier: "es_ES")
+        return nf.string(from: NSNumber(value: value.rounded()))
+            ?? "$\(formatIntegerES(Int(value.rounded())))"
     }
 
     private func formatIntegerES(_ v: Int) -> String {

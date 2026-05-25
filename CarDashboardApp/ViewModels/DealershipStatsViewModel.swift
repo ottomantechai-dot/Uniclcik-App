@@ -17,13 +17,13 @@ final class DealershipStatsViewModel: ObservableObject {
 
     @Published var vehiclesInStock: Int = 0
     @Published var vehiclesStockBadge: String = ""
-    @Published var totalStockValue: String = "0€"
+    @Published var totalStockValue: String = "$0"
     @Published var totalStockBadge: String = ""
-    @Published var carsSold: Int = 42
-    @Published var salesProfit: String = "128.400 €"
-    @Published var commercialCommissions: String = "300€"
-    @Published var commissionsSubtitle: String = "+100€ venta agregado a vendedor"
-    @Published var totalDealershipEarnings: String = "4100 €"
+    @Published var carsSold: Int = 0
+    @Published var salesProfit: String = "$0"
+    @Published var commercialCommissions: String = "$0"
+    @Published var commissionsSubtitle: String = "Sin ventas registradas"
+    @Published var totalDealershipEarnings: String = "$0"
     @Published var totalEarningsSubtitle: String = "Beneficio ventas + beneficios agregados"
 
     init() {
@@ -35,9 +35,16 @@ final class DealershipStatsViewModel: ObservableObject {
         vehiclesInStock = cars.count
 
         let total = cars.reduce(0.0) { acc, car in
-            acc + (car.listPriceEUR ?? 0)
+            acc + (car.listPriceUSD ?? 0)
         }
-        totalStockValue = Self.formatEUR(total)
+        totalStockValue = Self.formatUSD(total)
+
+        // Sin fuente de ventas en vivo: mantenemos KPIs de ventas en cero al refrescar inventario.
+        carsSold = 0
+        salesProfit = Self.formatUSD(0)
+        commercialCommissions = Self.formatUSD(0)
+        commissionsSubtitle = "Sin ventas registradas"
+        totalDealershipEarnings = Self.formatUSD(0)
     }
 
     private static func monthLabel(for date: Date) -> String {
@@ -49,15 +56,14 @@ final class DealershipStatsViewModel: ObservableObject {
         return raw.prefix(1).uppercased() + raw.dropFirst()
     }
 
-    private static func formatEUR(_ amount: Double) -> String {
+    private static func formatUSD(_ amount: Double) -> String {
         let n = NSNumber(value: amount.rounded())
         let f = NumberFormatter()
-        f.locale = Locale(identifier: "es_ES")
-        f.numberStyle = .decimal
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        f.currencySymbol = "$"
         f.maximumFractionDigits = 0
-        f.groupingSeparator = "."
-        f.decimalSeparator = ","
-        let s = f.string(from: n) ?? "0"
-        return "\(s)€"
+        f.locale = Locale(identifier: "es_ES")
+        return f.string(from: n) ?? "$\(Int(amount.rounded()))"
     }
 }

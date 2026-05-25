@@ -97,7 +97,7 @@ comment on column public.vehicles.modelo is 'Modelo (equivalente a model en la a
 comment on column public.vehicles.year is 'Año del modelo.';
 comment on column public.vehicles.name is 'Nombre mostrado; la app envía "Marca Modelo".';
 comment on column public.vehicles.license_plate is 'Matrícula.';
-comment on column public.vehicles.price is 'Precio (EUR, número).';
+comment on column public.vehicles.price is 'Precio (USD, número).';
 comment on column public.vehicles.mileage is 'Kilometraje.';
 comment on column public.vehicles.fuel_type is 'Combustible / motor (texto libre).';
 comment on column public.vehicles.transmission is 'Transmisión (texto libre).';

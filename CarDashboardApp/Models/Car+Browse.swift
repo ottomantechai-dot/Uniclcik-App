@@ -83,11 +83,11 @@ extension Car {
             guard !mine.isEmpty, f.locations.map({ $0.lowercased() }).contains(mine) else { return false }
         }
 
-        if let minP = f.minPriceEUR {
-            guard let p = listPriceEUR, p >= minP else { return false }
+        if let minP = f.minPriceUSD {
+            guard let p = listPriceUSD, p >= minP else { return false }
         }
-        if let maxP = f.maxPriceEUR {
-            guard let p = listPriceEUR, p <= maxP else { return false }
+        if let maxP = f.maxPriceUSD {
+            guard let p = listPriceUSD, p <= maxP else { return false }
         }
 
         if let y0 = f.minYear, year < y0 { return false }

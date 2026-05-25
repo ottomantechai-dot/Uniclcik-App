@@ -5,91 +5,60 @@ struct SettingsView: View {
     @EnvironmentObject var settingsVM: SettingsViewModel
     @EnvironmentObject var auth: AuthViewModel
 
-    @AppStorage(VehicleImageDiagnostics.userDefaultsKey) private var logVehicleImageDiagnostics = false
-
-    @State private var settingsSearchText = ""
-    @FocusState private var settingsSearchFieldFocused: Bool
+    @State private var showClosetFaceSetup = false
 
     var body: some View {
         ZStack {
             Color.white.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                AppChromeHeaderRow(
-                    initials: auth.userInitials,
-                    profileImage: auth.profileAvatarImage,
-                    searchText: $settingsSearchText,
-                    prompt: Text("Buscar")
-                        .foregroundStyle(Color.black.opacity(0.42)),
-                    showsSearchClearButton: true,
-                    searchFieldFocused: $settingsSearchFieldFocused
-                ) {
-                    HStack(spacing: AppChromeHeaderMetrics.hStackSpacing) {
-                        AppChromeHeaderCircleIconButton(
-                            systemName: "chart.bar.fill",
-                            accessibilityLabel: "Estadísticas",
-                            action: {}
-                        )
-                        AppChromeHeaderCircleIconButton(
-                            systemName: "bell.fill",
-                            accessibilityLabel: "Notificaciones",
-                            action: {}
-                        )
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 18) {
+                    profileHeroSection
+                        .padding(.top, 8)
+
+                    Group {
+                        sectionTitle("Información personal")
+                        generalInfoSection
                     }
-                }
-                .appChromeHeaderOuterPadding()
-                .environment(\.dashboardLightSurface, true)
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 18) {
-                        profileHeroSection
-                            .padding(.top, 8)
-
-                        Group {
-                            sectionTitle("Información personal")
-                            generalInfoSection
-                        }
-
-                        Group {
-                            sectionTitle("Mi cuenta de vendedor")
-                            sellerAccountsSection
-                        }
-
-                        if auth.isAuthenticated {
-                            Group {
-                                sectionTitle("Preferencias")
-                                notificationsSection
-                            }
-                        }
-
-                        Group {
-                            sectionTitle("Avanzado")
-                            developerSection
-                        }
-
-                        accountSection
-                        aboutSection
+                    Group {
+                        sectionTitle("Mi cuenta de vendedor")
+                        sellerAccountsSection
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
-                    .padding(.bottom, 24)
-                    .frame(minWidth: 0, maxWidth: .infinity)
+
+                    Group {
+                        sectionTitle("Plataformas")
+                        marketplaceLogosGallerySection
+                    }
+
+                    Group {
+                        sectionTitle("Clóset y avatares")
+                        closetAvatarSection
+                    }
+
+                    if auth.isAuthenticated {
+                        Group {
+                            sectionTitle("Preferencias")
+                            notificationsSection
+                        }
+                    }
+
+                    accountSection
+                    aboutSection
                 }
-                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 24)
+                .frame(minWidth: 0, maxWidth: .infinity)
             }
             .frame(maxWidth: .infinity)
         }
         .preferredColorScheme(.light)
         .environment(\.dashboardLightSurface, true)
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                LiquidGlassKeyboardAccessoryBar {
-                    settingsSearchFieldFocused = false
-                }
-            }
+        .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showClosetFaceSetup) {
+            FaceSetupView()
+                .presentationDragIndicator(Visibility.visible)
         }
         .task(id: auth.session?.user.id) {
             guard let uid = auth.session?.user.id else { return }
@@ -97,6 +66,43 @@ struct SettingsView: View {
                 client: SupabaseClientProvider.shared,
                 userId: uid
             )
+        }
+    }
+
+    // MARK: - Clóset (rostro para avatares Gemini)
+
+    private var closetAvatarSection: some View {
+        ChromeSettingsCard(cornerRadius: 22, padding: 16) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Foto de referencia")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.50))
+
+                Button {
+                    showClosetFaceSetup = true
+                } label: {
+                    HStack {
+                        Image(systemName: "person.crop.circle.badge.plus")
+                            .font(.system(size: 20))
+                            .foregroundStyle(Color.black.opacity(0.75))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Mi rostro")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color.black.opacity(0.88))
+                            Text("Opcional: mejora cómo el avatar se parece a ti al generar looks (solo en este dispositivo).")
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundStyle(Color.black.opacity(0.50))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.black.opacity(0.35))
+                    }
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
@@ -270,7 +276,7 @@ struct SettingsView: View {
                 infoDivider
                 infoRow(icon: "shoeprints.fill", iconTint: Color(red: 0.95, green: 0.55, blue: 0.20), label: "Talla", value: "EU 42 · US 9")
                 infoDivider
-                infoRow(icon: "eurosign.circle.fill", iconTint: Color(red: 0.55, green: 0.30, blue: 0.85), label: "Divisa", value: "EUR (€)")
+                infoRow(icon: "dollarsign.circle.fill", iconTint: Color(red: 0.55, green: 0.30, blue: 0.85), label: "Divisa", value: "$")
             }
             .padding(.vertical, 4)
         }
@@ -313,36 +319,68 @@ struct SettingsView: View {
         .padding(.vertical, 12)
     }
 
-    // Cuentas de vendedor — lista de plataformas con badge conectado
+    // Cuentas de vendedor — lista de plataformas con insignia estilizada y estado
     private var sellerAccountsSection: some View {
         ChromeSettingsCard(cornerRadius: 22, padding: 0) {
             VStack(spacing: 0) {
-                sellerRow(name: "StockX", color: Color(red: 0.00, green: 0.60, blue: 0.30), letter: "X", connected: true)
+                sellerRow(name: "StockX", connected: true)
                 infoDivider
-                sellerRow(name: "GOAT", color: Color.black, letter: "g", connected: true)
+                sellerRow(name: "GOAT", connected: true)
                 infoDivider
-                sellerRow(name: "Grailed", color: Color.black, letter: "G", connected: false)
+                sellerRow(name: "Grailed", connected: false)
                 infoDivider
-                sellerRow(name: "eBay", color: Color(red: 0.20, green: 0.50, blue: 0.95), letter: "e", connected: false)
+                sellerRow(name: "eBay", connected: false)
                 infoDivider
-                sellerRow(name: "Flight Club", color: Color(red: 0.85, green: 0.10, blue: 0.15), letter: "F", connected: false)
+                sellerRow(name: "Flight Club", connected: false)
                 infoDivider
-                sellerRow(name: "Stadium Goods", color: Color(red: 0.18, green: 0.18, blue: 0.22), letter: "S", connected: false)
+                sellerRow(name: "Stadium Goods", connected: false)
             }
             .padding(.vertical, 4)
         }
     }
 
-    private func sellerRow(name: String, color: Color, letter: String, connected: Bool) -> some View {
-        HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(color)
-                    .frame(width: 32, height: 32)
-                Text(letter)
-                    .font(.system(size: 18, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.white)
+    /// Todas las referencias visuales de marketplace en rejilla (mismo estilo que en la lista anterior).
+    private var marketplaceLogosGallerySection: some View {
+        ChromeSettingsCard(cornerRadius: 22, padding: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Marcas disponibles para conectar.")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.52))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(), spacing: 10),
+                        GridItem(.flexible(), spacing: 10),
+                        GridItem(.flexible(), spacing: 10),
+                    ],
+                    spacing: 12
+                ) {
+                    ForEach(MarketplacePlatformDisplay.allCases, id: \.rawValue) { platform in
+                        VStack(spacing: 8) {
+                            StylizedMarketplaceLogo(brand: platform.rawValue)
+                                .frame(width: 54, height: 54)
+
+                            Text(platform.rawValue)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Color.black.opacity(0.82))
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.82)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                    }
+                }
             }
+        }
+    }
+
+    private func sellerRow(name: String, connected: Bool) -> some View {
+        HStack(spacing: 14) {
+            StylizedMarketplaceLogo(brand: name)
+                .frame(width: 36, height: 36)
 
             Text(name)
                 .font(.system(size: 14, weight: .semibold))
@@ -366,33 +404,6 @@ struct SettingsView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-    }
-
-    // MARK: - Desarrollo (diagnóstico imágenes)
-
-    private var developerSection: some View {
-        ChromeSettingsCard(cornerRadius: 22, padding: 16) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Desarrollo")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.50))
-
-                Toggle(isOn: $logVehicleImageDiagnostics) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Diagnóstico de imágenes (consola Xcode)")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(Color.black.opacity(0.85))
-                        Text(
-                            "Al cargar Coches se imprimen columnas JSON, rutas Storage, user_id y cuántos slots ve la UI. Abre la consola con ⌘⇧Y y tira hacia abajo para refrescar el listado."
-                        )
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(Color.black.opacity(0.50))
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .tint(PremiumAccent.tabActive)
-            }
-        }
     }
 
     // MARK: - Cuenta

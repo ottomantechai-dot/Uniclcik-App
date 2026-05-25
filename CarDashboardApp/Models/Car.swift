@@ -23,9 +23,9 @@ struct Car: Identifiable, Hashable {
 
     // Campos opcionales (marketplace / ficha); si faltan en la base de datos, la UI muestra texto neutro.
     var brandName: String?
-    var listPriceEUR: Double?
-    var financedPriceEUR: Double?
-    var monthlyPaymentEUR: Double?
+    var listPriceUSD: Double?
+    var financedPriceUSD: Double?
+    var monthlyPaymentUSD: Double?
     var mileageKm: Int?
     var fuelType: String?
     var bodyType: String?
@@ -56,9 +56,9 @@ struct Car: Identifiable, Hashable {
         imageBase64: String? = nil,
         imageSlots: [CarImageSlot] = [],
         brandName: String? = nil,
-        listPriceEUR: Double? = nil,
-        financedPriceEUR: Double? = nil,
-        monthlyPaymentEUR: Double? = nil,
+        listPriceUSD: Double? = nil,
+        financedPriceUSD: Double? = nil,
+        monthlyPaymentUSD: Double? = nil,
         mileageKm: Int? = nil,
         fuelType: String? = nil,
         bodyType: String? = nil,
@@ -88,9 +88,9 @@ struct Car: Identifiable, Hashable {
         self.imageBase64 = imageBase64
         self.imageSlots = imageSlots
         self.brandName = brandName
-        self.listPriceEUR = listPriceEUR
-        self.financedPriceEUR = financedPriceEUR
-        self.monthlyPaymentEUR = monthlyPaymentEUR
+        self.listPriceUSD = listPriceUSD
+        self.financedPriceUSD = financedPriceUSD
+        self.monthlyPaymentUSD = monthlyPaymentUSD
         self.mileageKm = mileageKm
         self.fuelType = fuelType
         self.bodyType = bodyType

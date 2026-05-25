@@ -19,6 +19,10 @@
 	<string>Para añadir el plazo de la tarea a tu calendario (solo crear eventos, sin leer tus citas).</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Para elegir fotos del vehículo y subirlas a tu inventario en Supabase Storage.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Para guardar en tu carrete los avatares y lookbooks generados con IA.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Para hacer fotos de outfits y prendas que quieras añadir a tu clóset.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Used to visualize your voice in real time, dictation, and team voice features. Usamos el micrófono para mostrar tu voz en tiempo real, dictado y mensajes de voz.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
@@ -35,8 +39,16 @@
 	<string>$(ANTHROPIC_MODEL)</string>
 	<key>OPENAI_API_KEY</key>
 	<string>$(OPENAI_API_KEY)</string>
+	<key>OpenAIAPIKey</key>
+	<string>$(OPENAI_API_KEY)</string>
 	<key>OPENAI_MODEL</key>
 	<string>$(OPENAI_MODEL)</string>
+	<key>OPENAI_CLOSET_IMAGE_MODEL</key>
+	<string>$(OPENAI_CLOSET_IMAGE_MODEL)</string>
+	<key>OPENAI_CLOSET_IMAGE_QUALITY</key>
+	<string>$(OPENAI_CLOSET_IMAGE_QUALITY)</string>
+	<key>OPENAI_CLOSET_IMAGE_SIZE</key>
+	<string>$(OPENAI_CLOSET_IMAGE_SIZE)</string>
 	<key>VEHICLES_COL_ID</key>
 	<string>$(VEHICLES_COL_ID)</string>
 	<key>VEHICLES_COL_USER_ID</key>
@@ -61,5 +73,7 @@
 	<string>$(VEHICLES_COL_FUEL_TYPE)</string>
 	<key>VEHICLES_COL_TRANSMISSION</key>
 	<string>$(VEHICLES_COL_TRANSMISSION)</string>
+	<key>GeminiAPIKey</key>
+	<string>$(GEMINI_API_KEY)</string>
 </dict>
 </plist>

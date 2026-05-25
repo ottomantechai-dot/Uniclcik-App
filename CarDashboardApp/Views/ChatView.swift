@@ -96,25 +96,13 @@ struct ChatView: View {
         RevolutChromeContainer {
             NavigationStack(path: $path) {
                 VStack(spacing: 0) {
-                    AppChromeHeaderRow(
-                        initials: auth.userInitials,
+                    ChromeSearchTrailingHeaderRow(
                         searchText: $searchText,
                         prompt: searchPrompt,
                         showsSearchClearButton: true,
                         searchFieldFocused: $chatSearchFieldFocused
                     ) {
-                        HStack(spacing: AppChromeHeaderMetrics.hStackSpacing) {
-                            AppChromeHeaderCircleIconButton(
-                                systemName: "chart.bar.fill",
-                                accessibilityLabel: "Estadísticas",
-                                action: {}
-                            )
-                            AppChromeHeaderCircleIconButton(
-                                systemName: "bell.fill",
-                                accessibilityLabel: "Notificaciones",
-                                action: {}
-                            )
-                        }
+                        EmptyView()
                     }
                     .appChromeHeaderOuterPadding()
 

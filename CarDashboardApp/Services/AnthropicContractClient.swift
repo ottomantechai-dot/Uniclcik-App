@@ -92,7 +92,7 @@ enum AnthropicContractClient {
     libre de cargas (si no, se considera fraude)
     3) Punto 3: ITV revisada con resultado FAVORABLE, próxima ITV antes de [marcador fecha]
     4) Punto 4: ambas partes tienen capacidad legal, Vendedor aportará documentación para transferencia de titularidad
-    5) Punto 5: precio acordado en #[precio]€#, forma de pago: [precio]€ MEDIANTE TRANSFERENCIA BANCARIA A CUENTA [marcador]
+    5) Punto 5: precio acordado en #[precio]# $, forma de pago: [precio] $ MEDIANTE TRANSFERENCIA BANCARIA A CUENTA [marcador]
     6) Punto 6: jurisdicción juzgados de Madrid
     7) Luego: ANEXOS CLÁUSULA EN ACUERDOS O CONTRATOS SUSCRITOS CON CLIENTES (RGPD completo, ley UE 2016/679, Ley Orgánica 3/2018 \
     con toda la normativa sobre derechos, confidencialidad, etc.)
@@ -121,12 +121,12 @@ enum AnthropicContractClient {
        CUARTA: Sin daños estructurales ni defectos ocultos; si se encuentran, Vendedor reembolsa cantidad adelantada + gastos + \
        mitad comisión
        QUINTA: ITV favorable, próxima ITV antes de [marcador fecha]
-       SEXTA: Inicialmente anticipo de [precio]€, resto en venta según precio final
+       SEXTA: Inicialmente anticipo de $[precio], resto en venta según precio final
        SÉPTIMA: Jurisdicción juzgados Madrid / Alcalá de Henares
-    5) Párrafo de pago: “El pago del precio se realiza por el comprador al vendedor del siguiente modo: [precio]€”
+    5) Párrafo de pago: “El pago del precio se realiza por el comprador al vendedor del siguiente modo: $[precio]”
     6) Checklist de documentación: Ficha técnica: SI, Permiso de circulación: SI, Número de llaves: 2, Libro de revisiones: DIGITAL
     7) “CONDICIONES DE LA GESTIÓN DE VENTA DEL VEHICULO:” con su propio EXPONEN
-    8) Puntos 1º a 12º: precio inicial, comisión, cuota mensual (100€), autorización cambio titularidad, condiciones rescisión, \
+    8) Puntos 1º a 12º: precio inicial, comisión, cuota mensual ($100), autorización cambio titularidad, condiciones rescisión, \
     consulta oferta, aceptación irrevocable, objetos personales, seguros, exclusividad, pago tras venta, autorización inspección
     9) Cierre: ambas partes reconocen capacidad legal, jurisdicción juzgados Madrid
 
@@ -154,7 +154,7 @@ enum AnthropicContractClient {
        VI: ambas partes tienen capacidad legal
     3) "ESTIPULACIONES" — encabezado
     4) Cláusulas PRIMERA–DÉCIMA:
-       PRIMERA: precio acordado #[precio]€#, pago por transferencia
+       PRIMERA: precio acordado #[precio]# $, pago por transferencia
        SEGUNDA: entrega vehículo, comprador responsable desde esta fecha
        TERCERA: período garantía legal 12 meses
        CUARTA: derechos consumidor per ley protección consumidor
@@ -204,7 +204,7 @@ enum AnthropicContractClient {
         clientAddress: String,
         vehicleBrand: String,
         vehicleModel: String,
-        priceEUR: String
+        priceUSD: String
     ) async throws -> String {
         guard let key = apiKey else { throw ClientError.missingAPIKey }
 
@@ -216,7 +216,7 @@ enum AnthropicContractClient {
             clientAddress: clientAddress,
             vehicleBrand: vehicleBrand,
             vehicleModel: vehicleModel,
-            priceEUR: priceEUR,
+            priceUSD: priceUSD,
             templateExcerpt: templateExcerpt
         )
 
@@ -266,7 +266,7 @@ enum AnthropicContractClient {
         clientAddress: String,
         vehicleBrand: String,
         vehicleModel: String,
-        priceEUR: String,
+        priceUSD: String,
         templateExcerpt: String?
     ) -> String {
         let tipo: String
@@ -295,7 +295,7 @@ enum AnthropicContractClient {
         Dirección: \(clientAddress)
         Vehículo — marca: \(vehicleBrand)
         Vehículo — modelo: \(vehicleModel)
-        Importe en EUR (precio operación / referencia): \(priceEUR)
+        Importe en dólares (símbolo $) — precio operación / referencia: \(priceUSD)
 
         Genera SOLO el cuerpo del contrato desde la sección EXPONEN en adelante. NO incluyas encabezado, título, \
         fecha, REUNIDOS, tabla de datos del vehículo ni líneas de firma, ya que esos elementos se generan \

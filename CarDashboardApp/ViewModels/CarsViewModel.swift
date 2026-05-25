@@ -3,14 +3,16 @@ import SwiftUI
 
 @MainActor
 final class CarsViewModel: ObservableObject {
+    /// `true`: no se pide inventario al servidor — Collection vacía (útil para demo / plantilla sin stock).
+    /// Pon `false` para volver a cargar desde Supabase.
+    private static let skipRemoteMarketplaceLoad = true
+
     @Published var cars: [Car] = []
     @Published var selectedCarId: UUID?
     @Published var isLoadingVehicles = false
     @Published var isLoadingMoreVehicles = false
     @Published var vehiclesError: String?
     @Published var hasMorePages = true
-    /// Última carga terminó sin filas en servidor (útil para mensajes cuando no hay filtros activos).
-    @Published private(set) var lastFetchHadZeroRowsFromBackend = false
 
     /// Listado tipo marketplace (pestaña Coches): búsqueda, orden y filtros sobre `cars` ya cargados.
     @Published var browseSearchText = ""
@@ -27,10 +29,19 @@ final class CarsViewModel: ObservableObject {
     /// Carga progresiva: primera página rápido, luego el resto en background.
     /// Si se pasa `companyId`, solo trae vehículos de esa empresa (+ catálogo público sin empresa).
     func loadVehicles(companyId: UUID? = nil) async {
+        if Self.skipRemoteMarketplaceLoad {
+            isLoadingVehicles = true
+            vehiclesError = nil
+            hasMorePages = false
+            applyLoadedVehicleRows([])
+            isLoadingVehicles = false
+            isLoadingMoreVehicles = false
+            return
+        }
+
         isLoadingVehicles = true
         vehiclesError = nil
         hasMorePages = true
-        lastFetchHadZeroRowsFromBackend = false
 
         do {
             try Task.checkCancellation()
@@ -58,7 +69,6 @@ final class CarsViewModel: ObservableObject {
     }
 
     private func applyLoadedVehicleRows(_ rows: [VehicleRow]) {
-        lastFetchHadZeroRowsFromBackend = rows.isEmpty
         cars = rows.enumerated().map { idx, row in row.toCar(index: idx) }
         if selectedCarId == nil || cars.first(where: { $0.id == selectedCarId }) == nil {
             selectedCarId = cars.first?.id
@@ -93,7 +103,7 @@ final class CarsViewModel: ObservableObject {
         let lambo = brand.contains("lamborghini") || title.contains("lamborghini")
         let aventador = model.contains("aventador") || title.contains("aventador")
         guard lambo && aventador else { return false }
-        guard let p = car.listPriceEUR, abs(p - 230_000) < 1 else { return false }
+        guard let p = car.listPriceUSD, abs(p - 230_000) < 1 else { return false }
         let trans = car.transmission?.uppercased().trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard trans == "ISR" else { return false }
         return true
@@ -125,8 +135,8 @@ final class CarsViewModel: ObservableObject {
                 let ha = Self.hasBrowseImage(a.car)
                 let hb = Self.hasBrowseImage(b.car)
                 if ha != hb { return ha }
-                let ka = a.car.listPriceEUR ?? .infinity
-                let kb = b.car.listPriceEUR ?? .infinity
+                let ka = a.car.listPriceUSD ?? .infinity
+                let kb = b.car.listPriceUSD ?? .infinity
                 if ka != kb { return ka < kb }
                 return a.idx < b.idx
             }.map(\.car)
@@ -136,7 +146,7 @@ final class CarsViewModel: ObservableObject {
                 let ha = Self.hasBrowseImage(a.car)
                 let hb = Self.hasBrowseImage(b.car)
                 if ha != hb { return ha }
-                switch (a.car.listPriceEUR, b.car.listPriceEUR) {
+                switch (a.car.listPriceUSD, b.car.listPriceUSD) {
                 case (nil, nil): return a.idx < b.idx
                 case (nil, _): return false
                 case (_, nil): return true
@@ -151,8 +161,8 @@ final class CarsViewModel: ObservableObject {
                 let ha = Self.hasBrowseImage(a.car)
                 let hb = Self.hasBrowseImage(b.car)
                 if ha != hb { return ha }
-                let ka = a.car.monthlyPaymentEUR ?? .infinity
-                let kb = b.car.monthlyPaymentEUR ?? .infinity
+                let ka = a.car.monthlyPaymentUSD ?? .infinity
+                let kb = b.car.monthlyPaymentUSD ?? .infinity
                 if ka != kb { return ka < kb }
                 return a.idx < b.idx
             }.map(\.car)
@@ -162,7 +172,7 @@ final class CarsViewModel: ObservableObject {
                 let ha = Self.hasBrowseImage(a.car)
                 let hb = Self.hasBrowseImage(b.car)
                 if ha != hb { return ha }
-                switch (a.car.monthlyPaymentEUR, b.car.monthlyPaymentEUR) {
+                switch (a.car.monthlyPaymentUSD, b.car.monthlyPaymentUSD) {
                 case (nil, nil): return a.idx < b.idx
                 case (nil, _): return false
                 case (_, nil): return true

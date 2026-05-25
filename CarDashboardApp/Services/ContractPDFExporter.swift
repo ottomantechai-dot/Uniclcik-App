@@ -8,7 +8,7 @@ struct ContractFormData {
     let clientAddress: String
     let vehicleBrand: String
     let vehicleModel: String
-    let priceEUR: String
+    let priceUSD: String
 }
 
 // MARK: - Public API
@@ -74,7 +74,7 @@ enum ContractPDFExporter {
         let fallback = ContractFormData(
             kind: .venta,
             clientName: "[cliente]", clientID: "[DNI]", clientAddress: "[dirección]",
-            vehicleBrand: "[marca]", vehicleModel: "[modelo]", priceEUR: "[precio]"
+            vehicleBrand: "[marca]", vehicleModel: "[modelo]", priceUSD: "[precio]"
         )
         return makePDFData(clauseBody: cleaned, formData: fallback)
     }

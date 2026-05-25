@@ -19,11 +19,7 @@ struct SearchView: View {
     }
 
     private var searchEmptyFootnote: String {
-        let qEmpty = carsVM.browseSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if qEmpty, !carsVM.browseFilters.hasActiveFilters, carsVM.lastFetchHadZeroRowsFromBackend {
-            return "Si esperabas anuncios aquí también, el listado llega vacío desde Supabase (tabla «vehicles» / RLS). Escribe para buscar o revisa filtros."
-        }
-        return carsVM.browseSearchText.isEmpty
+        carsVM.browseSearchText.isEmpty
             ? "Escribe en el buscador o ajusta filtros."
             : "Prueba con otro término o limpia filtros."
     }
@@ -169,8 +165,6 @@ struct SearchView: View {
 
     private var stickyBrowseChrome: some View {
         CarsBrowseHeaderBar(
-            initials: auth.userInitials,
-            profileImage: auth.profileAvatarImage,
             searchText: $carsVM.browseSearchText,
             hasActiveFilters: carsVM.browseFilters.hasActiveFilters,
             searchFieldFocused: $browseSearchFieldFocused,

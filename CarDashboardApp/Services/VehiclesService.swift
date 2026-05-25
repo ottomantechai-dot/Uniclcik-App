@@ -201,7 +201,6 @@ enum VehiclesService {
             await SequentialStorageProbe.mergeIntoRows(&rows)
         }
 
-        VehicleImageDiagnostics.logAfterFetch(rows: rows, rawObjects: rawObjects)
         return rows
     }
 
@@ -742,7 +741,7 @@ enum VehiclesService {
             model: m,
             year: y,
             license_plate: plate,
-            price: payload.salePriceEUR,
+            price: payload.salePriceUSD,
             mileage: payload.mileageKm,
             power_cv: payload.powerCv,
             fuel_type: Self.trimmedNilIfEmpty(payload.fuelType),
@@ -750,9 +749,9 @@ enum VehiclesService {
             vin: Self.trimmedNilIfEmpty(payload.vin),
             exterior_color: Self.trimmedNilIfEmpty(payload.exteriorColor),
             dgt_label: Self.sanitizedDGTLabelForStorage(payload.dgtLabel),
-            purchase_price: payload.purchasePriceEUR,
-            market_price: payload.marketPriceEUR,
-            financed_price: payload.financedPriceEUR,
+            purchase_price: payload.purchasePriceUSD,
+            market_price: payload.marketPriceUSD,
+            financed_price: payload.financedPriceUSD,
             listing_description: Self.trimmedNilIfEmpty(payload.listingDescription),
             listing_extra: extra
         )
@@ -857,7 +856,7 @@ enum VehiclesService {
             model: m,
             year: payload.year,
             license_plate: trimmedNilIfEmpty(payload.licensePlate),
-            price: payload.salePriceEUR,
+            price: payload.salePriceUSD,
             mileage: payload.mileageKm,
             power_cv: payload.powerCv,
             fuel_type: trimmedNilIfEmpty(payload.fuelType),
@@ -949,8 +948,8 @@ enum VehiclesService {
             owner_email: trimmedNilIfEmpty(extra?.ownerEmail),
             owner_region: trimmedNilIfEmpty(extra?.ownerZone),
             owner_can_travel: extra?.ownerCanVisitOffice,
-            gv_price_cash: payload.salePriceEUR,
-            gv_price_financed: payload.financedPriceEUR
+            gv_price_cash: payload.salePriceUSD,
+            gv_price_financed: payload.financedPriceUSD
         )
         do {
             try await client

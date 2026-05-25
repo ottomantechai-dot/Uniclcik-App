@@ -60,10 +60,10 @@ struct VehicleAppListingPayload: Sendable {
     var year: Int
     var licensePlate: String?
     /// Precio de venta / PVP (columna `price` habitual).
-    var salePriceEUR: Double?
-    var purchasePriceEUR: Double?
-    var marketPriceEUR: Double?
-    var financedPriceEUR: Double?
+    var salePriceUSD: Double?
+    var purchasePriceUSD: Double?
+    var marketPriceUSD: Double?
+    var financedPriceUSD: Double?
     var mileageKm: Int?
     var powerCv: Int?
     var fuelType: String?
