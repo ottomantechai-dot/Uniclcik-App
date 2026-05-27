@@ -62,13 +62,9 @@ enum ImageStore {
 }
 
 extension ImageStore {
-    /// Para rejilla y collage: portada manual si el archivo existe; si no, `imageFilename`.
+    /// Para rejilla y collage: zapatos → lateral izquierdo; portada manual; si no, `imageFilename`.
     static func displayRelativePath(for item: ClosetItem) -> String {
-        let alt = item.galleryCoverRelativePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !alt.isEmpty, load(alt) != nil {
-            return alt
-        }
-        return item.imageFilename
+        preferredCatalogCoverPath(for: item)
     }
 
     /// Miniatura horizontal de looks: portada del look, avatar, o primera prenda con imagen válida.

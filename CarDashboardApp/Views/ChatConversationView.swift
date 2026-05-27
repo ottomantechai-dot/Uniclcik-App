@@ -214,7 +214,7 @@ struct ChatConversationView: View {
         case .teamDirect:
             return "Mensaje privado · equipo"
         case .lead:
-            return "últ. vez recientemente"
+            return "last seen recently"
         }
     }
 
@@ -412,18 +412,18 @@ struct ChatConversationView: View {
                 deadlineEditValue = task.deadline
             }
         }
-        .alert("Nota de voz", isPresented: Binding(
+        .alert("Voice note", isPresented: Binding(
             get: { teamVoiceError != nil },
             set: { if !$0 { teamVoiceError = nil } }
         )) {
-            Button("Aceptar", role: .cancel) { teamVoiceError = nil }
+            Button("OK", role: .cancel) { teamVoiceError = nil }
         } message: {
             Text(teamVoiceError ?? "")
         }
         .sheet(item: $deadlineEditTask) { task in
             NavigationStack {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Nuevo plazo")
+                    Text("New deadline")
                         .font(.headline)
                         .foregroundStyle(.primary)
                     DatePicker(
@@ -457,7 +457,7 @@ struct ChatConversationView: View {
                 .padding(20)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Cerrar") { deadlineEditTask = nil }
+                        Button(L10n.tr("common.close")) { deadlineEditTask = nil }
                     }
                 }
             }
@@ -469,7 +469,7 @@ struct ChatConversationView: View {
     private func inputBarChrome(leadingPad: CGFloat, trailingPad: CGFloat) -> some View {
         VStack(spacing: 6) {
             if isRecordingTeamVoice {
-                Text("Suelta para enviar la nota de voz")
+                Text("Release to send the voice note")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.cyan.opacity(0.88))
             }
@@ -763,7 +763,7 @@ struct ChatConversationView: View {
                     Image(systemName: "sparkles")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.cyan.opacity(0.95))
-                    Text("Coordinador IA · Tarea")
+                    Text("AI coordinator · Task")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color.cyan.opacity(0.9))
                 }
@@ -773,7 +773,7 @@ struct ChatConversationView: View {
                 HStack(spacing: 6) {
                     Image(systemName: overdue ? "exclamationmark.circle.fill" : "clock")
                         .font(.system(size: 12, weight: .semibold))
-                    Text("Límite: \(deadlineText)")
+                    Text("Deadline: \(deadlineText)")
                         .font(.system(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(overdue ? Color.orange.opacity(0.95) : incomingBubbleMetaColor)
@@ -781,7 +781,7 @@ struct ChatConversationView: View {
                     Button {
                         deadlineEditTask = task
                     } label: {
-                        Text("Cambiar plazo")
+                        Text("Change deadline")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(Color.cyan.opacity(0.95))
                     }
@@ -789,7 +789,7 @@ struct ChatConversationView: View {
                 }
                 if let ref = task.referenceImageData, let ui = UIImage(data: ref) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Vehículo de referencia")
+                        Text("Reference vehicle")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(incomingBubbleMetaColor)
                         Image(uiImage: ui)
@@ -814,7 +814,7 @@ struct ChatConversationView: View {
                     Button {
                         chatInbox.acceptCoordinatorTask(recipientUserId: recipientKey, taskId: task.id)
                     } label: {
-                        Text("Aceptar tarea")
+                        Text("Accept task")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
@@ -826,7 +826,7 @@ struct ChatConversationView: View {
                     }
                     .buttonStyle(.plain)
                 } else {
-                    Text("Pruebas a entregar")
+                    Text("Deliverables")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(incomingBubbleMetaColor)
                     ForEach(task.steps) { step in
@@ -911,7 +911,7 @@ struct ChatConversationView: View {
                     .opacity((isChatDictating || isRecordingTeamVoice) ? 0.2 : 1)
 
                     if isRecordingTeamVoice {
-                        Text("Grabando audio…")
+                        Text("Recording audio…")
                             .font(.system(size: composerFontSize))
                             .foregroundStyle(.white.opacity(0.55))
                             .padding(.top, composerTextTopInset)
@@ -920,7 +920,7 @@ struct ChatConversationView: View {
                     } else if isChatDictating {
                         Group {
                             if chatDictationTranscriber.partialText.isEmpty {
-                                Text("Escuchando…")
+                                Text("Listening…")
                                     .font(.system(size: composerFontSize))
                                     .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.promptOpacity))
                             } else {
@@ -933,7 +933,7 @@ struct ChatConversationView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .allowsHitTesting(false)
                     } else if draftIsEmpty && !isRecordingTeamVoice {
-                        Text("Mensaje")
+                        Text("Message")
                             .font(.system(size: composerFontSize))
                             .foregroundStyle(.white.opacity(DashboardChromeSearchFieldStyle.promptOpacity))
                             .padding(.top, composerTextTopInset)
@@ -1086,7 +1086,7 @@ struct ChatConversationView: View {
         if isChatDictating { stopChatDictationIfNeeded() }
         let mic = await requestMicPermissionForChat()
         guard mic else {
-            teamVoiceError = "Activa el micrófono en Ajustes para enviar notas de voz."
+            teamVoiceError = "Enable the microphone in Settings to send voice notes."
             return
         }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("dm-voice-\(UUID().uuidString).m4a")
@@ -1570,13 +1570,13 @@ private struct TeamDirectMicGestureControl: View {
                 }
         )
         .accessibilityLabel(accessibilityTitle)
-        .accessibilityHint("Mantén pulsado para grabar y enviar una nota de voz. Toca para dictado en vivo.")
+        .accessibilityHint("Press and hold to record and send a voice note. Tap for live dictation.")
     }
 
     private var accessibilityTitle: String {
-        if isRecordingVoice { return "Grabando nota de voz" }
-        if isDictating { return "Detener dictado" }
-        return "Dictar o nota de voz"
+        if isRecordingVoice { return "Recording voice note" }
+        if isDictating { return "Stop dictation" }
+        return "Dictate or voice note"
     }
 }
 
@@ -1631,14 +1631,14 @@ private struct TeamDirectVoiceBubbleView: View {
                         .opacity(isPlayLoading ? 0.55 : 1)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Nota de voz")
+                        Text("Voice note")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(isOutgoing ? Color.white.opacity(0.92) : incomingText.opacity(0.95))
 
                         waveformStrip
 
                         if loadFailed && waveformBars.isEmpty {
-                            Text("No se pudo cargar el audio")
+                            Text("Could not load audio")
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(Color.orange.opacity(0.95))
                         }
@@ -1889,7 +1889,7 @@ private struct TeamDirectVoiceBubbleView: View {
         let p = try AVAudioPlayer(contentsOf: temp)
         p.prepareToPlay()
         guard p.play() else {
-            throw NSError(domain: "Upsoled", code: 3, userInfo: [NSLocalizedDescriptionKey: "Reproducción no disponible."])
+            throw NSError(domain: "Upsoled", code: 3, userInfo: [NSLocalizedDescriptionKey: "Playback unavailable."])
         }
         player = p
         isPlaying = true
@@ -1981,7 +1981,7 @@ private struct CoordinatorTaskStepProofRow: View {
                 Button {
                     chatInbox.verifyCoordinatorStep(recipientUserId: recipientUserId, taskId: taskId, stepId: step.id)
                 } label: {
-                    Text("Validar prueba con IA")
+                    Text("Validate deliverable with AI")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)

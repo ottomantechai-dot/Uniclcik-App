@@ -5,7 +5,6 @@ import SwiftUI
 import UIKit
 
 struct CarsView: View {
-    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject private var auth: AuthViewModel
 
@@ -18,12 +17,8 @@ struct CarsView: View {
         carsVM.displayedBrowseCars()
     }
 
-    private var appLanguage: AppLanguage {
-        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
-    }
-
     private var resultCountText: String {
-        displayedCars.count.formatted(.number.grouping(.automatic).locale(appLanguage.locale))
+        displayedCars.count.formatted(.number.grouping(.automatic).locale(Locale(identifier: "en_US")))
     }
 
     var body: some View {
@@ -39,7 +34,7 @@ struct CarsView: View {
                             Image(systemName: "shoeprints.fill")
                                 .font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-                            Text("\(resultCountText) \(L10n.tr("cars.results", lang: appLanguage))")
+                            Text("\(resultCountText) \(L10n.tr("cars.results"))")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(Color.black.opacity(0.65))
                         }
@@ -64,9 +59,9 @@ struct CarsView: View {
                         if !carsVM.isLoadingVehicles || !carsVM.cars.isEmpty {
                             if displayedCars.isEmpty {
                                 ContentUnavailableView(
-                                    L10n.tr("cars.empty", lang: appLanguage),
+                                    L10n.tr("cars.empty"),
                                     systemImage: "line.3.horizontal.decrease.circle",
-                                    description: Text(L10n.tr("cars.emptyFootnote", lang: appLanguage))
+                                    description: Text(L10n.tr("cars.emptyFootnote"))
                                 )
                                 .foregroundStyle(Color.black.opacity(0.75))
                                 .symbolRenderingMode(.hierarchical)
@@ -93,7 +88,7 @@ struct CarsView: View {
                                 HStack(spacing: 8) {
                                     ProgressView()
                                         .tint(Color(red: 0.20, green: 0.45, blue: 0.85))
-                                    Text(L10n.tr("cars.loadingMore", lang: appLanguage))
+                                    Text(L10n.tr("cars.loadingMore"))
                                         .font(.system(size: 13, weight: .medium))
                                         .foregroundStyle(Color.black.opacity(0.55))
                                 }
@@ -171,7 +166,6 @@ struct EditVehicleDictationSheet: View {
     var onSaved: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
 
     @StateObject private var transcriber = LiveSpeechTranscriber()
     @State private var isDictating = false
@@ -192,19 +186,15 @@ struct EditVehicleDictationSheet: View {
     @State private var dgtLabel = ""
     @State private var listingDescription = ""
 
-    private var appLanguage: AppLanguage {
-        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
-    }
-
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(L10n.tr("cars.editSheetIntroTitle", lang: appLanguage))
+                        Text(L10n.tr("cars.editSheetIntroTitle"))
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.92))
-                        Text(L10n.tr("cars.editSheetIntroSubtitle", lang: appLanguage))
+                        Text(L10n.tr("cars.editSheetIntroSubtitle"))
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.white.opacity(0.6))
                     }
@@ -215,7 +205,7 @@ struct EditVehicleDictationSheet: View {
                         HStack(spacing: 8) {
                             ProgressView()
                                 .tint(.white)
-                            Text(L10n.tr("cars.listening", lang: appLanguage))
+                            Text(L10n.tr("cars.listening"))
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.85))
                         }
@@ -229,20 +219,20 @@ struct EditVehicleDictationSheet: View {
                             .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
 
-                    field(L10n.tr("cars.fieldBrand", lang: appLanguage), text: $brand)
-                    field(L10n.tr("cars.fieldModel", lang: appLanguage), text: $model)
-                    field(L10n.tr("cars.fieldYear", lang: appLanguage), text: $yearText, keyboard: .numberPad)
-                    field(L10n.tr("cars.fieldPlate", lang: appLanguage), text: $plate)
-                    field(L10n.tr("cars.fieldPrice", lang: appLanguage), text: $priceText, keyboard: .decimalPad)
-                    field(L10n.tr("cars.fieldMileage", lang: appLanguage), text: $mileageText, keyboard: .numberPad)
-                    field(L10n.tr("cars.fieldPower", lang: appLanguage), text: $powerCvText, keyboard: .numberPad)
-                    field(L10n.tr("cars.fieldFuel", lang: appLanguage), text: $fuel)
-                    field(L10n.tr("cars.fieldTransmission", lang: appLanguage), text: $transmission)
-                    field(L10n.tr("cars.fieldColor", lang: appLanguage), text: $color)
-                    field(L10n.tr("cars.fieldDgt", lang: appLanguage), text: $dgtLabel)
+                    field(L10n.tr("cars.fieldBrand"), text: $brand)
+                    field(L10n.tr("cars.fieldModel"), text: $model)
+                    field(L10n.tr("cars.fieldYear"), text: $yearText, keyboard: .numberPad)
+                    field(L10n.tr("cars.fieldPlate"), text: $plate)
+                    field(L10n.tr("cars.fieldPrice"), text: $priceText, keyboard: .decimalPad)
+                    field(L10n.tr("cars.fieldMileage"), text: $mileageText, keyboard: .numberPad)
+                    field(L10n.tr("cars.fieldPower"), text: $powerCvText, keyboard: .numberPad)
+                    field(L10n.tr("cars.fieldFuel"), text: $fuel)
+                    field(L10n.tr("cars.fieldTransmission"), text: $transmission)
+                    field(L10n.tr("cars.fieldColor"), text: $color)
+                    field(L10n.tr("cars.fieldDgt"), text: $dgtLabel)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(L10n.tr("common.description", lang: appLanguage))
+                        Text(L10n.tr("common.description"))
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white.opacity(0.62))
                         TextEditor(text: $listingDescription)
@@ -269,7 +259,7 @@ struct EditVehicleDictationSheet: View {
                     } label: {
                         HStack {
                             if isSaving { ProgressView().tint(.white) }
-                            Text(isSaving ? L10n.tr("cars.saving", lang: appLanguage) : L10n.tr("cars.saveChanges", lang: appLanguage))
+                            Text(isSaving ? L10n.tr("cars.saving") : L10n.tr("cars.saveChanges"))
                                 .font(.system(size: 15, weight: .bold))
                         }
                         .foregroundStyle(.white)
@@ -284,7 +274,7 @@ struct EditVehicleDictationSheet: View {
                 .padding(16)
             }
             .background(Color.black.ignoresSafeArea())
-            .navigationTitle(L10n.tr("cars.editSheetTitle", lang: appLanguage))
+            .navigationTitle(L10n.tr("cars.editSheetTitle"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -295,10 +285,10 @@ struct EditVehicleDictationSheet: View {
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(isDictating ? Color.red.opacity(0.95) : Color.white.opacity(0.95))
                     }
-                    .accessibilityLabel(isDictating ? L10n.tr("cars.stopDictation", lang: appLanguage) : L10n.tr("cars.startDictation", lang: appLanguage))
+                    .accessibilityLabel(isDictating ? L10n.tr("cars.stopDictation") : L10n.tr("cars.startDictation"))
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(L10n.tr("common.close", lang: appLanguage)) { dismiss() }
+                    Button(L10n.tr("common.close")) { dismiss() }
                 }
             }
         }
@@ -338,12 +328,12 @@ struct EditVehicleDictationSheet: View {
         infoMessage = nil
         let micGranted = await requestMicrophonePermission()
         guard micGranted else {
-            errorMessage = L10n.tr("cars.enableMic", lang: appLanguage)
+            errorMessage = L10n.tr("cars.enableMic")
             return
         }
         let speechGranted = await transcriber.requestSpeechAuthorization()
         guard speechGranted else {
-            errorMessage = L10n.tr("cars.enableSpeech", lang: appLanguage)
+            errorMessage = L10n.tr("cars.enableSpeech")
             return
         }
         do {
@@ -384,7 +374,7 @@ struct EditVehicleDictationSheet: View {
         if let v = parsed.color { color = v }
         if let v = parsed.dgtLabel { dgtLabel = v }
         if let v = parsed.description { listingDescription = v }
-        infoMessage = L10n.tr("cars.dictationApplied", lang: appLanguage)
+        infoMessage = L10n.tr("cars.dictationApplied")
     }
 
     @MainActor
@@ -395,7 +385,7 @@ struct EditVehicleDictationSheet: View {
         defer { isSaving = false }
 
         guard let year = Int(yearText.filter(\.isNumber)), (1950 ... 2035).contains(year) else {
-            errorMessage = L10n.tr("cars.invalidYear", lang: appLanguage)
+            errorMessage = L10n.tr("cars.invalidYear")
             return
         }
         let price = Self.parseOptionalDouble(priceText)
@@ -613,22 +603,15 @@ struct SneakerMock {
         f.currencyCode = "USD"
         f.currencySymbol = "$"
         f.maximumFractionDigits = 0
-        let raw = UserDefaults.standard.string(forKey: "appLanguage") ?? AppLanguage.spanish.rawValue
-        let lang = AppLanguage(rawValue: raw) ?? .spanish
-        f.locale = lang.locale
+        f.locale = Locale(identifier: "en_US")
         return f.string(from: NSNumber(value: priceUSD)) ?? "$\(priceUSD)"
     }
 }
 
 struct SneakerListingCardLight: View {
-    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     let mock: SneakerMock
     var onTap: () -> Void
     @State private var isFavorite = false
-
-    private var appLanguage: AppLanguage {
-        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
-    }
 
     var body: some View {
         Button(action: onTap) {
@@ -709,7 +692,7 @@ struct SneakerListingCardLight: View {
                         .padding(.top, 1)
 
                     HStack(spacing: 6) {
-                        sneakerTag(icon: "ruler.fill", text: "\(L10n.tr("cars.size", lang: appLanguage)) \(mock.size)")
+                        sneakerTag(icon: "ruler.fill", text: "\(L10n.tr("cars.size")) \(mock.size)")
                         sneakerTag(icon: "checkmark.seal.fill", text: mock.condition)
                     }
                     .padding(.top, 2)

@@ -1,220 +1,15 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
-// MARK: - Internacionalización (ES/EN)
+// MARK: - Localization (English)
 
-enum AppLanguage: String, CaseIterable {
-    case spanish = "es"
-    case english = "en"
-
-    var displayName: String {
-        switch self {
-        case .spanish: return "Español"
-        case .english: return "English"
-        }
-    }
-
-    var shortName: String {
-        switch self {
-        case .spanish: return "ES"
-        case .english: return "EN"
-        }
-    }
-
-    var flag: String {
-        switch self {
-        case .spanish: return "🇪🇸"
-        case .english: return "🇬🇧"
-        }
-    }
-
-    var localeIdentifier: String {
-        switch self {
-        case .spanish: return "es_ES"
-        case .english: return "en_US"
-        }
-    }
-
-    var locale: Locale {
-        Locale(identifier: localeIdentifier)
-    }
-}
-
-/// Pequeño sistema de traducciones in-memory. Las vistas observan
-/// `@AppStorage("appLanguage")` y se redibujan al cambiar el idioma.
 enum L10n {
-    static func tr(_ key: String, lang: AppLanguage) -> String {
-        let dict = lang == .spanish ? es : en
-        return dict[key] ?? (en[key] ?? key)
+    static func tr(_ key: String) -> String {
+        strings[key] ?? key
     }
 
-    static let es: [String: String] = [
-        // Common
-        "common.ok": "OK",
-        "common.close": "Cerrar",
-        "common.send": "Enviar",
-        "common.sort": "Ordenar",
-        "common.filters": "Filtros",
-        "common.description": "Descripción",
-
-        // Tabs
-        "tab.dashboard": "Dashboard",
-        "tab.closet": "Clóset",
-        "tab.collection": "Colección",
-        "tab.soled": "Vendidos",
-        "tab.pricing": "Precios",
-        "tab.settings": "Ajustes",
-
-        // Settings — generic
-        "settings.title": "Ajustes",
-        "settings.search": "Buscar",
-        "settings.personalInfo": "Información personal",
-        "settings.sellerAccounts": "Mi cuenta de vendedor",
-        "settings.platforms": "Plataformas",
-        "settings.closetAvatars": "Clóset y avatares",
-        "settings.preferences": "Preferencias",
-        "settings.advanced": "Avanzado",
-        "settings.language": "Idioma",
-        "settings.role": "Rol",
-        "settings.admin": "Admin",
-        "settings.email": "Email",
-        "settings.phone": "Teléfono",
-        "settings.size": "Talla",
-        "settings.currency": "Divisa",
-        "settings.notifications": "Notificaciones",
-        "settings.teamAlerts": "Avisos del equipo y tareas",
-        "settings.teamAlertsDesc": "Recibe push cuando te envíen un mensaje directo, aviso de grupo o una tarea. Desactívalo si no quieres notificaciones en este dispositivo.",
-        "settings.development": "Desarrollo",
-        "settings.imageDiagnostics": "Diagnóstico de imágenes (consola Xcode)",
-        "settings.imageDiagnosticsDesc": "Al cargar la colección se imprimen columnas JSON, rutas Storage, user_id y cuántos slots ve la UI. Abre la consola con ⌘⇧Y y tira hacia abajo para refrescar el listado.",
-        "settings.logout": "Cerrar sesión",
-        "settings.version": "Versión",
-        "settings.connected": "Conectado",
-        "settings.connect": "Conectar",
-        "settings.noSession": "Sin sesión",
-        "settings.referencePhoto": "Foto de referencia",
-        "settings.myFace": "Mi rostro",
-        "settings.myFaceDesc": "Opcional: mejora cómo el avatar se parece a ti al generar looks (solo en este dispositivo).",
-        "settings.notificationsTitle": "Notificaciones",
-        "settings.marketplacesGalleryDesc": "Marcas disponibles para conectar.",
-
-        // Dashboard
-        "dashboard.totalStock": "Valor total del stock",
-        "dashboard.sneakersInStock": "Sneakers en stock",
-        "dashboard.sold": "Vendidas",
-        "dashboard.heroTitle": "Tu imperio de\nsneakers en uno.",
-        "dashboard.heroCTA": "Explorar ahora",
-        "dashboard.new": "NUEVO",
-        "dashboard.quickAdd": "Añadir",
-        "dashboard.quickInvoices": "Facturas",
-        "dashboard.quickStats": "Stats",
-        "dashboard.quickMore": "Más",
-        "dashboard.lastSale": "Última operación",
-        "dashboard.viewAll": "Ver todas",
-        "dashboard.noItems": "Sin artículos en stock",
-        "dashboard.item": "Artículo",
-        "dashboard.whereToPublish": "Dónde publicar",
-        "dashboard.whereToPublishSub": "Conecta tus tiendas y publica con 1 toque",
-
-        // Cars / Collection
-        "cars.searchPrompt": "¿Qué estás buscando?",
-        "cars.results": "sneakers",
-        "cars.loadingMore": "Cargando más sneakers…",
-        "cars.size": "Talla",
-        "cars.empty": "Sin resultados",
-        "cars.emptyFootnote": "Prueba a limpiar filtros o cambiar la búsqueda.",
-        "cars.editSheetTitle": "Editar artículo",
-        "cars.editSheetIntroTitle": "Edita los datos del artículo",
-        "cars.editSheetIntroSubtitle": "Puedes modificar campos manualmente o usar el micrófono de arriba.",
-        "cars.listening": "Escuchando… toca el micrófono para terminar",
-        "cars.fieldBrand": "Marca",
-        "cars.fieldModel": "Modelo",
-        "cars.fieldYear": "Año",
-        "cars.fieldPlate": "Referencia",
-        "cars.fieldPrice": "Precio",
-        "cars.fieldMileage": "Stock",
-        "cars.fieldPower": "SKU",
-        "cars.fieldFuel": "Estado",
-        "cars.fieldTransmission": "Canal",
-        "cars.fieldColor": "Color",
-        "cars.fieldDgt": "Etiqueta",
-        "cars.saving": "Guardando...",
-        "cars.saveChanges": "Guardar cambios",
-        "cars.startDictation": "Iniciar dictado",
-        "cars.stopDictation": "Detener dictado",
-        "cars.enableMic": "Activa micrófono en Ajustes para dictar.",
-        "cars.enableSpeech": "Activa reconocimiento de voz en Ajustes.",
-        "cars.dictationApplied": "Dictado aplicado. Revisa los campos antes de guardar.",
-        "cars.invalidYear": "Año no válido.",
-
-        // Sold
-        "sold.searchPrompt": "Buscar venta",
-        "sold.thisPeriod": "Vendido este periodo",
-        "sold.sales": "Ventas",
-        "sold.profit": "Beneficio",
-        "sold.filterAll": "Todas",
-        "sold.filterMonth": "Este mes",
-        "sold.filterTop": "Top beneficio",
-        "sold.emptyTitle": "Sin ventas",
-        "sold.emptyDesc": "No hay ventas registradas en este periodo.",
-        "sold.today": "Hoy",
-        "sold.yesterday": "Ayer",
-        "sold.daysAgo": "Hace %@ días",
-        "sold.oneWeekAgo": "Hace 1 semana",
-        "sold.weeksAgo": "Hace %@ semanas",
-        "sold.monthsAgo": "Hace %@ meses",
-
-        // Pricing
-        "pricing.title": "Pricing Tier",
-        "pricing.placeholder": "El diseño de chat con IA ya no aparece aquí.",
-
-        // Closet
-        "closet.title": "Mi clóset",
-        "closet.empty": "Tus prendas guardadas aparecerán aquí. Pulsa + para analizar fotos con IA.",
-        "closet.add": "Añadir",
-
-        // Price compare (comparativa de mercado)
-        "price.compareTitle": "Comparativa de mercado",
-        "price.compareSubtitle": "Precio medio en las principales plataformas",
-        "price.lookup": "Buscar precio",
-        "price.searching": "Buscando precio…",
-        "price.notFound": "Sin coincidencias",
-        "price.avg": "Precio medio",
-        "price.min": "Mínimo",
-        "price.max": "Máximo",
-        "price.lastSales": "Últimas ventas",
-        "price.source": "Fuente",
-        "price.refresh": "Actualizar",
-
-        // Login / Welcome
-        "auth.welcome": "Bienvenido",
-        "auth.subtitle": "Tu imperio de sneakers empieza aquí.",
-        "auth.signInTitle": "Iniciar sesión",
-        "auth.signInSubtitle": "Accede a tu cuenta de UPSOLED.",
-        "auth.welcomeBack": "Bienvenido de nuevo",
-        "auth.createYourAccount": "Crea tu cuenta",
-        "auth.email": "Correo electrónico",
-        "auth.password": "Contraseña",
-        "auth.forgot": "¿Olvidaste tu contraseña?",
-        "auth.signIn": "Iniciar sesión",
-        "auth.alreadyHaveAccount": "¿Ya tienes cuenta?",
-        "auth.orContinue": "o continúa con",
-        "auth.continueApple": "Continuar con Apple",
-        "auth.continueGoogle": "Continuar con Google",
-        "auth.noAccount": "¿No tienes cuenta?",
-        "auth.signUp": "Regístrate",
-        "auth.createAccount": "Crea tu cuenta",
-        "auth.startCollection": "Empieza a construir tu colección.",
-        "auth.signInToEmpire": "Inicia sesión para acceder a tu imperio de sneakers.",
-        "auth.helpTitle": "Ayuda",
-        "auth.helpBody": "Próximamente podrás obtener ayuda desde aquí.",
-        "auth.comingSoonTitle": "Próximamente",
-        "auth.comingSoonBody": "Esta opción estará disponible en una próxima actualización.",
-        "auth.resetAccess": "Recuperar acceso",
-        "auth.connecting": "Conectando…",
-    ]
-
-    static let en: [String: String] = [
+    static let strings: [String: String] = [
         // Common
         "common.ok": "OK",
         "common.close": "Close",
@@ -224,8 +19,8 @@ enum L10n {
         "common.description": "Description",
 
         // Tabs
-        "tab.dashboard": "Dashboard",
-        "tab.closet": "Closet",
+        "tab.dashboard": "Home",
+        "tab.closet": "Your stock",
         "tab.collection": "Collection",
         "tab.soled": "Sold",
         "tab.pricing": "Pricing",
@@ -241,8 +36,6 @@ enum L10n {
         "settings.preferences": "Preferences",
         "settings.advanced": "Advanced",
         "settings.language": "Language",
-        "settings.role": "Role",
-        "settings.admin": "Admin",
         "settings.email": "Email",
         "settings.phone": "Phone",
         "settings.size": "Size",
@@ -258,18 +51,38 @@ enum L10n {
         "settings.connected": "Connected",
         "settings.connect": "Connect",
         "settings.noSession": "No session",
+        "settings.profilePhoto": "Profile photo",
+        "settings.profilePhotoPrompt": "Update your profile picture",
+        "settings.profilePhotoTake": "Take photo",
+        "settings.profilePhotoLibrary": "Choose from library",
+        "settings.profilePhotoUploading": "Uploading…",
+        "settings.profilePhotoFailed": "Could not upload profile photo.",
         "settings.referencePhoto": "Reference photo",
         "settings.myFace": "My face",
         "settings.myFaceDesc": "Optional: improves how the avatar looks like you when generating outfits (only on this device).",
         "settings.notificationsTitle": "Notifications",
         "settings.marketplacesGalleryDesc": "Available brands to connect.",
+        "settings.goatSignIn": "Sign in",
+        "settings.goatSignInTitle": "Connect your GOAT seller account",
+        "settings.goatSignInSubtitle": "Use your Alias seller email and password. Your session stays on this device.",
+        "settings.goatSigningIn": "Signing in…",
+        "settings.goatDisconnect": "Disconnect GOAT",
+        "settings.goatMissingToken": "Add GOAT_API_TOKEN in DeveloperSettings.local.xcconfig (CommercialGoatAPI provider token).",
+        "settings.goatValidating": "Checking connection…",
+        "settings.openAI": "OpenAI API",
+        "settings.openAIKeyTitle": "API key",
+        "settings.openAIKeyMissing": "Not configured · using simulated data",
+        "settings.openAIKeyActive": "Active · sk-•••%@",
+        "settings.openAIKeySave": "Save",
+        "settings.openAIKeyClear": "Clear",
+        "settings.openAIKeyHint": "Your key is stored only on this device. It is used to estimate market prices with gpt-4o-mini.",
 
         // Dashboard
         "dashboard.totalStock": "Total stock value",
         "dashboard.sneakersInStock": "Sneakers in stock",
         "dashboard.sold": "Sold",
         "dashboard.heroTitle": "Your sneaker empire,\nall in one place.",
-        "dashboard.heroCTA": "Explore now",
+        "dashboard.heroCTA": "See your stock",
         "dashboard.new": "NEW",
         "dashboard.quickAdd": "Add",
         "dashboard.quickInvoices": "Invoices",
@@ -321,23 +134,53 @@ enum L10n {
         "sold.filterAll": "All",
         "sold.filterMonth": "This month",
         "sold.filterTop": "Top profit",
-        "sold.emptyTitle": "No sales",
-        "sold.emptyDesc": "There are no recorded sales in this period.",
+        "sold.emptyTitle": "No sales yet",
+        "sold.emptyDesc": "You don't have any sales in this period.",
         "sold.today": "Today",
         "sold.yesterday": "Yesterday",
         "sold.daysAgo": "%@ days ago",
         "sold.oneWeekAgo": "1 week ago",
         "sold.weeksAgo": "%@ weeks ago",
         "sold.monthsAgo": "%@ months ago",
+        "sold.markSold": "Mark as sold",
+        "sold.markSoldConfirmTitle": "Mark as sold?",
+        "sold.markSoldConfirmMessage": "This item will move to Sold and disappear from your active stock.",
+        "sold.markSoldAction": "Mark sold",
+        "sold.markedSoldToast": "Item moved to Sold.",
+        "sold.undoSold": "Move back to stock",
 
         // Pricing
         "pricing.title": "Pricing Tier",
         "pricing.placeholder": "The AI chat design no longer appears here.",
 
         // Closet
-        "closet.title": "My closet",
+        "closet.title": "Your stock",
+        "closet.myLooks": "My looks",
+        "closet.segmentProducts": "Products",
+        "closet.segmentLooks": "Looks",
+        "closet.looksEmpty": "No saved looks yet. Combine items and generate an avatar to see them here.",
         "closet.empty": "Your saved items will appear here. Tap + to analyze photos with AI.",
         "closet.add": "Add",
+        "closet.welcomeGreeting": "Welcome, %@!",
+        "closet.startTitle": "Start with your stock.",
+        "closet.startSubtitle": "Upload photos of your product or outfit — each item can reach studio polish.",
+        "closet.progressGoalIntro": "Add five products to your stock to finish the tutorial.",
+        "closet.progressGreatRemainingOne": "You're one product away from finishing the tutorial.",
+        "closet.progressGreatRemainingPlural": "Add %lld more products to your stock to finish the tutorial.",
+        "closet.addWide": "+ Add",
+        "closet.starterReminderPartial": "Keep using the tab bar + or '+ Add' until you have five products in your stock.",
+        "closet.addSheetTitle": "Add to stock",
+        "closet.addSheetPhotoHint": "📷 Choose photos for your stock",
+        "closet.searchPrompt": "Search by brand, color, SKU…",
+        "closet.scanBarcode": "Scan barcode or QR",
+        "closet.scanHint": "The barcode must fit entirely inside the frame.",
+        "closet.scanSuccess": "Scan successful!",
+        "closet.scanBuyLabel": "Buy / bid",
+        "closet.scanSellLabel": "Sell / offer",
+        "closet.scanViewInStock": "View in your stock",
+        "closet.layoutGrid": "Grid view",
+        "closet.layoutList": "List view",
+        "closet.searchEmpty": "No items match your search.",
 
         // Price compare
         "price.compareTitle": "Market comparison",
@@ -383,17 +226,18 @@ enum L10n {
     ]
 }
 
-/// Wrapper para usar como `@AppStorage("appLanguage") var lang: AppLanguage`
-extension AppLanguage: RawRepresentable {}
-
 struct SettingsView: View {
     @EnvironmentObject var settingsVM: SettingsViewModel
     @EnvironmentObject var auth: AuthViewModel
-
-    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
-    private var appLanguage: AppLanguage { AppLanguage(rawValue: appLanguageRaw) ?? .spanish }
+    @EnvironmentObject var goatVM: GoatAccountViewModel
 
     @State private var showClosetFaceSetup = false
+    @State private var showGoatConnect = false
+    @State private var showProfilePhotoSheet = false
+
+    @AppStorage("openaiAPIKey") private var openaiAPIKey: String = ""
+    @State private var openaiKeyDraft: String = ""
+    @State private var openaiKeyRevealed = false
 
     var body: some View {
         ZStack {
@@ -405,38 +249,33 @@ struct SettingsView: View {
                         .padding(.top, 8)
 
                     Group {
-                        sectionTitle(L10n.tr("settings.language", lang: appLanguage))
-                        languageSection
-                    }
-
-                    Group {
-                        sectionTitle("OpenAI API")
+                        sectionTitle(L10n.tr("settings.openAI"))
                         openAIKeySection
                     }
 
                     Group {
-                        sectionTitle(L10n.tr("settings.personalInfo", lang: appLanguage))
+                        sectionTitle(L10n.tr("settings.personalInfo"))
                         generalInfoSection
                     }
 
                     Group {
-                        sectionTitle(L10n.tr("settings.sellerAccounts", lang: appLanguage))
+                        sectionTitle(L10n.tr("settings.sellerAccounts"))
                         sellerAccountsSection
                     }
 
                     Group {
-                        sectionTitle(L10n.tr("settings.platforms", lang: appLanguage))
+                        sectionTitle(L10n.tr("settings.platforms"))
                         marketplaceLogosGallerySection
                     }
 
                     Group {
-                        sectionTitle(L10n.tr("settings.closetAvatars", lang: appLanguage))
+                        sectionTitle(L10n.tr("settings.closetAvatars"))
                         closetAvatarSection
                     }
 
                     if auth.isAuthenticated {
                         Group {
-                            sectionTitle(L10n.tr("settings.preferences", lang: appLanguage))
+                            sectionTitle(L10n.tr("settings.preferences"))
                             notificationsSection
                         }
                     }
@@ -458,6 +297,17 @@ struct SettingsView: View {
             FaceSetupView()
                 .presentationDragIndicator(Visibility.visible)
         }
+        .sheet(isPresented: $showGoatConnect) {
+            GoatConnectSheetView(goatVM: goatVM)
+                .presentationDragIndicator(Visibility.visible)
+        }
+        .sheet(isPresented: $showProfilePhotoSheet) {
+            ProfilePhotoUploadSheet { image in
+                Task { await auth.uploadProfileAvatar(image) }
+            }
+            .presentationDragIndicator(Visibility.visible)
+            .presentationDetents([.medium])
+        }
         .task(id: auth.session?.user.id) {
             guard let uid = auth.session?.user.id else { return }
             await settingsVM.loadNotifyTeamPush(
@@ -465,163 +315,12 @@ struct SettingsView: View {
                 userId: uid
             )
         }
-    }
-
-    // MARK: - Clóset (rostro para avatares Gemini)
-
-    private var closetAvatarSection: some View {
-        ChromeSettingsCard(cornerRadius: 22, padding: 16) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(L10n.tr("settings.referencePhoto", lang: appLanguage))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.50))
-
-                Button {
-                    showClosetFaceSetup = true
-                } label: {
-                    HStack {
-                        Image(systemName: "person.crop.circle.badge.plus")
-                            .font(.system(size: 20))
-                            .foregroundStyle(Color.black.opacity(0.75))
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(L10n.tr("settings.myFace", lang: appLanguage))
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.black.opacity(0.88))
-                            Text(L10n.tr("settings.myFaceDesc", lang: appLanguage))
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundStyle(Color.black.opacity(0.50))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.black.opacity(0.35))
-                    }
-                    .padding(.vertical, 6)
-                }
-                .buttonStyle(.plain)
-            }
+        .task {
+            await goatVM.validateStoredSession()
         }
     }
 
-    // MARK: - Notificaciones
-
-    private var notificationsSection: some View {
-        ChromeSettingsCard(cornerRadius: 22, padding: 16) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(L10n.tr("settings.notificationsTitle", lang: appLanguage))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.50))
-
-                Toggle(
-                    isOn: Binding(
-                        get: { settingsVM.notifyTeamPushEnabled },
-                        set: { new in
-                            settingsVM.notifyTeamPushEnabled = new
-                            if let uid = auth.session?.user.id {
-                                Task {
-                                    await settingsVM.persistNotifyTeamPush(
-                                        new,
-                                        client: SupabaseClientProvider.shared,
-                                        userId: uid
-                                    )
-                                }
-                            }
-                        }
-                    )
-                ) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L10n.tr("settings.teamAlerts", lang: appLanguage))
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(Color.black.opacity(0.85))
-                        Text(L10n.tr("settings.teamAlertsDesc", lang: appLanguage))
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(Color.black.opacity(0.50))
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .tint(PremiumAccent.tabActive)
-            }
-        }
-    }
-
-    // MARK: - Profile
-
-    // Selector de idioma (ES/EN)
-    private var languageSection: some View {
-        ChromeSettingsCard(cornerRadius: 22, padding: 0) {
-            HStack(spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.14))
-                        .frame(width: 32, height: 32)
-                    Image(systemName: "globe")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-                }
-
-                Text(L10n.tr("settings.language", lang: appLanguage))
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.85))
-
-                Spacer(minLength: 8)
-
-                // Segmented picker estilo capsule
-                HStack(spacing: 4) {
-                    ForEach(AppLanguage.allCases, id: \.self) { l in
-                        Button {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                appLanguageRaw = l.rawValue
-                            }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(l.flag)
-                                    .font(.system(size: 13))
-                                Text(l.shortName)
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundStyle(
-                                        appLanguage == l
-                                            ? .white
-                                            : Color.black.opacity(0.60)
-                                    )
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background {
-                                Capsule(style: .continuous)
-                                    .fill(
-                                        appLanguage == l
-                                            ? AnyShapeStyle(
-                                                LinearGradient(
-                                                    colors: [
-                                                        Color(red: 0.30, green: 0.55, blue: 0.95),
-                                                        Color(red: 0.14, green: 0.36, blue: 0.85),
-                                                    ],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                )
-                                            )
-                                            : AnyShapeStyle(Color.clear)
-                                    )
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(3)
-                .background {
-                    Capsule().fill(Color(red: 0.95, green: 0.96, blue: 0.99))
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-        }
-    }
-
-    // OpenAI API key — para el servicio de comparativa de precio
-    @AppStorage("openaiAPIKey") private var openaiAPIKey: String = ""
-    @State private var openaiKeyDraft: String = ""
-    @State private var openaiKeyRevealed: Bool = false
+    // MARK: - OpenAI API
 
     private var openAIKeySection: some View {
         ChromeSettingsCard(cornerRadius: 22, padding: 0) {
@@ -637,24 +336,32 @@ struct SettingsView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("API key")
+                        Text(L10n.tr("settings.openAIKeyTitle"))
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Color.black.opacity(0.85))
-                        Text(openaiAPIKey.isEmpty
-                             ? "Sin configurar · usando datos simulados"
-                             : "Activa · sk-•••\(String(openaiAPIKey.suffix(4)))")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(openaiAPIKey.isEmpty
+                        Text(
+                            openaiAPIKey.isEmpty
+                                ? L10n.tr("settings.openAIKeyMissing")
+                                : String(
+                                    format: L10n.tr("settings.openAIKeyActive"),
+                                    String(openaiAPIKey.suffix(4))
+                                )
+                        )
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(
+                            openaiAPIKey.isEmpty
                                 ? Color.orange.opacity(0.85)
-                                : Color(red: 0.18, green: 0.62, blue: 0.40))
+                                : Color(red: 0.18, green: 0.62, blue: 0.40)
+                        )
                     }
                     Spacer(minLength: 0)
 
-                    // Indicador estado
                     Circle()
-                        .fill(openaiAPIKey.isEmpty
-                            ? Color.orange.opacity(0.85)
-                            : Color(red: 0.20, green: 0.70, blue: 0.45))
+                        .fill(
+                            openaiAPIKey.isEmpty
+                                ? Color.orange.opacity(0.85)
+                                : Color(red: 0.20, green: 0.70, blue: 0.45)
+                        )
                         .frame(width: 8, height: 8)
                 }
 
@@ -694,7 +401,7 @@ struct SettingsView: View {
                     Button {
                         openaiAPIKey = openaiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                     } label: {
-                        Text("Guardar")
+                        Text(L10n.tr("settings.openAIKeySave"))
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14)
@@ -721,7 +428,7 @@ struct SettingsView: View {
                             openaiAPIKey = ""
                             openaiKeyDraft = ""
                         } label: {
-                            Text("Borrar")
+                            Text(L10n.tr("settings.openAIKeyClear"))
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundStyle(Color.red.opacity(0.85))
                                 .padding(.horizontal, 14)
@@ -736,7 +443,7 @@ struct SettingsView: View {
                     Spacer(minLength: 0)
                 }
 
-                Text("Tu key se guarda solo en este dispositivo. Se usa para estimar precios de mercado con gpt-4o-mini.")
+                Text(L10n.tr("settings.openAIKeyHint"))
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.50))
                     .fixedSize(horizontal: false, vertical: true)
@@ -748,7 +455,87 @@ struct SettingsView: View {
         }
     }
 
-    // Profile hero — avatar grande centrado + nombre + email + rol
+    // MARK: - Clóset (rostro para avatares Gemini)
+
+    private var closetAvatarSection: some View {
+        ChromeSettingsCard(cornerRadius: 22, padding: 16) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(L10n.tr("settings.referencePhoto"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.50))
+
+                Button {
+                    showClosetFaceSetup = true
+                } label: {
+                    HStack {
+                        Image(systemName: "person.crop.circle.badge.plus")
+                            .font(.system(size: 20))
+                            .foregroundStyle(Color.black.opacity(0.75))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(L10n.tr("settings.myFace"))
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color.black.opacity(0.88))
+                            Text(L10n.tr("settings.myFaceDesc"))
+                                .font(.system(size: 11, weight: .regular))
+                                .foregroundStyle(Color.black.opacity(0.50))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.black.opacity(0.35))
+                    }
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Notificaciones
+
+    private var notificationsSection: some View {
+        ChromeSettingsCard(cornerRadius: 22, padding: 16) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(L10n.tr("settings.notificationsTitle"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.50))
+
+                Toggle(
+                    isOn: Binding(
+                        get: { settingsVM.notifyTeamPushEnabled },
+                        set: { new in
+                            settingsVM.notifyTeamPushEnabled = new
+                            if let uid = auth.session?.user.id {
+                                Task {
+                                    await settingsVM.persistNotifyTeamPush(
+                                        new,
+                                        client: SupabaseClientProvider.shared,
+                                        userId: uid
+                                    )
+                                }
+                            }
+                        }
+                    )
+                ) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L10n.tr("settings.teamAlerts"))
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Color.black.opacity(0.85))
+                        Text(L10n.tr("settings.teamAlertsDesc"))
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(Color.black.opacity(0.50))
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .tint(PremiumAccent.tabActive)
+            }
+        }
+    }
+
+    // MARK: - Profile
+
+    // Profile hero — avatar grande centrado + nombre + email
     private var profileHeroSection: some View {
         VStack(spacing: 12) {
             ZStack(alignment: .bottomTrailing) {
@@ -792,8 +579,19 @@ struct SettingsView: View {
                 }
                 .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.25), radius: 18, y: 8)
 
+                if auth.isUploadingProfileAvatar {
+                    Circle()
+                        .fill(Color.black.opacity(0.35))
+                        .frame(width: 108, height: 108)
+                    ProgressView()
+                        .tint(.white)
+                }
+
                 // Edit camera button
-                Button {} label: {
+                Button {
+                    guard auth.isAuthenticated else { return }
+                    showProfilePhotoSheet = true
+                } label: {
                     ZStack {
                         Circle()
                             .fill(
@@ -817,6 +615,7 @@ struct SettingsView: View {
                     .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.40), radius: 6, y: 3)
                 }
                 .buttonStyle(.plain)
+                .disabled(!auth.isAuthenticated || auth.isUploadingProfileAvatar)
             }
 
             VStack(spacing: 4) {
@@ -825,27 +624,11 @@ struct SettingsView: View {
                     .foregroundStyle(Color.black.opacity(0.92))
                     .multilineTextAlignment(.center)
 
-                Text(auth.session?.user.email ?? L10n.tr("settings.noSession", lang: appLanguage))
+                Text(auth.session?.user.email ?? L10n.tr("settings.noSession"))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.50))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
-
-                // Rol pill
-                HStack(spacing: 5) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 9, weight: .bold))
-                    Text(L10n.tr("settings.admin", lang: appLanguage).uppercased())
-                        .font(.system(size: 10, weight: .heavy))
-                        .tracking(0.8)
-                }
-                .foregroundStyle(Color(red: 0.18, green: 0.40, blue: 0.85))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background {
-                    Capsule().fill(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.12))
-                }
-                .padding(.top, 2)
             }
         }
         .frame(maxWidth: .infinity)
@@ -865,15 +648,13 @@ struct SettingsView: View {
     private var generalInfoSection: some View {
         ChromeSettingsCard(cornerRadius: 22, padding: 0) {
             VStack(spacing: 0) {
-                infoRow(icon: "person.fill", iconTint: Color(red: 0.20, green: 0.45, blue: 0.85), label: L10n.tr("settings.role", lang: appLanguage), value: L10n.tr("settings.admin", lang: appLanguage))
+                infoRow(icon: "envelope.fill", iconTint: Color(red: 0.20, green: 0.45, blue: 0.85), label: L10n.tr("settings.email"), value: auth.session?.user.email ?? "—")
                 infoDivider
-                infoRow(icon: "envelope.fill", iconTint: Color(red: 0.20, green: 0.45, blue: 0.85), label: L10n.tr("settings.email", lang: appLanguage), value: auth.session?.user.email ?? "—")
+                infoRow(icon: "phone.fill", iconTint: Color(red: 0.20, green: 0.70, blue: 0.45), label: L10n.tr("settings.phone"), value: "+34 600 000 000")
                 infoDivider
-                infoRow(icon: "phone.fill", iconTint: Color(red: 0.20, green: 0.70, blue: 0.45), label: L10n.tr("settings.phone", lang: appLanguage), value: "+34 600 000 000")
+                infoRow(icon: "shoeprints.fill", iconTint: Color(red: 0.95, green: 0.55, blue: 0.20), label: L10n.tr("settings.size"), value: "EU 42 · US 9")
                 infoDivider
-                infoRow(icon: "shoeprints.fill", iconTint: Color(red: 0.95, green: 0.55, blue: 0.20), label: L10n.tr("settings.size", lang: appLanguage), value: "EU 42 · US 9")
-                infoDivider
-                infoRow(icon: "dollarsign.circle.fill", iconTint: Color(red: 0.55, green: 0.30, blue: 0.85), label: L10n.tr("settings.currency", lang: appLanguage), value: "$")
+                infoRow(icon: "dollarsign.circle.fill", iconTint: Color(red: 0.55, green: 0.30, blue: 0.85), label: L10n.tr("settings.currency"), value: "$")
             }
             .padding(.vertical, 4)
         }
@@ -920,9 +701,14 @@ struct SettingsView: View {
     private var sellerAccountsSection: some View {
         ChromeSettingsCard(cornerRadius: 22, padding: 0) {
             VStack(spacing: 0) {
-                sellerRow(name: "StockX", connected: true)
+                sellerRow(name: "StockX", connected: false)
                 infoDivider
-                sellerRow(name: "GOAT", connected: true)
+                Button {
+                    showGoatConnect = true
+                } label: {
+                    sellerRow(name: "GOAT", connected: goatVM.isConnected, subtitle: goatVM.session?.connectedLabel)
+                }
+                .buttonStyle(.plain)
                 infoDivider
                 sellerRow(name: "Grailed", connected: false)
                 infoDivider
@@ -940,7 +726,7 @@ struct SettingsView: View {
     private var marketplaceLogosGallerySection: some View {
         ChromeSettingsCard(cornerRadius: 22, padding: 14) {
             VStack(alignment: .leading, spacing: 10) {
-                Text(L10n.tr("settings.marketplacesGalleryDesc", lang: appLanguage))
+                Text(L10n.tr("settings.marketplacesGalleryDesc"))
                     .font(.system(size: 12.5, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.52))
                     .fixedSize(horizontal: false, vertical: true)
@@ -974,14 +760,22 @@ struct SettingsView: View {
         }
     }
 
-    private func sellerRow(name: String, connected: Bool) -> some View {
+    private func sellerRow(name: String, connected: Bool, subtitle: String? = nil) -> some View {
         HStack(spacing: 14) {
             StylizedMarketplaceLogo(brand: name)
                 .frame(width: 36, height: 36)
 
-            Text(name)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.85))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.85))
+                if let subtitle, connected {
+                    Text(subtitle)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.45))
+                        .lineLimit(1)
+                }
+            }
 
             Spacer(minLength: 8)
 
@@ -989,12 +783,12 @@ struct SettingsView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 12, weight: .bold))
-                    Text(L10n.tr("settings.connected", lang: appLanguage))
+                    Text(L10n.tr("settings.connected"))
                         .font(.system(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
             } else {
-                Text(L10n.tr("settings.connect", lang: appLanguage))
+                Text(L10n.tr("settings.connect"))
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
             }
@@ -1020,7 +814,7 @@ struct SettingsView: View {
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(Color.red.opacity(0.92))
                         }
-                        Text(L10n.tr("settings.logout", lang: appLanguage))
+                        Text(L10n.tr("settings.logout"))
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(Color.black.opacity(0.85))
                         Spacer()
@@ -1041,7 +835,7 @@ struct SettingsView: View {
                 settingsRow(
                     icon: "info.circle.fill",
                     iconColor: PremiumAccent.tabActive,
-                    title: L10n.tr("settings.version", lang: appLanguage)
+                    title: L10n.tr("settings.version")
                 ) {
                     Text("\(settingsVM.appVersion) (\(settingsVM.buildNumber))")
                         .font(.system(size: 13, weight: .medium))
@@ -1088,8 +882,95 @@ struct SettingsView: View {
     }
 }
 
+// MARK: - Profile photo upload
+
+private struct ProfilePhotoUploadSheet: View {
+    let onImagePicked: (UIImage) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var showCamera = false
+    @State private var cameraImage: UIImage?
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 14) {
+                Text(L10n.tr("settings.profilePhotoPrompt"))
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.55))
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 8)
+
+                Button {
+                    showCamera = true
+                } label: {
+                    Label(L10n.tr("settings.profilePhotoTake"), systemImage: "camera.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Capsule().fill(Color.black))
+                }
+                .buttonStyle(.plain)
+
+                PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
+                    Label(L10n.tr("settings.profilePhotoLibrary"), systemImage: "photo")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Capsule().fill(Color(.secondarySystemBackground)))
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 0)
+            }
+            .padding(20)
+            .background(Color.white.ignoresSafeArea())
+            .navigationTitle(L10n.tr("settings.profilePhoto"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L10n.tr("common.close")) { dismiss() }
+                        .foregroundStyle(Color.black)
+                }
+            }
+            .onChange(of: pickerItem) { _, item in
+                Task { await loadPickerItem(item) }
+            }
+            .fullScreenCover(isPresented: $showCamera, onDismiss: ingestCameraPick) {
+                ClosetUIImagePickerBridge(image: $cameraImage)
+                    .background(Color.black)
+                    .ignoresSafeArea()
+            }
+        }
+    }
+
+    @MainActor
+    private func loadPickerItem(_ item: PhotosPickerItem?) async {
+        guard let item,
+              let data = try? await item.loadTransferable(type: Data.self),
+              let img = UIImage(data: data)
+        else { return }
+        finish(with: img)
+        pickerItem = nil
+    }
+
+    private func ingestCameraPick() {
+        guard let img = cameraImage else { return }
+        cameraImage = nil
+        finish(with: img)
+    }
+
+    private func finish(with image: UIImage) {
+        onImagePicked(image)
+        dismiss()
+    }
+}
+
 #Preview {
     SettingsView()
         .environmentObject(SettingsViewModel())
         .environmentObject(AuthViewModel())
+        .environmentObject(GoatAccountViewModel())
 }

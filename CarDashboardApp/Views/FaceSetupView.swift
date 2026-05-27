@@ -67,17 +67,12 @@ enum FaceImageCropHelper {
 struct FaceSetupView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
 
     @State private var profile: UserProfile?
     @State private var pickerItem: PhotosPickerItem?
     @State private var showCamera = false
     @State private var cameraUIImage: UIImage?
     @State private var showingDeleteConfirm = false
-
-    private var appLanguage: AppLanguage {
-        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
-    }
 
     var body: some View {
         NavigationStack {
@@ -89,7 +84,7 @@ struct FaceSetupView: View {
                         Button {
                             showCamera = true
                         } label: {
-                            Label(appLanguage == .english ? "Take photo" : "Tomar foto", systemImage: "camera.fill")
+                            Label("Take photo", systemImage: "camera.fill")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(Color.white)
                                 .frame(maxWidth: .infinity)
@@ -99,7 +94,7 @@ struct FaceSetupView: View {
                         .buttonStyle(.plain)
 
                         PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
-                            Label(appLanguage == .english ? "Choose from library" : "Elegir de la galería", systemImage: "photo")
+                            Label("Choose from library", systemImage: "photo")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(Color.black)
                                 .frame(maxWidth: .infinity)
@@ -112,7 +107,7 @@ struct FaceSetupView: View {
                             Button(role: .destructive) {
                                 showingDeleteConfirm = true
                             } label: {
-                                Text(appLanguage == .english ? "Delete photo" : "Eliminar foto")
+                                Text("Delete photo")
                                     .font(.system(size: 15, weight: .semibold))
                             }
                             .buttonStyle(.plain)
@@ -123,7 +118,7 @@ struct FaceSetupView: View {
                     Divider().padding(.vertical, 4)
 
                     Toggle(
-                        appLanguage == .english ? "Use my face when generating avatars" : "Usar mi rostro al generar avatares",
+                        "Use my face when generating avatars",
                         isOn: Binding(
                             get: { profile?.useFaceByDefault ?? true },
                             set: {
@@ -134,7 +129,7 @@ struct FaceSetupView: View {
                     .padding(.horizontal, 4)
 
                     HStack {
-                        Text(appLanguage == .english ? "Preferred gender" : "Género preferido")
+                        Text("Preferred gender")
                             .font(.system(size: 14, weight: .medium))
                         Spacer()
                         Picker(
@@ -148,8 +143,8 @@ struct FaceSetupView: View {
                                     try? modelContext.save()
                                 })
                         ) {
-                            Text(appLanguage == .english ? "Female" : "Chica").tag(AvatarGender.female.rawValue)
-                            Text(appLanguage == .english ? "Male" : "Chico").tag(AvatarGender.male.rawValue)
+                            Text("Female").tag(AvatarGender.female.rawValue)
+                            Text("Male").tag(AvatarGender.male.rawValue)
                         }
                         .pickerStyle(.segmented)
                         .frame(maxWidth: 200)
@@ -157,9 +152,7 @@ struct FaceSetupView: View {
                     .padding(.horizontal, 4)
 
                     Text(
-                        appLanguage == .english
-                            ? "Your photo is stored only on this device. It is only sent to the Gemini service when you generate an avatar; we do not share it with other users."
-                            : "Tu foto se guarda solo en este dispositivo. Solo se envía al servicio Gemini cuando generes un avatar; no la compartimos con otros usuarios."
+                        "Your photo is stored only on this device. It is only sent to the Gemini service when you generate an avatar; we do not share it with other users."
                     )
                     .font(.system(size: 12))
                     .foregroundStyle(Color.black.opacity(0.45))
@@ -169,11 +162,11 @@ struct FaceSetupView: View {
                 .padding(20)
             }
             .background(Color.white.ignoresSafeArea())
-            .navigationTitle(appLanguage == .english ? "My face" : "Mi rostro")
+            .navigationTitle("My face")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(appLanguage == .english ? "Done" : "Listo") { dismiss() }
+                    Button("Done") { dismiss() }
                         .foregroundStyle(Color.black)
                 }
             }
@@ -188,12 +181,12 @@ struct FaceSetupView: View {
                     .background(Color.black)
                     .ignoresSafeArea()
             }
-            .confirmationDialog(appLanguage == .english ? "Delete face photo?" : "¿Eliminar la foto de rostro?", isPresented: $showingDeleteConfirm, titleVisibility: .visible)
+            .confirmationDialog("Delete face photo?", isPresented: $showingDeleteConfirm, titleVisibility: .visible)
             {
-                Button(appLanguage == .english ? "Delete" : "Eliminar", role: .destructive) {
+                Button("Delete", role: .destructive) {
                     deleteFacePhoto()
                 }
-                Button(appLanguage == .english ? "Cancel" : "Cancelar", role: .cancel) {}
+                Button("Cancel", role: .cancel) {}
             }
         }
         .preferredColorScheme(.light)

@@ -472,7 +472,7 @@ struct VieraAssistantRichCardsView: View {
             return lines
         }
         if selectedOfferCar == nil {
-            lines.append("Selecciona un vehículo en la tira.")
+            lines.append("Select a vehicle in the strip.")
         }
         if !scheduleInstructionsValid {
             lines.append("Escribe instrucciones claras (mínimo 18 caracteres).")
@@ -532,7 +532,7 @@ struct VieraAssistantRichCardsView: View {
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(Color.white.opacity(0.5))
                             if teamRowsForDisplay.count > 1 {
-                                Text("Toca quién debe recibir la tarea")
+                                Text("Tap who should receive the task")
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(Color.white.opacity(0.42))
                                 selectableTeamAvatarsStrip
@@ -611,7 +611,7 @@ struct VieraAssistantRichCardsView: View {
 
             Toggle(isOn: $commercialMustTransportCar) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Debe llevar o trasladar este vehículo")
+                    Text("Must carry or transport this vehicle")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.88))
                     Text("Desactiva si solo coordina cita sin mover unidad de stock.")
@@ -640,7 +640,7 @@ struct VieraAssistantRichCardsView: View {
                 }
             }
 
-            Text("Al enviar, \(recipient.resolvedDisplayName) verá la tarea con la foto del coche, podrá aceptarla y subir las fotos que se piden en cada paso.")
+            Text("When you send, \(recipient.resolvedDisplayName) will see the task with the car photo, can accept it, and upload the photos requested at each step.")
                 .font(.system(size: 11, weight: .regular))
                 .foregroundStyle(Color.white.opacity(0.48))
                 .fixedSize(horizontal: false, vertical: true)
@@ -676,7 +676,7 @@ struct VieraAssistantRichCardsView: View {
                     Text("He revisado todo y es correcto")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.white.opacity(0.9))
-                    Text("Destinatario, vehículo, instrucciones, si debe trasladar el coche y la fecha límite.")
+                    Text("Recipient, vehicle, instructions, whether they must transport the car, and the deadline.")
                         .font(.system(size: 11, weight: .regular))
                         .foregroundStyle(Color.white.opacity(0.45))
                 }
@@ -844,7 +844,7 @@ struct VieraAssistantRichCardsView: View {
         }
         let sched = scheduleInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
         let transportLine = commercialMustTransportCar
-            ? "Sí: debes usar el vehículo de la foto en esta tarea (traslado, entrega o recogida según indique el horario)."
+            ? "Yes: you must use the vehicle from the photo in this task (transport, delivery, or pickup as indicated in the schedule)."
             : "No hace falta mover una unidad de stock; coordina solo lo acordado en el horario (cita, llamada, recepción de cliente, etc.)."
         return """
         Resumen (Viera):
@@ -867,24 +867,24 @@ struct VieraAssistantRichCardsView: View {
 
     private func vieraTaskStepInstructions(mustTransport: Bool) -> [String] {
         var steps: [String] = [
-            "Confirma que reconoces el vehículo de la foto (mismo modelo y matrícula que en el texto de la tarea).",
+            "Confirm you recognize the vehicle in the photo (same model and plate as in the task text).",
         ]
         if mustTransport {
             steps.append(
-                "Escribe en el chat la hora exacta y el lugar donde entregarás o recogerás el vehículo, alineado con las instrucciones de arriba."
+                "Write in chat the exact time and place where you will deliver or pick up the vehicle, aligned with the instructions above."
             )
             steps.append(
-                "Sube una foto del vehículo en el punto acordado: matrícula y parte delantera o lateral bien visibles."
+                "Upload a photo of the vehicle at the agreed point: plate and front or side clearly visible."
             )
             steps.append(
                 "Sube una foto del interior o del documento / firma de entrega si aplica al caso."
             )
         } else {
             steps.append(
-                "Escribe en el chat cómo queda concretado el horario y el contacto con el cliente o el taller."
+                "Write in chat how the schedule and contact with the client or workshop is finalized."
             )
             steps.append(
-                "Sube una foto o captura que acredite la acción acordada (pantalla de cita, ticket, etc.)."
+                "Upload a photo or screenshot proving the agreed action (appointment screen, ticket, etc.)."
             )
             steps.append(
                 "Sube una segunda prueba si el responsable debe validar un paso adicional (por ejemplo confirmación por escrito)."

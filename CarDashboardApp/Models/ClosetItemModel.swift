@@ -7,9 +7,29 @@ final class ClosetItem {
     @Attribute(.unique) var id: UUID
     var name: String
     var brand: String?
+    /// Style / SKU code (e.g. DD1391-101, FW2499) for marketplace lookup.
+    var skuText: String?
 
-    /// Texto libre (moneda símbolo + importe).
+    /// What you paid when buying the item (cost basis).
+    var purchasePriceText: String?
+
+    /// Your listing / asking price (what you want to sell for).
     var priceText: String?
+
+    /// Talla (EU/US, S/M/L, etc.).
+    var sizeText: String?
+
+    /// Color legible (ej. «Negro», «Navy blue»).
+    var colorLabel: String?
+
+    /// Descripción comercial / ficha de producto.
+    var productDescription: String?
+
+    /// JSON `PieceMarketPrice` (precio medio, min, max, histórico).
+    var marketPriceJSON: String?
+
+    /// CSV de plataformas sugeridas (StockX, GOAT, …).
+    var listingPlatformsRaw: String?
 
     /// JSON `["#RRGGBB", …]` desde `ColorPaletteExtractor` local.
     var colorPaletteJSON: String?
@@ -45,6 +65,11 @@ final class ClosetItem {
     var isDraft: Bool
     var createdAt: Date
 
+    /// When true, item is removed from active stock and shown under Sold.
+    var isSold: Bool = false
+    /// Timestamp when the user marked the item as sold.
+    var soldAt: Date? = nil
+
     @Relationship(inverse: \Look.items)
     var looks: [Look] = []
 
@@ -52,7 +77,14 @@ final class ClosetItem {
         id: UUID = UUID(),
         name: String,
         brand: String? = nil,
+        skuText: String? = nil,
+        purchasePriceText: String? = nil,
         priceText: String? = nil,
+        sizeText: String? = nil,
+        colorLabel: String? = nil,
+        productDescription: String? = nil,
+        marketPriceJSON: String? = nil,
+        listingPlatformsRaw: String? = nil,
         colorPaletteJSON: String? = nil,
         dressCodesRaw: String? = nil,
         seasonsRaw: String? = nil,
@@ -68,12 +100,21 @@ final class ClosetItem {
         sourceOutfitFilename: String? = nil,
         boundingBox: NormalizedRect? = nil,
         isDraft: Bool = false,
-        createdAt: Date = .now
+        createdAt: Date = .now,
+        isSold: Bool = false,
+        soldAt: Date? = nil
     ) {
         self.id = id
         self.name = name
         self.brand = brand
+        self.skuText = skuText
+        self.purchasePriceText = purchasePriceText
         self.priceText = priceText
+        self.sizeText = sizeText
+        self.colorLabel = colorLabel
+        self.productDescription = productDescription
+        self.marketPriceJSON = marketPriceJSON
+        self.listingPlatformsRaw = listingPlatformsRaw
         self.colorPaletteJSON = colorPaletteJSON
         self.dressCodesRaw = dressCodesRaw
         self.seasonsRaw = seasonsRaw
@@ -96,6 +137,8 @@ final class ClosetItem {
         }
         self.isDraft = isDraft
         self.createdAt = createdAt
+        self.isSold = isSold
+        self.soldAt = soldAt
     }
 
     var category: ClothingCategory {

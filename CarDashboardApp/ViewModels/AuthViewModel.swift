@@ -12,6 +12,7 @@ final class AuthViewModel: ObservableObject {
     @Published var lastErrorMessage: String?
     /// Foto de perfil del usuario con sesión iniciada (`profiles.avatar_url` o metadatos OAuth).
     @Published private(set) var profileAvatarImage: UIImage?
+    @Published private(set) var isUploadingProfileAvatar = false
     /// Empresa del usuario autenticado (cargada desde `profiles.company_id` vía RPC).
     @Published private(set) var companyId: UUID?
     /// Organización del usuario autenticado (cargada desde `user_profiles.organization_id`).
@@ -180,6 +181,40 @@ final class AuthViewModel: ObservableObject {
                 guard self.session?.user.id == userId else { return }
                 self.profileAvatarImage = image
             }
+        }
+    }
+
+    func uploadProfileAvatar(_ image: UIImage) async {
+        guard let session else {
+            lastErrorMessage = UserProfileService.AvatarUploadError.notAuthenticated.localizedDescription
+            return
+        }
+        guard let jpeg = UserProfileService.prepareAvatarJPEG(from: image) else {
+            lastErrorMessage = UserProfileService.AvatarUploadError.invalidImage.localizedDescription
+            return
+        }
+
+        isUploadingProfileAvatar = true
+        lastErrorMessage = nil
+        defer { isUploadingProfileAvatar = false }
+
+        let userId = session.user.id
+        do {
+            let path = try await UserProfileService.uploadProfileAvatar(
+                jpegData: jpeg,
+                userId: userId,
+                client: client
+            )
+            if let preview = UIImage(data: jpeg) {
+                profileAvatarImage = preview
+                ImageCacheService.shared.store(
+                    preview,
+                    forKey: "profileAvatar:\(userId.uuidString.lowercased()):\(path)"
+                )
+            }
+            scheduleProfileAvatarLoad()
+        } catch {
+            lastErrorMessage = error.localizedDescription
         }
     }
 

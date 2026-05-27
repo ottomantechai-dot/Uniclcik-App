@@ -85,7 +85,7 @@ struct CarListingCard: View {
                         Image(systemName: "link.circle.fill")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(ListingPalette.secondary)
-                        Text("Vehículo conectado en tu cuenta")
+                        Text("Vehicle connected to your account")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(ListingPalette.tertiary)
                     }
