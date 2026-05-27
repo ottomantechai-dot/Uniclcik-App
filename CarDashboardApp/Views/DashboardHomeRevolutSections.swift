@@ -6,11 +6,16 @@ import UIKit
 // MARK: - Tarjeta resumen financiero (toca → detalle)
 
 struct DashboardFinancialSummaryCard: View {
+    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     @ObservedObject var stats: DealershipStatsViewModel
     @Binding var showDetail: Bool
     var lightSurface: Bool = false
 
     private let corner: CGFloat = 24
+
+    private var appLanguage: AppLanguage {
+        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
+    }
 
     var body: some View {
         Button {
@@ -18,7 +23,7 @@ struct DashboardFinancialSummaryCard: View {
         } label: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("Información financiera")
+                    Text(appLanguage == .english ? "Financial overview" : "Información financiera")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(lightSurface ? Color.black.opacity(0.48) : .white.opacity(0.52))
                     Spacer()
@@ -31,13 +36,13 @@ struct DashboardFinancialSummaryCard: View {
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundStyle(lightSurface ? Color.black.opacity(0.88) : .white)
 
-                Text("Valor stock · \(stats.periodDisplayLabel)")
+                Text("\(appLanguage == .english ? "Stock value" : "Valor stock") · \(stats.periodDisplayLabel)")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(lightSurface ? Color.black.opacity(0.42) : .white.opacity(0.45))
 
                 HStack(spacing: 14) {
-                    miniPill(title: "Vendidos", value: "\(stats.carsSold)")
-                    miniPill(title: "Beneficio", value: stats.salesProfit)
+                    miniPill(title: appLanguage == .english ? "Sold" : "Vendidos", value: "\(stats.carsSold)")
+                    miniPill(title: appLanguage == .english ? "Profit" : "Beneficio", value: stats.salesProfit)
                 }
                 .padding(.top, 4)
             }
@@ -77,16 +82,21 @@ struct DashboardFinancialSummaryCard: View {
 
 struct DashboardFinancialDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     @ObservedObject var stats: DealershipStatsViewModel
 
     private let corner: CGFloat = 20
 
+    private var appLanguage: AppLanguage {
+        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
+    }
+
     private var categories: [(icon: String, title: String, subtitle: String, amount: String, pct: String, color: Color)] {
         [
-            ("car.fill", "Stock activo", "\(stats.vehiclesInStock) unidades", stats.totalStockValue, stats.vehiclesStockBadge, .cyan),
-            ("dollarsign.circle.fill", "Beneficio ventas", stats.periodDisplayLabel, stats.salesProfit, "Neto", .mint),
-            ("person.2.fill", "Comisiones", stats.commissionsSubtitle, stats.commercialCommissions, "Comercial", .orange),
-            ("chart.line.uptrend.xyaxis", "Ingresos concesión", stats.totalEarningsSubtitle, stats.totalDealershipEarnings, "Total", .purple),
+            ("car.fill", appLanguage == .english ? "Active stock" : "Stock activo", "\(stats.vehiclesInStock) \(appLanguage == .english ? "units" : "unidades")", stats.totalStockValue, stats.vehiclesStockBadge, .cyan),
+            ("dollarsign.circle.fill", appLanguage == .english ? "Sales profit" : "Beneficio ventas", stats.periodDisplayLabel, stats.salesProfit, appLanguage == .english ? "Net" : "Neto", .mint),
+            ("person.2.fill", appLanguage == .english ? "Commissions" : "Comisiones", stats.commissionsSubtitle, stats.commercialCommissions, appLanguage == .english ? "Sales" : "Comercial", .orange),
+            ("chart.line.uptrend.xyaxis", appLanguage == .english ? "Store revenue" : "Ingresos concesión", stats.totalEarningsSubtitle, stats.totalDealershipEarnings, appLanguage == .english ? "Total" : "Total", .purple),
         ]
     }
 
@@ -95,7 +105,7 @@ struct DashboardFinancialDetailSheet: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Resumen del periodo")
+                        Text(appLanguage == .english ? "Period summary" : "Resumen del periodo")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(.white.opacity(0.5))
                         Text(stats.totalStockValue)
@@ -108,7 +118,7 @@ struct DashboardFinancialDetailSheet: View {
                         DashboardChromeCardBackground(cornerRadius: corner)
                     }
 
-                    Text("Por categoría")
+                    Text(appLanguage == .english ? "By category" : "Por categoría")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
 
@@ -136,7 +146,7 @@ struct DashboardFinancialDetailSheet: View {
                 .padding(.bottom, 28)
             }
             .background(Color.black.ignoresSafeArea())
-            .navigationTitle("Finanzas")
+            .navigationTitle(appLanguage == .english ? "Finances" : "Finanzas")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.black, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)

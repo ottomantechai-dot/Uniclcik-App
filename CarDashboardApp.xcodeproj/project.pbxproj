@@ -95,26 +95,29 @@
 		AA000096 /* WaveformDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000096 /* WaveformDemoView.swift */; };
 		AA000097 /* VieraChatRichContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000097 /* VieraChatRichContent.swift */; };
 		AA000098 /* CoordinatorTaskPushActionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000098 /* CoordinatorTaskPushActionHandler.swift */; };
+		AA000099 /* LookModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000099 /* LookModel.swift */; };
+		AA000100 /* ClosetDetailAndLooksViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000100 /* ClosetDetailAndLooksViews.swift */; };
 		AA000101 /* TeamDirectVoiceStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000101 /* TeamDirectVoiceStorage.swift */; };
 		AA000102 /* VoiceMessageWaveformExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000102 /* VoiceMessageWaveformExtractor.swift */; };
 		AA000104 /* VehiclesInsertColumnMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000104 /* VehiclesInsertColumnMap.swift */; };
 		AA000106 /* VehicleAppListingPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000106 /* VehicleAppListingPayload.swift */; };
 		AA000107 /* MarketplaceStylizedLogos.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000107 /* MarketplaceStylizedLogos.swift */; };
 		AA000108 /* ClosetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000108 /* ClosetModels.swift */; };
+		AA000110 /* ClosetViewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000110 /* ClosetViewModels.swift */; };
+		AA000111 /* ClosetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000111 /* ClosetViews.swift */; };
 		AA000112 /* GeminiService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000112 /* GeminiService.swift */; };
 		AA000113 /* ImageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000113 /* ImageStore.swift */; };
 		AA000114 /* ClosetItemModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000114 /* ClosetItemModel.swift */; };
-		AA000099 /* LookModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000099 /* LookModel.swift */; };
 		AA000117 /* ColorPaletteExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000117 /* ColorPaletteExtractor.swift */; };
-		AA000100 /* ClosetDetailAndLooksViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000100 /* ClosetDetailAndLooksViews.swift */; };
-		AA000110 /* ClosetViewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000110 /* ClosetViewModels.swift */; };
-		AA000111 /* ClosetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000111 /* ClosetViews.swift */; };
-		AA000119 /* FaceSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000119 /* FaceSetupView.swift */; };
 		AA000118 /* ClosetPhotoExports.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000118 /* ClosetPhotoExports.swift */; };
+		AA000119 /* FaceSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000119 /* FaceSetupView.swift */; };
 		AA000121 /* Shoe360VideoFrameExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000121 /* Shoe360VideoFrameExtractor.swift */; };
 		AA000122 /* Shoe360ProViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000122 /* Shoe360ProViews.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
 		A1B2C3D401234568 /* ImageCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheService.swift; sourceTree = "<group>"; };
-		AB000000 /* CarDashboardApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CarDashboardApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB000000 /* Upsoled.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Upsoled.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB000001 /* CarDashboardAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarDashboardAppApp.swift; sourceTree = "<group>"; };
 		AB000002 /* Car.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Car.swift; sourceTree = "<group>"; };
 		AB000003 /* CarMetric.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarMetric.swift; sourceTree = "<group>"; };
@@ -205,24 +208,27 @@
 		AB000096 /* WaveformDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformDemoView.swift; sourceTree = "<group>"; };
 		AB000097 /* VieraChatRichContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VieraChatRichContent.swift; sourceTree = "<group>"; };
 		AB000098 /* CoordinatorTaskPushActionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoordinatorTaskPushActionHandler.swift; sourceTree = "<group>"; };
+		AB000099 /* LookModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LookModel.swift; sourceTree = "<group>"; };
+		AB000100 /* ClosetDetailAndLooksViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetDetailAndLooksViews.swift; sourceTree = "<group>"; };
 		AB000101 /* TeamDirectVoiceStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamDirectVoiceStorage.swift; sourceTree = "<group>"; };
 		AB000102 /* VoiceMessageWaveformExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageWaveformExtractor.swift; sourceTree = "<group>"; };
 		AB000104 /* VehiclesInsertColumnMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehiclesInsertColumnMap.swift; sourceTree = "<group>"; };
 		AB000106 /* VehicleAppListingPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleAppListingPayload.swift; sourceTree = "<group>"; };
 		AB000107 /* MarketplaceStylizedLogos.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketplaceStylizedLogos.swift; sourceTree = "<group>"; };
 		AB000108 /* ClosetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetModels.swift; sourceTree = "<group>"; };
+		AB000110 /* ClosetViewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetViewModels.swift; sourceTree = "<group>"; };
+		AB000111 /* ClosetViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetViews.swift; sourceTree = "<group>"; };
 		AB000112 /* GeminiService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiService.swift; sourceTree = "<group>"; };
 		AB000113 /* ImageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStore.swift; sourceTree = "<group>"; };
 		AB000114 /* ClosetItemModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetItemModel.swift; sourceTree = "<group>"; };
-		AB000099 /* LookModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LookModel.swift; sourceTree = "<group>"; };
 		AB000117 /* ColorPaletteExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorPaletteExtractor.swift; sourceTree = "<group>"; };
-		AB000100 /* ClosetDetailAndLooksViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetDetailAndLooksViews.swift; sourceTree = "<group>"; };
-		AB000110 /* ClosetViewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetViewModels.swift; sourceTree = "<group>"; };
-		AB000111 /* ClosetViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetViews.swift; sourceTree = "<group>"; };
-		AB000119 /* FaceSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceSetupView.swift; sourceTree = "<group>"; };
 		AB000118 /* ClosetPhotoExports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetPhotoExports.swift; sourceTree = "<group>"; };
+		AB000119 /* FaceSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceSetupView.swift; sourceTree = "<group>"; };
 		AB000121 /* Shoe360VideoFrameExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shoe360VideoFrameExtractor.swift; sourceTree = "<group>"; };
 		AB000122 /* Shoe360ProViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shoe360ProViews.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
 		AC000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -405,7 +411,7 @@
 		AD000009 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				AB000000 /* CarDashboardApp.app */,
+				AB000000 /* Upsoled.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -433,9 +439,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		AE000001 /* CarDashboardApp */ = {
+		AE000001 /* Upsoled */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = AF000003 /* Build configuration list for PBXNativeTarget "CarDashboardApp" */;
+			buildConfigurationList = AF000003 /* Build configuration list for PBXNativeTarget "Upsoled" */;
 			buildPhases = (
 				AE000002 /* Sources */,
 				AC000001 /* Frameworks */,
@@ -445,12 +451,12 @@
 			);
 			dependencies = (
 			);
-			name = CarDashboardApp;
+			name = Upsoled;
 			packageProductDependencies = (
 				AG000002 /* Supabase */,
 			);
-			productName = CarDashboardApp;
-			productReference = AB000000 /* CarDashboardApp.app */;
+			productName = Upsoled;
+			productReference = AB000000 /* Upsoled.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -484,7 +490,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				AE000001 /* CarDashboardApp */,
+				AE000001 /* Upsoled */,
 			);
 		};
 /* End PBXProject section */
@@ -746,13 +752,19 @@
 				CODE_SIGN_ENTITLEMENTS = CarDashboardApp/CarDashboardApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10;
-				DEVELOPMENT_TEAM = D92F49ZXPK;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = T6PX988URP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Upsoled;
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Para crear en tu calendario el evento del plazo de la tarea cuando pulses «Aceptar» en la notificación.";
+				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Para añadir el plazo de la tarea a tu calendario (solo crear eventos, sin leer tus citas).";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Para hacer fotos de outfits y prendas que quieras añadir a tu clóset.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Usamos tu ubicación para mostrarte en el mapa del equipo y compartirla con otros usuarios de la plataforma.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Used to visualize your voice in real time, dictation, and team voice features. Usamos el micrófono para mostrar tu voz en tiempo real, dictado y mensajes de voz.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Para guardar en tu carrete los avatares y lookbooks generados con IA.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Para elegir fotos del vehículo y subirlas a tu inventario en Supabase Storage.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Transcribimos lo que dices para escribir tareas y mensajes al equipo sin teclear.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -761,9 +773,9 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.upsoled.app;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.upsoledd.app;
+				PRODUCT_NAME = Upsoled;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -780,13 +792,19 @@
 				CODE_SIGN_ENTITLEMENTS = "CarDashboardApp/CarDashboardApp-Release.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10;
-				DEVELOPMENT_TEAM = D92F49ZXPK;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = T6PX988URP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Upsoled;
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Para crear en tu calendario el evento del plazo de la tarea cuando pulses «Aceptar» en la notificación.";
+				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Para añadir el plazo de la tarea a tu calendario (solo crear eventos, sin leer tus citas).";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Para hacer fotos de outfits y prendas que quieras añadir a tu clóset.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Usamos tu ubicación para mostrarte en el mapa del equipo y compartirla con otros usuarios de la plataforma.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Used to visualize your voice in real time, dictation, and team voice features. Usamos el micrófono para mostrar tu voz en tiempo real, dictado y mensajes de voz.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Para guardar en tu carrete los avatares y lookbooks generados con IA.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Para elegir fotos del vehículo y subirlas a tu inventario en Supabase Storage.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Transcribimos lo que dices para escribir tareas y mensajes al equipo sin teclear.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -795,9 +813,9 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.upsoled.app;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.upsoledd.app;
+				PRODUCT_NAME = Upsoled;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -817,7 +835,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		AF000003 /* Build configuration list for PBXNativeTarget "CarDashboardApp" */ = {
+		AF000003 /* Build configuration list for PBXNativeTarget "Upsoled" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AF000002D /* Debug */,

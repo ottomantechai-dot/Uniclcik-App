@@ -16,6 +16,7 @@ private let upsoledAccentBright = Color(red: 0.45, green: 0.78, blue: 1.0)
 struct LoginView: View {
     @ObservedObject var auth: AuthViewModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
 
     @State private var phase: AuthPhase = .welcome
     @State private var email = ""
@@ -36,6 +37,10 @@ struct LoginView: View {
         horizontalSizeClass == .regular ? 420 : 360
     }
 
+    private var appLanguage: AppLanguage {
+        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
+    }
+
     var body: some View {
         ZStack {
             authBackground
@@ -53,15 +58,15 @@ struct LoginView: View {
         .sheet(isPresented: $showResetSheet) {
             resetPasswordSheet
         }
-        .alert("Ayuda", isPresented: $showHelpAlert) {
-            Button("OK", role: .cancel) {}
+        .alert(L10n.tr("auth.helpTitle", lang: appLanguage), isPresented: $showHelpAlert) {
+            Button(L10n.tr("common.ok", lang: appLanguage), role: .cancel) {}
         } message: {
-            Text("Próximamente podrás obtener ayuda desde aquí.")
+            Text(L10n.tr("auth.helpBody", lang: appLanguage))
         }
-        .alert("Próximamente", isPresented: $showComingSoonAlert) {
-            Button("OK", role: .cancel) {}
+        .alert(L10n.tr("auth.comingSoonTitle", lang: appLanguage), isPresented: $showComingSoonAlert) {
+            Button(L10n.tr("common.ok", lang: appLanguage), role: .cancel) {}
         } message: {
-            Text("Esta opción estará disponible en una próxima actualización.")
+            Text(L10n.tr("auth.comingSoonBody", lang: appLanguage))
         }
     }
 
@@ -240,11 +245,11 @@ struct LoginView: View {
                         .fill(upsoledAccentBright)
                         .frame(width: 4, height: 22)
                         .shadow(color: upsoledAccentBright.opacity(0.6), radius: 6, x: 0, y: 0)
-                    Text("Iniciar sesión")
+                    Text(L10n.tr("auth.signInTitle", lang: appLanguage))
                         .font(.system(size: 23, weight: .bold))
                         .foregroundStyle(.white)
                 }
-                Text("Accede a tu cuenta de UPSOLED.")
+                Text(L10n.tr("auth.signInSubtitle", lang: appLanguage))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.white.opacity(0.58))
                     .padding(.leading, 14)
@@ -255,7 +260,7 @@ struct LoginView: View {
             VStack(spacing: 10) {
                 // Email
                 authGlassField(icon: "envelope.fill") {
-                TextField("", text: $email, prompt: Text("Correo electrónico").foregroundStyle(.white.opacity(0.40)))
+                TextField("", text: $email, prompt: Text(L10n.tr("auth.email", lang: appLanguage)).foregroundStyle(.white.opacity(0.40)))
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
@@ -279,9 +284,9 @@ struct LoginView: View {
             ) {
                 Group {
                     if showPassword {
-                        TextField("", text: $password, prompt: Text("Contraseña").foregroundStyle(.white.opacity(0.40)))
+                        TextField("", text: $password, prompt: Text(L10n.tr("auth.password", lang: appLanguage)).foregroundStyle(.white.opacity(0.40)))
                     } else {
-                        SecureField("", text: $password, prompt: Text("Contraseña").foregroundStyle(.white.opacity(0.40)))
+                        SecureField("", text: $password, prompt: Text(L10n.tr("auth.password", lang: appLanguage)).foregroundStyle(.white.opacity(0.40)))
                     }
                 }
                 .textContentType(.password)
@@ -299,7 +304,7 @@ struct LoginView: View {
             }
 
             // Olvidaste contraseña
-            Button("¿Olvidaste tu contraseña?") {
+            Button(L10n.tr("auth.forgot", lang: appLanguage)) {
                 resetEmail = email
                 showResetSheet = true
             }
@@ -320,7 +325,7 @@ struct LoginView: View {
                         ProgressView().tint(.white)
                     }
                     Spacer(minLength: 0)
-                    Text("Iniciar sesión")
+                    Text(L10n.tr("auth.signIn", lang: appLanguage))
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(.white)
                     Spacer(minLength: 0)
@@ -381,18 +386,18 @@ struct LoginView: View {
                 .padding(.top, 2)
 
             // Social (Apple + Google como en la referencia)
-            socialAuthButton(icon: "applelogo", title: "Continuar con Apple", style: .dark) {
+            socialAuthButton(icon: "applelogo", title: L10n.tr("auth.continueApple", lang: appLanguage), style: .dark) {
                 showComingSoonAlert = true
             }
-            socialAuthButton(icon: "g.circle.fill", title: "Continuar con Google", style: .light) {
+            socialAuthButton(icon: "g.circle.fill", title: L10n.tr("auth.continueGoogle", lang: appLanguage), style: .light) {
                 showComingSoonAlert = true
             }
 
             // Link a signup
             HStack(spacing: 5) {
-                Text("¿No tienes cuenta?")
+                Text(L10n.tr("auth.noAccount", lang: appLanguage))
                     .foregroundStyle(.white.opacity(0.60))
-                Button("Regístrate") {
+                Button(L10n.tr("auth.signUp", lang: appLanguage)) {
                     phase = .signUp
                     auth.lastErrorMessage = nil
                 }
@@ -550,7 +555,7 @@ struct LoginView: View {
                         .fill(upsoledAccentBright)
                         .frame(width: 4, height: 22)
                         .shadow(color: upsoledAccentBright.opacity(0.6), radius: 6, x: 0, y: 0)
-                    Text(phase == .signIn ? "Bienvenido de nuevo" : "Crea tu cuenta")
+                    Text(phase == .signIn ? L10n.tr("auth.welcomeBack", lang: appLanguage) : L10n.tr("auth.createYourAccount", lang: appLanguage))
                         .font(.system(size: 26, weight: .heavy))
                         .foregroundStyle(.white)
                         .tracking(-0.4)
@@ -558,27 +563,12 @@ struct LoginView: View {
                 }
 
                 Group {
-                    if phase == .signIn {
-                        (
-                            Text("Accede a tu ")
-                                .foregroundStyle(.white.opacity(0.62))
-                            + Text("imperio de sneakers")
-                                .foregroundStyle(upsoledAccentBright)
-                                .fontWeight(.bold)
-                            + Text(".")
-                                .foregroundStyle(.white.opacity(0.62))
-                        )
-                    } else {
-                        (
-                            Text("Empieza a construir ")
-                                .foregroundStyle(.white.opacity(0.62))
-                            + Text("tu colección")
-                                .foregroundStyle(upsoledAccentBright)
-                                .fontWeight(.bold)
-                            + Text(".")
-                                .foregroundStyle(.white.opacity(0.62))
-                        )
-                    }
+                    Text(
+                        phase == .signIn
+                            ? L10n.tr("auth.signInToEmpire", lang: appLanguage)
+                            : L10n.tr("auth.startCollection", lang: appLanguage)
+                    )
+                    .foregroundStyle(.white.opacity(0.62))
                 }
                 .font(.system(size: 14, weight: .medium))
                 .multilineTextAlignment(.center)
@@ -593,7 +583,7 @@ struct LoginView: View {
             // Grupo de campos
             VStack(spacing: 10) {
                 authGlassField(icon: "envelope.fill") {
-                    TextField("", text: $email, prompt: Text("Correo electrónico").foregroundStyle(.white.opacity(0.40)))
+                    TextField("", text: $email, prompt: Text(L10n.tr("auth.email", lang: appLanguage)).foregroundStyle(.white.opacity(0.40)))
                         .textContentType(.emailAddress)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
@@ -616,9 +606,9 @@ struct LoginView: View {
                 ) {
                     Group {
                         if showPassword {
-                            TextField("", text: $password, prompt: Text("Contraseña").foregroundStyle(.white.opacity(0.40)))
+                            TextField("", text: $password, prompt: Text(L10n.tr("auth.password", lang: appLanguage)).foregroundStyle(.white.opacity(0.40)))
                         } else {
-                            SecureField("", text: $password, prompt: Text("Contraseña").foregroundStyle(.white.opacity(0.40)))
+                            SecureField("", text: $password, prompt: Text(L10n.tr("auth.password", lang: appLanguage)).foregroundStyle(.white.opacity(0.40)))
                         }
                     }
                     .textContentType(phase == .signUp ? .newPassword : .password)
@@ -634,7 +624,7 @@ struct LoginView: View {
             }
 
             if phase == .signIn {
-                Button("¿Olvidaste tu contraseña?") {
+                Button(L10n.tr("auth.forgot", lang: appLanguage)) {
                     resetEmail = email
                     showResetSheet = true
                 }
@@ -659,7 +649,7 @@ struct LoginView: View {
                         ProgressView().tint(.white)
                     }
                     Spacer(minLength: 0)
-                    Text(phase == .signIn ? "Iniciar sesión" : "Crear cuenta")
+                    Text(phase == .signIn ? L10n.tr("auth.signIn", lang: appLanguage) : L10n.tr("auth.createAccount", lang: appLanguage))
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(.white)
                     Spacer(minLength: 0)
@@ -717,18 +707,18 @@ struct LoginView: View {
 
             authOrSeparator
 
-            socialAuthButton(icon: "applelogo", title: "Continuar con Apple", style: .dark) {
+            socialAuthButton(icon: "applelogo", title: L10n.tr("auth.continueApple", lang: appLanguage), style: .dark) {
                 showComingSoonAlert = true
             }
 
-            socialAuthButton(icon: "g.circle.fill", title: "Continuar con Google", style: .light) {
+            socialAuthButton(icon: "g.circle.fill", title: L10n.tr("auth.continueGoogle", lang: appLanguage), style: .light) {
                 showComingSoonAlert = true
             }
 
             HStack(spacing: 4) {
-                Text(phase == .signIn ? "¿No tienes cuenta?" : "¿Ya tienes cuenta?")
+                Text(phase == .signIn ? L10n.tr("auth.noAccount", lang: appLanguage) : L10n.tr("auth.alreadyHaveAccount", lang: appLanguage))
                     .foregroundStyle(.white.opacity(0.55))
-                Button(phase == .signIn ? "Regístrate" : "Inicia sesión") {
+                Button(phase == .signIn ? L10n.tr("auth.signUp", lang: appLanguage) : L10n.tr("auth.signIn", lang: appLanguage)) {
                     phase = phase == .signIn ? .signUp : .signIn
                     auth.lastErrorMessage = nil
                 }
@@ -745,10 +735,10 @@ struct LoginView: View {
     private var authHighlightedSubtitle: some View {
         Group {
             if phase == .signIn {
-                Text("Inicia sesión para acceder a tu \(Text("imperio de sneakers").foregroundStyle(upsoledAccentBright)).")
+                Text(L10n.tr("auth.signInToEmpire", lang: appLanguage))
                     .foregroundStyle(.white.opacity(0.62))
             } else {
-                Text("Regístrate con tu correo para guardar tu colección y sincronizar tus datos.")
+                Text(L10n.tr("auth.startCollection", lang: appLanguage))
                     .foregroundStyle(.white.opacity(0.62))
             }
         }
@@ -768,7 +758,7 @@ struct LoginView: View {
     private var authOrSeparator: some View {
         HStack(spacing: 10) {
             Rectangle().fill(Color.white.opacity(0.14)).frame(height: 1)
-            Text("o continúa con")
+            Text(L10n.tr("auth.orContinue", lang: appLanguage))
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Color.white.opacity(0.42))
             Rectangle().fill(Color.white.opacity(0.14)).frame(height: 1)
@@ -848,7 +838,7 @@ struct LoginView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Correo", text: $resetEmail)
+                    TextField(L10n.tr("auth.email", lang: appLanguage), text: $resetEmail)
                         .textContentType(.emailAddress)
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
@@ -859,17 +849,17 @@ struct LoginView: View {
                     }
                 }
             }
-            .navigationTitle("Recuperar acceso")
+            .navigationTitle(L10n.tr("auth.resetAccess", lang: appLanguage))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cerrar") {
+                    Button(L10n.tr("common.close", lang: appLanguage)) {
                         showResetSheet = false
                         resetInfo = nil
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Enviar") {
+                    Button(L10n.tr("common.send", lang: appLanguage)) {
                         Task {
                             resetInfo = await auth.resetPassword(email: resetEmail)
                         }

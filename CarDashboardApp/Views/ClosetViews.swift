@@ -95,6 +95,8 @@ extension UIImage {
 struct ClosetView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var addFlow: AddToClosetFlowViewModel
+    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
+    private var appLanguage: AppLanguage { AppLanguage(rawValue: appLanguageRaw) ?? .spanish }
     @Query(sort: \ClosetItem.createdAt, order: .reverse) private var closetItems: [ClosetItem]
     @Query(sort: \Look.createdAt, order: .reverse) private var closetLooks: [Look]
 
@@ -177,7 +179,7 @@ struct ClosetView: View {
                     }
 
                     if closetItems.isEmpty {
-                        Text("Tus prendas guardadas aparecerán aquí. Pulsa + para analizar fotos con IA.")
+                        Text(L10n.tr("closet.empty", lang: appLanguage))
                             .font(.system(size: 14))
                             .foregroundStyle(ClosetFlowPalette.secondaryText)
                             .padding(.horizontal, 16)
@@ -479,7 +481,7 @@ struct ClosetView: View {
     /// Fila superior: título y entrada/salida del modo selección.
     private var closetHeaderRow: some View {
         HStack(alignment: .center, spacing: 12) {
-            Text("Mi clóset")
+            Text(L10n.tr("closet.title", lang: appLanguage))
                 .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(Color.black)
 
@@ -1277,6 +1279,11 @@ struct AddToClosetPipelineView: View {
 
     @State private var savingAll = false
     @State private var editingPieceId: UUID?
+    /// Caché de estimación de precio por pieza (resultado de OpenAI).
+    @State private var priceEstimates: [UUID: PieceMarketPrice] = [:]
+    /// IDs de piezas con consulta en curso.
+    @State private var priceLookupBusy: Set<UUID> = []
+    @AppStorage("openaiAPIKey") private var openaiAPIKey: String = ""
     @State private var editNameDraft = ""
     @State private var categoryPickerPieceID: UUID?
     @State private var shoe360DraftSheetPieceID: Shoe360DraftSheetPieceID?
@@ -1655,6 +1662,9 @@ struct AddToClosetPipelineView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(ClosetFlowPalette.destructive.opacity(0.92))
             }
+
+            // Estimación de precio de mercado con OpenAI
+            priceEstimateRow(piece)
         }
         .padding(12)
         .background {
@@ -1690,6 +1700,241 @@ struct AddToClosetPipelineView: View {
 
     private func prettifyBlocked(_ piece: ClosetDraftPiece) -> Bool {
         prettifyBusy.contains(piece.id) || flow.generatingPieceIDs.contains(piece.id)
+    }
+
+    // MARK: - Estimación de precio con OpenAI
+
+    @ViewBuilder
+    private func priceEstimateRow(_ piece: ClosetDraftPiece) -> some View {
+        let isBusy = priceLookupBusy.contains(piece.id)
+        let canQuery = !piece.name.trimmingCharacters(in: .whitespaces).isEmpty
+
+        if let est = priceEstimates[piece.id] {
+            // Resultado: card más rica con gráfico + cambio %
+            priceResultCard(est, piece: piece, isBusy: isBusy)
+        } else if isBusy {
+            // Loading
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(Color(red: 0.20, green: 0.45, blue: 0.85))
+                Text("Consultando precio de mercado…")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.60))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+            .background {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color(red: 0.95, green: 0.97, blue: 1.0))
+            }
+        } else {
+            // CTA inicial
+            Button {
+                Task { await runPriceLookup(for: piece) }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 13, weight: .bold))
+                    Text("Consultar precio de mercado")
+                        .font(.system(size: 13, weight: .bold))
+                    Spacer(minLength: 0)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundStyle(.white)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .background {
+                    Capsule(style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.30, green: 0.55, blue: 0.95),
+                                    Color(red: 0.14, green: 0.36, blue: 0.85),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+                .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.30), radius: 8, y: 3)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canQuery)
+            .opacity(canQuery ? 1 : 0.45)
+        }
+    }
+
+    private func priceResultCard(_ est: PieceMarketPrice, piece: ClosetDraftPiece, isBusy: Bool) -> some View {
+        let tint: Color = est.isUp
+            ? Color(red: 0.20, green: 0.70, blue: 0.45)
+            : Color(red: 0.92, green: 0.30, blue: 0.30)
+
+        return VStack(spacing: 14) {
+            // Header: label + refresh
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(red: 0.30, green: 0.55, blue: 0.95), Color(red: 0.14, green: 0.36, blue: 0.85)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Text("PRECIO DE MERCADO")
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(1.0)
+                    .foregroundStyle(Color.black.opacity(0.55))
+                Spacer(minLength: 0)
+                Button {
+                    Task { await runPriceLookup(for: piece) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
+                        .frame(width: 26, height: 26)
+                        .background(Circle().fill(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.10)))
+                }
+                .buttonStyle(.plain)
+                .disabled(isBusy)
+            }
+
+            // Precio principal + pill de cambio
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(formatEUR(est.avg))
+                    .font(.system(size: 32, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.92))
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+
+                HStack(spacing: 3) {
+                    Image(systemName: est.isUp ? "arrow.up.right" : "arrow.down.right")
+                        .font(.system(size: 10, weight: .heavy))
+                    Text(String(format: "%@%.1f%%",
+                                est.isUp ? "+" : "",
+                                est.changePercent))
+                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                }
+                .foregroundStyle(tint)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background {
+                    Capsule().fill(tint.opacity(0.14))
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            // Sparkline grande (ancho completo)
+            PriceTrendSparkline(points: est.history, isUp: est.isUp)
+                .frame(height: 48)
+
+            // Eje: rango min – max abajo
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("MIN")
+                        .font(.system(size: 9, weight: .heavy))
+                        .tracking(0.5)
+                        .foregroundStyle(Color.black.opacity(0.40))
+                    Text(formatEUR(est.min))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.75))
+                }
+
+                Spacer()
+
+                VStack(spacing: 2) {
+                    Text("6 MESES")
+                        .font(.system(size: 9, weight: .heavy))
+                        .tracking(0.5)
+                        .foregroundStyle(Color.black.opacity(0.40))
+                    Text("Tendencia")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(tint)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("MAX")
+                        .font(.system(size: 9, weight: .heavy))
+                        .tracking(0.5)
+                        .foregroundStyle(Color.black.opacity(0.40))
+                    Text(formatEUR(est.max))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.75))
+                }
+            }
+            .padding(.top, 2)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white)
+                // Tinte del color de tendencia muy sutil en la esquina superior
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [tint.opacity(0.08), .clear],
+                            startPoint: .topTrailing,
+                            endPoint: .bottomLeading
+                        )
+                    )
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                tint.opacity(0.35),
+                                Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.15),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.2
+                    )
+            }
+            .shadow(color: tint.opacity(0.12), radius: 14, y: 5)
+            .shadow(color: Color.black.opacity(0.04), radius: 2, y: 1)
+        }
+    }
+
+    private func runPriceLookup(for piece: ClosetDraftPiece) async {
+        let query = [piece.brand, piece.name]
+            .compactMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
+            .joined(separator: " ")
+        guard !query.isEmpty else { return }
+
+        priceLookupBusy.insert(piece.id)
+        defer { priceLookupBusy.remove(piece.id) }
+
+        do {
+            let estimate = try await PieceMarketPrice.fetchFromOpenAI(
+                query: query,
+                category: piece.category?.displayName ?? "ropa",
+                apiKey: openaiAPIKey
+            )
+            await MainActor.run {
+                priceEstimates[piece.id] = estimate
+            }
+        } catch {
+            await MainActor.run {
+                flow.showToast("Precio: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func formatEUR(_ amount: Int) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.locale = Locale(identifier: "en_US")
+        f.maximumFractionDigits = 0
+        return "$" + (f.string(from: NSNumber(value: amount)) ?? "\(amount)")
     }
 
     private func thumb(for piece: ClosetDraftPiece) -> some View {
@@ -1838,5 +2083,269 @@ private struct ToastBannerModifier: ViewModifier {
 extension View {
     func toastOverlay(message: Binding<String?>) -> some View {
         modifier(ToastBannerModifier(message: message))
+    }
+}
+
+// MARK: - Estimación de precio de pieza (OpenAI)
+
+struct PieceMarketPrice {
+    let avg: Int
+    let min: Int
+    let max: Int
+    /// 6 puntos cronológicos (de más antiguo a más reciente), en EUR.
+    let history: [Double]
+
+    /// Cambio porcentual entre el primer y último punto del histórico.
+    var changePercent: Double {
+        guard history.count >= 2, let first = history.first, first > 0, let last = history.last else { return 0 }
+        return ((last - first) / first) * 100
+    }
+
+    /// `true` si la tendencia es alcista.
+    var isUp: Bool { changePercent >= 0 }
+
+    /// Envoltura del endpoint /v1/responses. Tiene `output_text` con la respuesta final.
+    private struct ResponsesEnvelope: Decodable {
+        let output_text: String?
+        struct OutputItem: Decodable {
+            let type: String?
+            let content: [ContentBlock]?
+        }
+        struct ContentBlock: Decodable {
+            let type: String?
+            let text: String?
+        }
+        let output: [OutputItem]?
+
+        /// Devuelve el texto final, prefiriendo `output_text` y cayendo a recorrer `output`.
+        var finalText: String? {
+            if let t = output_text, !t.isEmpty { return t }
+            return output?
+                .flatMap { $0.content ?? [] }
+                .compactMap { $0.text }
+                .joined(separator: "\n")
+                .nilIfEmpty
+        }
+    }
+
+    private struct OAPriceJSON: Decodable {
+        let avg_eur: Double
+        let min_eur: Double
+        let max_eur: Double
+        let history_eur: [Double]?
+    }
+
+    /// Lee la API key desde el mismo sitio que el resto del proyecto:
+    /// `OPENAI_API_KEY` del Info.plist (cargado del xcconfig). Cae a
+    /// @AppStorage("openaiAPIKey") como respaldo si no está en el plist.
+    static var resolvedAPIKey: String? {
+        if let raw = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String {
+            let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty { return t }
+        }
+        let stored = UserDefaults.standard.string(forKey: "openaiAPIKey") ?? ""
+        return stored.isEmpty ? nil : stored
+    }
+
+    private static var resolvedModel: String {
+        if let m = Bundle.main.object(forInfoDictionaryKey: "OPENAI_MODEL") as? String {
+            let t = m.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty { return t }
+        }
+        return "gpt-4o-mini"
+    }
+
+    /// Llama a OpenAI Chat Completions con JSON mode para estimar el precio
+    /// medio de la pieza basándose en marca + nombre + categoría.
+    /// El parámetro `apiKey` se ignora si está vacío y hay key en Info.plist.
+    static func fetchFromOpenAI(query: String, category: String, apiKey: String = "") async throws -> PieceMarketPrice {
+        let effectiveKey: String
+        if let k = resolvedAPIKey {
+            effectiveKey = k
+        } else if !apiKey.isEmpty {
+            effectiveKey = apiKey
+        } else {
+            throw NSError(domain: "PieceMarketPrice", code: 401, userInfo: [
+                NSLocalizedDescriptionKey: "Falta OPENAI_API_KEY en DeveloperSettings.local.xcconfig"
+            ])
+        }
+
+        guard effectiveKey.hasPrefix("sk-") else {
+            throw NSError(domain: "PieceMarketPrice", code: 400, userInfo: [
+                NSLocalizedDescriptionKey: "Key inválida (debe empezar con sk-)"
+            ])
+        }
+
+        // Endpoint Responses con web_search activado → busca en internet
+        // (StockX, GOAT, eBay) antes de responder.
+        let url = URL(string: "https://api.openai.com/v1/responses")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(effectiveKey)", forHTTPHeaderField: "Authorization")
+        // Timeout generoso porque web_search añade 2-6s
+        req.timeoutInterval = 30
+
+        let instructions = """
+        Eres un analista de precios de reventa de sneakers y moda. Te pido el \
+        precio actual real en USD de la prenda/calzado indicado, usando web \
+        search en StockX, GOAT, eBay y otros marketplaces. Devuelve \
+        EXCLUSIVAMENTE un objeto JSON válido, sin markdown ni explicación, \
+        con este shape exacto:
+        {"avg_eur": number, "min_eur": number, "max_eur": number, "history_eur": [number, number, number, number, number, number]}
+        Aunque los campos se llamen `_eur`, los VALORES deben estar en USD. \
+        history_eur son 6 puntos del más antiguo al más reciente (mes -5 al \
+        actual). Si no encuentras datos exactos, usa la mejor estimación \
+        razonable basada en lo que sí encuentres y categoría.
+        """
+        let userPrompt = "Categoría: \(category)\nPrenda: \(query)"
+
+        let body: [String: Any] = [
+            "model": Self.resolvedModel,
+            "input": [
+                ["role": "system", "content": instructions],
+                ["role": "user", "content": userPrompt]
+            ],
+            "tools": [
+                ["type": "web_search"]
+            ],
+            "tool_choice": "auto",
+            "temperature": 0.3
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let bodyStr = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "OpenAI", code: http.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: "HTTP \(http.statusCode) · \(bodyStr.prefix(160))"
+            ])
+        }
+
+        let envelope = try JSONDecoder().decode(ResponsesEnvelope.self, from: data)
+        guard let rawText = envelope.finalText else {
+            throw NSError(domain: "OpenAI", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "Respuesta vacía"
+            ])
+        }
+
+        // El modelo puede devolver el JSON envuelto en ```json ... ``` o con texto
+        // alrededor. Extraemos el bloque {...}.
+        guard let jsonRange = extractFirstJSONObject(in: rawText),
+              let jsonData = String(rawText[jsonRange]).data(using: .utf8) else {
+            throw NSError(domain: "OpenAI", code: -2, userInfo: [
+                NSLocalizedDescriptionKey: "No se pudo extraer JSON · \(rawText.prefix(120))"
+            ])
+        }
+
+        let parsed = try JSONDecoder().decode(OAPriceJSON.self, from: jsonData)
+
+        // Sanitiza el histórico: si llega vacío o con menos de 2 puntos, rellena con el avg
+        let avgValue = parsed.avg_eur
+        let history: [Double] = {
+            let h = parsed.history_eur ?? []
+            if h.count >= 2 { return h }
+            return Array(repeating: avgValue, count: 6)
+        }()
+
+        return PieceMarketPrice(
+            avg: Int(parsed.avg_eur.rounded()),
+            min: Int(parsed.min_eur.rounded()),
+            max: Int(parsed.max_eur.rounded()),
+            history: history
+        )
+    }
+
+    /// Encuentra el primer objeto JSON balanceado dentro de un texto y devuelve
+    /// su rango. Útil cuando el modelo añade prosa o bloques markdown alrededor.
+    private static func extractFirstJSONObject(in text: String) -> Range<String.Index>? {
+        guard let start = text.firstIndex(of: "{") else { return nil }
+        var depth = 0
+        var index = start
+        while index < text.endIndex {
+            let c = text[index]
+            if c == "{" { depth += 1 }
+            else if c == "}" {
+                depth -= 1
+                if depth == 0 {
+                    let end = text.index(after: index)
+                    return start..<end
+                }
+            }
+            index = text.index(after: index)
+        }
+        return nil
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+// MARK: - Mini gráfico de tendencia
+
+/// Sparkline para visualizar la evolución del precio (6 puntos).
+struct PriceTrendSparkline: View {
+    let points: [Double]
+    let isUp: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            let normalized = normalize(points)
+            let stepX = normalized.count > 1 ? geo.size.width / CGFloat(normalized.count - 1) : geo.size.width
+            let tint = isUp
+                ? Color(red: 0.20, green: 0.70, blue: 0.45)
+                : Color(red: 0.92, green: 0.30, blue: 0.30)
+
+            ZStack {
+                // Área bajo la curva
+                Path { p in
+                    guard let first = normalized.first else { return }
+                    p.move(to: CGPoint(x: 0, y: geo.size.height))
+                    p.addLine(to: CGPoint(x: 0, y: first * geo.size.height))
+                    for (i, v) in normalized.enumerated().dropFirst() {
+                        p.addLine(to: CGPoint(x: stepX * CGFloat(i), y: v * geo.size.height))
+                    }
+                    p.addLine(to: CGPoint(x: geo.size.width, y: geo.size.height))
+                    p.closeSubpath()
+                }
+                .fill(
+                    LinearGradient(
+                        colors: [tint.opacity(0.30), tint.opacity(0.04)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+                // Línea
+                Path { p in
+                    guard let first = normalized.first else { return }
+                    p.move(to: CGPoint(x: 0, y: first * geo.size.height))
+                    for (i, v) in normalized.enumerated().dropFirst() {
+                        p.addLine(to: CGPoint(x: stepX * CGFloat(i), y: v * geo.size.height))
+                    }
+                }
+                .stroke(tint, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+
+                // Punto final destacado
+                if let last = normalized.last {
+                    Circle()
+                        .fill(tint)
+                        .frame(width: 5, height: 5)
+                        .overlay(Circle().strokeBorder(Color.white, lineWidth: 1.2))
+                        .position(x: geo.size.width, y: last * geo.size.height)
+                }
+            }
+        }
+    }
+
+    /// Normaliza al rango [0, 1] invertido para que valores ALTOS queden ARRIBA (y=0 es arriba en SwiftUI).
+    private func normalize(_ values: [Double]) -> [CGFloat] {
+        guard let minV = values.min(), let maxV = values.max() else { return [] }
+        let range = max(0.0001, maxV - minV)
+        return values.map { CGFloat(1 - (($0 - minV) / range)) }
     }
 }

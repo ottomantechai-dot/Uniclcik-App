@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 struct DashboardView: View {
+    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     @EnvironmentObject private var auth: AuthViewModel
     @EnvironmentObject private var carsVM: CarsViewModel
     @EnvironmentObject private var tabRouter: MainTabRouter
@@ -11,6 +12,11 @@ struct DashboardView: View {
     @EnvironmentObject private var chatNav: ChatNavigationCoordinator
     @StateObject private var locationHub = DashboardLocationHub()
     @State private var didAppear = false
+    @State private var showPriceCompareSheet = false
+
+    private var appLanguage: AppLanguage {
+        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
+    }
 
     var body: some View {
         ZStack {
@@ -25,6 +31,12 @@ struct DashboardView: View {
 
                     DashboardStatsOverview(stats: vm)
                         .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.15))
+
+                    DashboardPriceCompareCard(
+                        lang: appLanguage,
+                        onTap: { showPriceCompareSheet = true }
+                    )
+                    .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.20))
 
                     DashboardLatestSaleSection(cars: carsVM.cars)
                         .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.25))
@@ -44,6 +56,9 @@ struct DashboardView: View {
         .environment(\.dashboardLightSurface, true)
         .preferredColorScheme(.light)
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showPriceCompareSheet) {
+            PriceCompareSheet()
+        }
         .task(id: auth.session?.user.id) {
             if let uid = auth.session?.user.id {
                 await chatInbox.refreshCoordinatorTasksFromServer(currentUserId: uid)
@@ -109,7 +124,12 @@ struct DashboardHomeLightBackdrop: View {
 
 /// Tarjeta grande con valor total + 2 metric pills (vehículos / operaciones del mes).
 private struct DashboardStatsOverview: View {
+    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     @ObservedObject var stats: DealershipStatsViewModel
+
+    private var appLanguage: AppLanguage {
+        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -119,7 +139,7 @@ private struct DashboardStatsOverview: View {
                     Image(systemName: "chart.line.uptrend.xyaxis")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-                    Text("Valor total del stock")
+                    Text(L10n.tr("dashboard.totalStock", lang: appLanguage))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.black.opacity(0.55))
                 }
@@ -155,13 +175,13 @@ private struct DashboardStatsOverview: View {
                 miniKPI(
                     icon: "shoeprints.fill",
                     iconColor: Color(red: 0.20, green: 0.45, blue: 0.85),
-                    title: "Sneakers en stock",
+                    title: L10n.tr("dashboard.sneakersInStock", lang: appLanguage),
                     value: "\(stats.vehiclesInStock)"
                 )
                 miniKPI(
                     icon: "checkmark.seal.fill",
                     iconColor: Color(red: 0.20, green: 0.70, blue: 0.45),
-                    title: "Vendidas",
+                    title: L10n.tr("dashboard.sold", lang: appLanguage),
                     value: "\(stats.carsSold)"
                 )
             }
@@ -196,9 +216,14 @@ private struct DashboardStatsOverview: View {
 
 /// Tarjeta hero superior con título grande, CTA y arte del lado derecho.
 private struct DashboardHeroBannerCard: View {
+    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     var onExplore: () -> Void
     @State private var sneakerBreathing = false
     @State private var pulseDot = false
+
+    private var appLanguage: AppLanguage {
+        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
+    }
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -244,7 +269,7 @@ private struct DashboardHeroBannerCard: View {
                             .scaleEffect(pulseDot ? 1.4 : 1.0)
                             .opacity(pulseDot ? 0.6 : 1.0)
                             .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulseDot)
-                        Text("NUEVO")
+                        Text(L10n.tr("dashboard.new", lang: appLanguage))
                             .font(.system(size: 9, weight: .heavy))
                             .tracking(1.4)
                             .foregroundStyle(.white)
@@ -256,7 +281,7 @@ private struct DashboardHeroBannerCard: View {
                             .fill(Color.white.opacity(0.20))
                     }
 
-                    Text("Tu imperio de\nsneakers en uno.")
+                    Text(L10n.tr("dashboard.heroTitle", lang: appLanguage))
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.leading)
@@ -265,7 +290,7 @@ private struct DashboardHeroBannerCard: View {
 
                     Button(action: onExplore) {
                         HStack(spacing: 6) {
-                            Text("Explorar ahora")
+                            Text(L10n.tr("dashboard.heroCTA", lang: appLanguage))
                                 .font(.system(size: 13, weight: .bold))
                             Image(systemName: "arrow.right")
                                 .font(.system(size: 11, weight: .heavy))
@@ -312,7 +337,12 @@ private struct DashboardHeroBannerCard: View {
 
 /// Tarjeta con el último/mejor vehículo del inventario y su precio.
 private struct DashboardLatestSaleSection: View {
+    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     let cars: [Car]
+
+    private var appLanguage: AppLanguage {
+        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
+    }
 
     private var featured: Car? {
         cars
@@ -322,25 +352,25 @@ private struct DashboardLatestSaleSection: View {
             ?? cars.first
     }
 
-    private static let priceFmt: NumberFormatter = {
+    private var priceFmt: NumberFormatter {
         let f = NumberFormatter()
         f.numberStyle = .currency
         f.currencyCode = "USD"
         f.currencySymbol = "$"
         f.maximumFractionDigits = 0
-        f.locale = Locale(identifier: "es_ES")
+        f.locale = appLanguage.locale
         return f
-    }()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Última operación")
+                Text(L10n.tr("dashboard.lastSale", lang: appLanguage))
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(Color.black.opacity(0.85))
                 Spacer()
                 Button {} label: {
-                    Text("Ver todas")
+                    Text(L10n.tr("dashboard.viewAll", lang: appLanguage))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
                 }
@@ -403,19 +433,94 @@ private struct DashboardLatestSaleSection: View {
 
     private var featuredTitle: String {
         guard let car = featured else {
-            return "Sin artículos en stock"
+            return L10n.tr("dashboard.noItems", lang: appLanguage)
         }
         let brand = car.brandName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let nm = car.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let combined = "\(brand) \(nm)".trimmingCharacters(in: .whitespacesAndNewlines)
-        return combined.isEmpty ? "Artículo" : combined
+        return combined.isEmpty ? L10n.tr("dashboard.item", lang: appLanguage) : combined
     }
 
     private var featuredPriceText: String {
         guard let car = featured, let p = car.listPriceUSD, p > 0 else {
-            return Self.priceFmt.string(from: NSNumber(value: 0)) ?? "$0"
+            return priceFmt.string(from: NSNumber(value: 0)) ?? "$0"
         }
-        return Self.priceFmt.string(from: NSNumber(value: Int(p.rounded()))) ?? "$\(Int(p.rounded()))"
+        return priceFmt.string(from: NSNumber(value: Int(p.rounded()))) ?? "$\(Int(p.rounded()))"
+    }
+}
+
+// MARK: - Tarjeta "Comparar precio de mercado"
+
+/// Llama al servicio de comparativa de precios. Se abre como sheet al tocar.
+struct DashboardPriceCompareCard: View {
+    let lang: AppLanguage
+    var onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.30, green: 0.55, blue: 0.95),
+                                    Color(red: 0.14, green: 0.36, blue: 0.85),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 52, height: 52)
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.35), radius: 10, y: 4)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n.tr("price.compareTitle", lang: lang))
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.88))
+                    Text(L10n.tr("price.compareSubtitle", lang: lang))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
+                    .frame(width: 32, height: 32)
+                    .background {
+                        Circle().fill(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.12))
+                    }
+            }
+            .padding(14)
+            .background {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color.white)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.30, green: 0.55, blue: 0.95).opacity(0.25),
+                                        Color.black.opacity(0.04),
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    }
+                    .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.12), radius: 14, x: 0, y: 5)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 

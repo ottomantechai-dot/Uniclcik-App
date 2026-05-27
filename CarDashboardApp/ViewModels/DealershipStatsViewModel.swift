@@ -43,16 +43,24 @@ final class DealershipStatsViewModel: ObservableObject {
         carsSold = 0
         salesProfit = Self.formatUSD(0)
         commercialCommissions = Self.formatUSD(0)
-        commissionsSubtitle = "Sin ventas registradas"
+        commissionsSubtitle = Self.emptySalesSubtitle
         totalDealershipEarnings = Self.formatUSD(0)
+    }
+
+    private static var currentLanguage: AppLanguage {
+        let raw = UserDefaults.standard.string(forKey: "appLanguage") ?? AppLanguage.spanish.rawValue
+        return AppLanguage(rawValue: raw) ?? .spanish
+    }
+
+    private static var emptySalesSubtitle: String {
+        currentLanguage == .english ? "No recorded sales" : "Sin ventas registradas"
     }
 
     private static func monthLabel(for date: Date) -> String {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "es_ES")
+        f.locale = currentLanguage.locale
         f.dateFormat = "LLLL yyyy"
         let raw = f.string(from: date)
-        // Capitaliza el mes: "abril 2026" -> "Abril 2026"
         return raw.prefix(1).uppercased() + raw.dropFirst()
     }
 
@@ -63,7 +71,7 @@ final class DealershipStatsViewModel: ObservableObject {
         f.currencyCode = "USD"
         f.currencySymbol = "$"
         f.maximumFractionDigits = 0
-        f.locale = Locale(identifier: "es_ES")
+        f.locale = currentLanguage.locale
         return f.string(from: n) ?? "$\(Int(amount.rounded()))"
     }
 }

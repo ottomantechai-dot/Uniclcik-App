@@ -41,11 +41,17 @@ private struct AppShellRoot: View {
     @ObservedObject var authVM: AuthViewModel
     @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject var settingsVM: SettingsViewModel
+    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
+
+    private var appLanguage: AppLanguage {
+        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
+    }
 
     var body: some View {
         AuthRootView(auth: authVM)
             .environmentObject(carsVM)
             .environmentObject(settingsVM)
+            .environment(\.locale, appLanguage.locale)
             .task(id: authVM.isAuthenticated) {
                 guard authVM.isAuthenticated else { return }
                 await RemotePushRegistration.requestAuthorizationAndRegister()

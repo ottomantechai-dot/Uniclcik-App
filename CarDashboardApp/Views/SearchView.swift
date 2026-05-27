@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Pestaña Buscador: mismo criterio que Coches (`browseSearchText`, filtros y orden).
 struct SearchView: View {
+    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject private var auth: AuthViewModel
     @EnvironmentObject private var tabRouter: MainTabRouter
@@ -14,14 +15,18 @@ struct SearchView: View {
         carsVM.displayedBrowseCars()
     }
 
+    private var appLanguage: AppLanguage {
+        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
+    }
+
     private var resultCountText: String {
-        displayedCars.count.formatted(.number.grouping(.automatic).locale(Locale(identifier: "es_ES")))
+        displayedCars.count.formatted(.number.grouping(.automatic).locale(appLanguage.locale))
     }
 
     private var searchEmptyFootnote: String {
         carsVM.browseSearchText.isEmpty
-            ? "Escribe en el buscador o ajusta filtros."
-            : "Prueba con otro término o limpia filtros."
+            ? (appLanguage == .english ? "Type in the search bar or adjust filters." : "Escribe en el buscador o ajusta filtros.")
+            : (appLanguage == .english ? "Try another term or clear filters." : "Prueba con otro término o limpia filtros.")
     }
 
     var body: some View {
@@ -38,7 +43,7 @@ struct SearchView: View {
 
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(spacing: 18) {
-                            Text("\(resultCountText) resultados")
+                            Text("\(resultCountText) \(appLanguage == .english ? "results" : "resultados")")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .multilineTextAlignment(.center)
@@ -55,7 +60,7 @@ struct SearchView: View {
                             if !carsVM.isLoadingVehicles || !carsVM.cars.isEmpty {
                                 if displayedCars.isEmpty {
                                     ContentUnavailableView(
-                                        "Sin resultados",
+                                        appLanguage == .english ? "No results" : "Sin resultados",
                                         systemImage: "magnifyingglass",
                                         description: Text(searchEmptyFootnote)
                                     )
@@ -136,10 +141,10 @@ struct SearchView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("IA — Coordinador de equipo")
+                    Text(appLanguage == .english ? "AI — Team coordinator" : "IA — Coordinador de equipo")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
-                    Text("Voz en vivo, tareas y mensajes por nombre")
+                    Text(appLanguage == .english ? "Live voice, tasks and messages by name" : "Voz en vivo, tareas y mensajes por nombre")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.48))
                 }

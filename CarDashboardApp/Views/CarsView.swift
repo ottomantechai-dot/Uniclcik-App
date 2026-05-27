@@ -5,6 +5,7 @@ import SwiftUI
 import UIKit
 
 struct CarsView: View {
+    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject private var auth: AuthViewModel
 
@@ -17,8 +18,12 @@ struct CarsView: View {
         carsVM.displayedBrowseCars()
     }
 
+    private var appLanguage: AppLanguage {
+        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
+    }
+
     private var resultCountText: String {
-        displayedCars.count.formatted(.number.grouping(.automatic).locale(Locale(identifier: "es_ES")))
+        displayedCars.count.formatted(.number.grouping(.automatic).locale(appLanguage.locale))
     }
 
     var body: some View {
@@ -34,7 +39,7 @@ struct CarsView: View {
                             Image(systemName: "shoeprints.fill")
                                 .font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-                            Text("\(resultCountText) sneakers")
+                            Text("\(resultCountText) \(L10n.tr("cars.results", lang: appLanguage))")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(Color.black.opacity(0.65))
                         }
@@ -59,9 +64,9 @@ struct CarsView: View {
                         if !carsVM.isLoadingVehicles || !carsVM.cars.isEmpty {
                             if displayedCars.isEmpty {
                                 ContentUnavailableView(
-                                    "Sin resultados",
+                                    L10n.tr("cars.empty", lang: appLanguage),
                                     systemImage: "line.3.horizontal.decrease.circle",
-                                    description: Text("Prueba a limpiar filtros o cambiar la búsqueda.")
+                                    description: Text(L10n.tr("cars.emptyFootnote", lang: appLanguage))
                                 )
                                 .foregroundStyle(Color.black.opacity(0.75))
                                 .symbolRenderingMode(.hierarchical)
@@ -88,7 +93,7 @@ struct CarsView: View {
                                 HStack(spacing: 8) {
                                     ProgressView()
                                         .tint(Color(red: 0.20, green: 0.45, blue: 0.85))
-                                    Text("Cargando más sneakers…")
+                                    Text(L10n.tr("cars.loadingMore", lang: appLanguage))
                                         .font(.system(size: 13, weight: .medium))
                                         .foregroundStyle(Color.black.opacity(0.55))
                                 }
@@ -166,6 +171,7 @@ struct EditVehicleDictationSheet: View {
     var onSaved: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
 
     @StateObject private var transcriber = LiveSpeechTranscriber()
     @State private var isDictating = false
@@ -186,15 +192,19 @@ struct EditVehicleDictationSheet: View {
     @State private var dgtLabel = ""
     @State private var listingDescription = ""
 
+    private var appLanguage: AppLanguage {
+        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Edita los datos del vehículo")
+                        Text(L10n.tr("cars.editSheetIntroTitle", lang: appLanguage))
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.92))
-                        Text("Puedes modificar campos manualmente o usar el micrófono de arriba.")
+                        Text(L10n.tr("cars.editSheetIntroSubtitle", lang: appLanguage))
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.white.opacity(0.6))
                     }
@@ -205,7 +215,7 @@ struct EditVehicleDictationSheet: View {
                         HStack(spacing: 8) {
                             ProgressView()
                                 .tint(.white)
-                            Text("Escuchando… toca el micrófono para terminar")
+                            Text(L10n.tr("cars.listening", lang: appLanguage))
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.85))
                         }
@@ -219,20 +229,20 @@ struct EditVehicleDictationSheet: View {
                             .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
 
-                    field("Marca", text: $brand)
-                    field("Modelo", text: $model)
-                    field("Año", text: $yearText, keyboard: .numberPad)
-                    field("Matrícula", text: $plate)
-                    field("Precio", text: $priceText, keyboard: .decimalPad)
-                    field("Kilómetros", text: $mileageText, keyboard: .numberPad)
-                    field("Potencia CV", text: $powerCvText, keyboard: .numberPad)
-                    field("Combustible", text: $fuel)
-                    field("Transmisión", text: $transmission)
-                    field("Color", text: $color)
-                    field("Etiqueta DGT", text: $dgtLabel)
+                    field(L10n.tr("cars.fieldBrand", lang: appLanguage), text: $brand)
+                    field(L10n.tr("cars.fieldModel", lang: appLanguage), text: $model)
+                    field(L10n.tr("cars.fieldYear", lang: appLanguage), text: $yearText, keyboard: .numberPad)
+                    field(L10n.tr("cars.fieldPlate", lang: appLanguage), text: $plate)
+                    field(L10n.tr("cars.fieldPrice", lang: appLanguage), text: $priceText, keyboard: .decimalPad)
+                    field(L10n.tr("cars.fieldMileage", lang: appLanguage), text: $mileageText, keyboard: .numberPad)
+                    field(L10n.tr("cars.fieldPower", lang: appLanguage), text: $powerCvText, keyboard: .numberPad)
+                    field(L10n.tr("cars.fieldFuel", lang: appLanguage), text: $fuel)
+                    field(L10n.tr("cars.fieldTransmission", lang: appLanguage), text: $transmission)
+                    field(L10n.tr("cars.fieldColor", lang: appLanguage), text: $color)
+                    field(L10n.tr("cars.fieldDgt", lang: appLanguage), text: $dgtLabel)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Descripción")
+                        Text(L10n.tr("common.description", lang: appLanguage))
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white.opacity(0.62))
                         TextEditor(text: $listingDescription)
@@ -259,7 +269,7 @@ struct EditVehicleDictationSheet: View {
                     } label: {
                         HStack {
                             if isSaving { ProgressView().tint(.white) }
-                            Text(isSaving ? "Guardando..." : "Guardar cambios")
+                            Text(isSaving ? L10n.tr("cars.saving", lang: appLanguage) : L10n.tr("cars.saveChanges", lang: appLanguage))
                                 .font(.system(size: 15, weight: .bold))
                         }
                         .foregroundStyle(.white)
@@ -274,7 +284,7 @@ struct EditVehicleDictationSheet: View {
                 .padding(16)
             }
             .background(Color.black.ignoresSafeArea())
-            .navigationTitle("Editar coche")
+            .navigationTitle(L10n.tr("cars.editSheetTitle", lang: appLanguage))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -285,10 +295,10 @@ struct EditVehicleDictationSheet: View {
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(isDictating ? Color.red.opacity(0.95) : Color.white.opacity(0.95))
                     }
-                    .accessibilityLabel(isDictating ? "Detener dictado" : "Iniciar dictado")
+                    .accessibilityLabel(isDictating ? L10n.tr("cars.stopDictation", lang: appLanguage) : L10n.tr("cars.startDictation", lang: appLanguage))
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Cerrar") { dismiss() }
+                    Button(L10n.tr("common.close", lang: appLanguage)) { dismiss() }
                 }
             }
         }
@@ -328,12 +338,12 @@ struct EditVehicleDictationSheet: View {
         infoMessage = nil
         let micGranted = await requestMicrophonePermission()
         guard micGranted else {
-            errorMessage = "Activa micrófono en Ajustes para dictar."
+            errorMessage = L10n.tr("cars.enableMic", lang: appLanguage)
             return
         }
         let speechGranted = await transcriber.requestSpeechAuthorization()
         guard speechGranted else {
-            errorMessage = "Activa reconocimiento de voz en Ajustes."
+            errorMessage = L10n.tr("cars.enableSpeech", lang: appLanguage)
             return
         }
         do {
@@ -374,7 +384,7 @@ struct EditVehicleDictationSheet: View {
         if let v = parsed.color { color = v }
         if let v = parsed.dgtLabel { dgtLabel = v }
         if let v = parsed.description { listingDescription = v }
-        infoMessage = "Dictado aplicado. Revisa los campos antes de guardar."
+        infoMessage = L10n.tr("cars.dictationApplied", lang: appLanguage)
     }
 
     @MainActor
@@ -385,7 +395,7 @@ struct EditVehicleDictationSheet: View {
         defer { isSaving = false }
 
         guard let year = Int(yearText.filter(\.isNumber)), (1950 ... 2035).contains(year) else {
-            errorMessage = "Año no válido."
+            errorMessage = L10n.tr("cars.invalidYear", lang: appLanguage)
             return
         }
         let price = Self.parseOptionalDouble(priceText)
@@ -489,33 +499,43 @@ private enum VehicleDictationParser {
     private static let stopWords = [
         "modelo", "año", "ano", "matricula", "matrícula", "precio", "kilometros", "kilómetros",
         "combustible", "transmision", "transmisión", "color", "descripcion", "descripción", "potencia", "cv", "dgt",
+        "brand", "model", "year", "reference", "plate", "price", "stock", "sku", "condition", "channel", "label", "description",
     ]
 
     static func parse(_ text: String) -> VehicleDictationFields {
         var out = VehicleDictationFields()
-        out.brand = extract(after: "marca", in: text)
-        out.model = extract(after: "modelo", in: text)
-        if let y = extract(after: "año", in: text) ?? extract(after: "ano", in: text) {
+        out.brand = extract(afterAny: ["marca", "brand"], in: text)
+        out.model = extract(afterAny: ["modelo", "model"], in: text)
+        if let y = extract(afterAny: ["año", "ano", "year"], in: text) {
             out.year = Int(y.filter(\.isNumber))
         }
-        if let m = extract(after: "matrícula", in: text) ?? extract(after: "matricula", in: text) {
+        if let m = extract(afterAny: ["matrícula", "matricula", "reference", "plate"], in: text) {
             out.plate = m.replacingOccurrences(of: " ", with: "").uppercased()
         }
-        if let p = extract(after: "precio", in: text) {
+        if let p = extract(afterAny: ["precio", "price"], in: text) {
             out.price = parseDouble(p)
         }
-        if let km = extract(after: "kilómetros", in: text) ?? extract(after: "kilometros", in: text) {
+        if let km = extract(afterAny: ["kilómetros", "kilometros", "stock"], in: text) {
             out.mileage = Int(km.filter(\.isNumber))
         }
-        if let cv = extract(after: "potencia", in: text) ?? extract(after: "cv", in: text) {
+        if let cv = extract(afterAny: ["potencia", "cv", "sku"], in: text) {
             out.powerCv = Int(cv.filter(\.isNumber))
         }
-        out.fuelType = extract(after: "combustible", in: text)
-        out.transmission = extract(after: "transmisión", in: text) ?? extract(after: "transmision", in: text)
-        out.color = extract(after: "color", in: text)
-        out.dgtLabel = extract(after: "dgt", in: text)
-        out.description = extract(after: "descripción", in: text) ?? extract(after: "descripcion", in: text)
+        out.fuelType = extract(afterAny: ["combustible", "condition"], in: text)
+        out.transmission = extract(afterAny: ["transmisión", "transmision", "channel"], in: text)
+        out.color = extract(afterAny: ["color"], in: text)
+        out.dgtLabel = extract(afterAny: ["dgt", "label"], in: text)
+        out.description = extract(afterAny: ["descripción", "descripcion", "description"], in: text)
         return out
+    }
+
+    private static func extract(afterAny fields: [String], in text: String) -> String? {
+        for field in fields {
+            if let value = extract(after: field, in: text) {
+                return value
+            }
+        }
+        return nil
     }
 
     private static func extract(after field: String, in text: String) -> String? {
@@ -593,15 +613,22 @@ struct SneakerMock {
         f.currencyCode = "USD"
         f.currencySymbol = "$"
         f.maximumFractionDigits = 0
-        f.locale = Locale(identifier: "es_ES")
+        let raw = UserDefaults.standard.string(forKey: "appLanguage") ?? AppLanguage.spanish.rawValue
+        let lang = AppLanguage(rawValue: raw) ?? .spanish
+        f.locale = lang.locale
         return f.string(from: NSNumber(value: priceUSD)) ?? "$\(priceUSD)"
     }
 }
 
 struct SneakerListingCardLight: View {
+    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     let mock: SneakerMock
     var onTap: () -> Void
     @State private var isFavorite = false
+
+    private var appLanguage: AppLanguage {
+        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
+    }
 
     var body: some View {
         Button(action: onTap) {
@@ -682,7 +709,7 @@ struct SneakerListingCardLight: View {
                         .padding(.top, 1)
 
                     HStack(spacing: 6) {
-                        sneakerTag(icon: "ruler.fill", text: "Talla \(mock.size)")
+                        sneakerTag(icon: "ruler.fill", text: "\(L10n.tr("cars.size", lang: appLanguage)) \(mock.size)")
                         sneakerTag(icon: "checkmark.seal.fill", text: mock.condition)
                     }
                     .padding(.top, 2)
