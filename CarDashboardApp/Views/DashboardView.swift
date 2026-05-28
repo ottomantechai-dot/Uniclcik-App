@@ -1,22 +1,18 @@
 import SwiftUI
+import SwiftData
 import UIKit
 
 struct DashboardView: View {
-    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     @EnvironmentObject private var auth: AuthViewModel
     @EnvironmentObject private var carsVM: CarsViewModel
     @EnvironmentObject private var tabRouter: MainTabRouter
+    @Query(sort: \ClosetItem.createdAt, order: .reverse) private var closetItems: [ClosetItem]
     @StateObject private var vm = DealershipStatsViewModel()
     @EnvironmentObject private var communityVM: DashboardCommunityViewModel
     @EnvironmentObject private var chatInbox: ChatInboxStore
     @EnvironmentObject private var chatNav: ChatNavigationCoordinator
     @StateObject private var locationHub = DashboardLocationHub()
     @State private var didAppear = false
-    @State private var showPriceCompareSheet = false
-
-    private var appLanguage: AppLanguage {
-        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
-    }
 
     var body: some View {
         ZStack {
@@ -25,24 +21,18 @@ struct DashboardView: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
-                    DashboardHeroBannerCard(onExplore: { tabRouter.selected = .cars })
+                    DashboardHeroBannerCard(onExplore: { tabRouter.selected = .closet })
                         .padding(.top, 12)
                         .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.05))
 
                     DashboardStatsOverview(stats: vm)
                         .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.15))
 
-                    DashboardPriceCompareCard(
-                        lang: appLanguage,
-                        onTap: { showPriceCompareSheet = true }
-                    )
-                    .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.20))
-
                     DashboardLatestSaleSection(cars: carsVM.cars)
-                        .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.25))
+                        .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.22))
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 36)
+                .padding(.bottom, 28)
                 .frame(minWidth: 0, maxWidth: .infinity)
             }
         }
@@ -55,9 +45,24 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .environment(\.dashboardLightSurface, true)
         .preferredColorScheme(.light)
-        .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showPriceCompareSheet) {
-            PriceCompareSheet()
+        .navigationTitle(L10n.tr("tab.dashboard"))
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    ClosetAnalytics.named("add_to_closet_opened")
+                    tabRouter.selected = .closet
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        NotificationCenter.default.post(name: .upsoledPresentAddToClosetMenu, object: nil)
+                    }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(Color.white, Color.black)
+                }
+                .accessibilityLabel(L10n.tr("dashboard.quickAdd"))
+            }
         }
         .task(id: auth.session?.user.id) {
             if let uid = auth.session?.user.id {
@@ -74,10 +79,16 @@ struct DashboardView: View {
             locationHub.stopUpdates()
         }
         .task(id: carsVM.cars.count) {
-            vm.refreshFromInventory(cars: carsVM.cars)
+            vm.refreshFromInventory(cars: carsVM.cars, closetItems: closetItems)
         }
         .onChange(of: carsVM.cars) { _, newCars in
-            vm.refreshFromInventory(cars: newCars)
+            vm.refreshFromInventory(cars: newCars, closetItems: closetItems)
+        }
+        .onChange(of: closetItems.count) { _, _ in
+            vm.refreshFromInventory(cars: carsVM.cars, closetItems: closetItems)
+        }
+        .onChange(of: closetItems.map { "\($0.id.uuidString):\($0.isExplicitlySold)" }.joined(separator: "|")) { _, _ in
+            vm.refreshFromInventory(cars: carsVM.cars, closetItems: closetItems)
         }
     }
 }
@@ -124,12 +135,7 @@ struct DashboardHomeLightBackdrop: View {
 
 /// Tarjeta grande con valor total + 2 metric pills (vehículos / operaciones del mes).
 private struct DashboardStatsOverview: View {
-    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     @ObservedObject var stats: DealershipStatsViewModel
-
-    private var appLanguage: AppLanguage {
-        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -139,7 +145,7 @@ private struct DashboardStatsOverview: View {
                     Image(systemName: "chart.line.uptrend.xyaxis")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-                    Text(L10n.tr("dashboard.totalStock", lang: appLanguage))
+                    Text(L10n.tr("dashboard.totalStock"))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.black.opacity(0.55))
                 }
@@ -175,13 +181,13 @@ private struct DashboardStatsOverview: View {
                 miniKPI(
                     icon: "shoeprints.fill",
                     iconColor: Color(red: 0.20, green: 0.45, blue: 0.85),
-                    title: L10n.tr("dashboard.sneakersInStock", lang: appLanguage),
+                    title: L10n.tr("dashboard.sneakersInStock"),
                     value: "\(stats.vehiclesInStock)"
                 )
                 miniKPI(
                     icon: "checkmark.seal.fill",
                     iconColor: Color(red: 0.20, green: 0.70, blue: 0.45),
-                    title: L10n.tr("dashboard.sold", lang: appLanguage),
+                    title: L10n.tr("dashboard.sold"),
                     value: "\(stats.carsSold)"
                 )
             }
@@ -216,14 +222,9 @@ private struct DashboardStatsOverview: View {
 
 /// Tarjeta hero superior con título grande, CTA y arte del lado derecho.
 private struct DashboardHeroBannerCard: View {
-    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     var onExplore: () -> Void
     @State private var sneakerBreathing = false
     @State private var pulseDot = false
-
-    private var appLanguage: AppLanguage {
-        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
-    }
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -269,7 +270,7 @@ private struct DashboardHeroBannerCard: View {
                             .scaleEffect(pulseDot ? 1.4 : 1.0)
                             .opacity(pulseDot ? 0.6 : 1.0)
                             .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulseDot)
-                        Text(L10n.tr("dashboard.new", lang: appLanguage))
+                        Text(L10n.tr("dashboard.new"))
                             .font(.system(size: 9, weight: .heavy))
                             .tracking(1.4)
                             .foregroundStyle(.white)
@@ -281,7 +282,7 @@ private struct DashboardHeroBannerCard: View {
                             .fill(Color.white.opacity(0.20))
                     }
 
-                    Text(L10n.tr("dashboard.heroTitle", lang: appLanguage))
+                    Text(L10n.tr("dashboard.heroTitle"))
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.leading)
@@ -290,7 +291,7 @@ private struct DashboardHeroBannerCard: View {
 
                     Button(action: onExplore) {
                         HStack(spacing: 6) {
-                            Text(L10n.tr("dashboard.heroCTA", lang: appLanguage))
+                            Text(L10n.tr("dashboard.heroCTA"))
                                 .font(.system(size: 13, weight: .bold))
                             Image(systemName: "arrow.right")
                                 .font(.system(size: 11, weight: .heavy))
@@ -337,12 +338,7 @@ private struct DashboardHeroBannerCard: View {
 
 /// Tarjeta con el último/mejor vehículo del inventario y su precio.
 private struct DashboardLatestSaleSection: View {
-    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     let cars: [Car]
-
-    private var appLanguage: AppLanguage {
-        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
-    }
 
     private var featured: Car? {
         cars
@@ -358,19 +354,19 @@ private struct DashboardLatestSaleSection: View {
         f.currencyCode = "USD"
         f.currencySymbol = "$"
         f.maximumFractionDigits = 0
-        f.locale = appLanguage.locale
+        f.locale = Locale(identifier: "en_US")
         return f
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(L10n.tr("dashboard.lastSale", lang: appLanguage))
+                Text(L10n.tr("dashboard.lastSale"))
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(Color.black.opacity(0.85))
                 Spacer()
                 Button {} label: {
-                    Text(L10n.tr("dashboard.viewAll", lang: appLanguage))
+                    Text(L10n.tr("dashboard.viewAll"))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
                 }
@@ -433,12 +429,12 @@ private struct DashboardLatestSaleSection: View {
 
     private var featuredTitle: String {
         guard let car = featured else {
-            return L10n.tr("dashboard.noItems", lang: appLanguage)
+            return L10n.tr("dashboard.noItems")
         }
         let brand = car.brandName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let nm = car.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let combined = "\(brand) \(nm)".trimmingCharacters(in: .whitespacesAndNewlines)
-        return combined.isEmpty ? L10n.tr("dashboard.item", lang: appLanguage) : combined
+        return combined.isEmpty ? L10n.tr("dashboard.item") : combined
     }
 
     private var featuredPriceText: String {
@@ -449,88 +445,15 @@ private struct DashboardLatestSaleSection: View {
     }
 }
 
-// MARK: - Tarjeta "Comparar precio de mercado"
-
-/// Llama al servicio de comparativa de precios. Se abre como sheet al tocar.
-struct DashboardPriceCompareCard: View {
-    let lang: AppLanguage
-    var onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(alignment: .center, spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.30, green: 0.55, blue: 0.95),
-                                    Color(red: 0.14, green: 0.36, blue: 0.85),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 52, height: 52)
-                    Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(.white)
-                }
-                .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.35), radius: 10, y: 4)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(L10n.tr("price.compareTitle", lang: lang))
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(Color.black.opacity(0.88))
-                    Text(L10n.tr("price.compareSubtitle", lang: lang))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.black.opacity(0.55))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                }
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-                    .frame(width: 32, height: 32)
-                    .background {
-                        Circle().fill(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.12))
-                    }
-            }
-            .padding(14)
-            .background {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color.white)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .strokeBorder(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.30, green: 0.55, blue: 0.95).opacity(0.25),
-                                        Color.black.opacity(0.04),
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1
-                            )
-                    }
-                    .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.12), radius: 14, x: 0, y: 5)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 #Preview {
-    DashboardView()
-        .environmentObject(AuthViewModel())
-        .environmentObject(CarsViewModel())
-        .environmentObject(MainTabRouter())
-        .environmentObject(ChatNavigationCoordinator())
-        .environmentObject(ChatInboxStore())
-        .environmentObject(DashboardCommunityViewModel())
-        .environmentObject(InvoiceHistoryStore())
+    NavigationStack {
+        DashboardView()
+            .environmentObject(AuthViewModel())
+            .environmentObject(CarsViewModel())
+            .environmentObject(MainTabRouter())
+            .environmentObject(ChatNavigationCoordinator())
+            .environmentObject(ChatInboxStore())
+            .environmentObject(DashboardCommunityViewModel())
+            .environmentObject(InvoiceHistoryStore())
+    }
 }

@@ -105,14 +105,23 @@
 		AA000108 /* ClosetModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000108 /* ClosetModels.swift */; };
 		AA000110 /* ClosetViewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000110 /* ClosetViewModels.swift */; };
 		AA000111 /* ClosetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000111 /* ClosetViews.swift */; };
+		AA000131 /* StockSearchScannerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000131 /* StockSearchScannerViews.swift */; };
 		AA000112 /* GeminiService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000112 /* GeminiService.swift */; };
 		AA000113 /* ImageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000113 /* ImageStore.swift */; };
-		AA000114 /* ClosetItemModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000114 /* ClosetItemModel.swift */; };
+        AA000114 /* ClosetItemModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000114 /* ClosetItemModel.swift */; };
+		AA000124 /* ClosetProductMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000124 /* ClosetProductMetadata.swift */; };
+		AA000125 /* GoatAliasAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000125 /* GoatAliasAPIService.swift */; };
+		AA000126 /* GoatAccountSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000126 /* GoatAccountSession.swift */; };
+		AA000127 /* GoatAccountViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000127 /* GoatAccountViewModel.swift */; };
+		AA000128 /* GoatConnectSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000128 /* GoatConnectSheetView.swift */; };
+		AA000129 /* Vidos-zapatos.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = AB000129 /* Vidos-zapatos.mp4 */; };
 		AA000117 /* ColorPaletteExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000117 /* ColorPaletteExtractor.swift */; };
 		AA000118 /* ClosetPhotoExports.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000118 /* ClosetPhotoExports.swift */; };
+		AA000130 /* ClosetInventoryRepair.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000130 /* ClosetInventoryRepair.swift */; };
 		AA000119 /* FaceSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000119 /* FaceSetupView.swift */; };
 		AA000121 /* Shoe360VideoFrameExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000121 /* Shoe360VideoFrameExtractor.swift */; };
 		AA000122 /* Shoe360ProViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000122 /* Shoe360ProViews.swift */; };
+		AA000123 /* video-portada.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = AB000123 /* video-portada.mp4 */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -218,14 +227,23 @@
 		AB000108 /* ClosetModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetModels.swift; sourceTree = "<group>"; };
 		AB000110 /* ClosetViewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetViewModels.swift; sourceTree = "<group>"; };
 		AB000111 /* ClosetViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetViews.swift; sourceTree = "<group>"; };
+		AB000131 /* StockSearchScannerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockSearchScannerViews.swift; sourceTree = "<group>"; };
 		AB000112 /* GeminiService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiService.swift; sourceTree = "<group>"; };
 		AB000113 /* ImageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStore.swift; sourceTree = "<group>"; };
 		AB000114 /* ClosetItemModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetItemModel.swift; sourceTree = "<group>"; };
+		AB000124 /* ClosetProductMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetProductMetadata.swift; sourceTree = "<group>"; };
+		AB000125 /* GoatAliasAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoatAliasAPIService.swift; sourceTree = "<group>"; };
+		AB000126 /* GoatAccountSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoatAccountSession.swift; sourceTree = "<group>"; };
+		AB000127 /* GoatAccountViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoatAccountViewModel.swift; sourceTree = "<group>"; };
+		AB000128 /* GoatConnectSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoatConnectSheetView.swift; sourceTree = "<group>"; };
+		AB000129 /* Vidos-zapatos.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vidos-zapatos.mp4"; sourceTree = "<group>"; };
 		AB000117 /* ColorPaletteExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorPaletteExtractor.swift; sourceTree = "<group>"; };
 		AB000118 /* ClosetPhotoExports.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetPhotoExports.swift; sourceTree = "<group>"; };
+		AB000130 /* ClosetInventoryRepair.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetInventoryRepair.swift; sourceTree = "<group>"; };
 		AB000119 /* FaceSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceSetupView.swift; sourceTree = "<group>"; };
 		AB000121 /* Shoe360VideoFrameExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shoe360VideoFrameExtractor.swift; sourceTree = "<group>"; };
 		AB000122 /* Shoe360ProViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shoe360ProViews.swift; sourceTree = "<group>"; };
+		AB000123 /* video-portada.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = "video-portada.mp4"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -286,6 +304,8 @@
 				AB000033 /* ChatInboxStore.swift */,
 				AB000108 /* ClosetModels.swift */,
 				AB000114 /* ClosetItemModel.swift */,
+				AB000124 /* ClosetProductMetadata.swift */,
+				AB000126 /* GoatAccountSession.swift */,
 				AB000099 /* LookModel.swift */,
 				AB000117 /* ColorPaletteExtractor.swift */,
 				AB000113 /* ImageStore.swift */,
@@ -304,6 +324,7 @@
 				AB000044 /* LeadsViewModel.swift */,
 				AB000075 /* DashboardCommunityViewModel.swift */,
 				AB000110 /* ClosetViewModels.swift */,
+				AB000127 /* GoatAccountViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -336,8 +357,10 @@
 				AB000093 /* AudioWaveformMonitor.swift */,
 				AB000098 /* CoordinatorTaskPushActionHandler.swift */,
 				AB000112 /* GeminiService.swift */,
+				AB000125 /* GoatAliasAPIService.swift */,
 				AB000121 /* Shoe360VideoFrameExtractor.swift */,
 				AB000118 /* ClosetPhotoExports.swift */,
+				AB000130 /* ClosetInventoryRepair.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -365,9 +388,11 @@
 				AB000096 /* WaveformDemoView.swift */,
 				AB000097 /* VieraChatRichContent.swift */,
 				AB000111 /* ClosetViews.swift */,
+				AB000131 /* StockSearchScannerViews.swift */,
 				AB000100 /* ClosetDetailAndLooksViews.swift */,
 				AB000122 /* Shoe360ProViews.swift */,
 				AB000119 /* FaceSetupView.swift */,
+				AB000128 /* GoatConnectSheetView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -403,6 +428,8 @@
 				AB000023 /* RemoteAssets.swift */,
 				AB000057 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 */,
 				AB000088 /* AIBuddyFondo.mp4 */,
+				AB000123 /* video-portada.mp4 */,
+				AB000129 /* Vidos-zapatos.mp4 */,
 				AB000089 /* AIAssistantOrb.gif */,
 			);
 			path = Resources;
@@ -506,6 +533,8 @@
 				AA000069 /* GarantiaGVModelo.pdf in Resources */,
 				AA000058 /* cab6b0cf98f7935fc0365a8ee1191735.mp4 in Resources */,
 				AA000088 /* AIBuddyFondo.mp4 in Resources */,
+				AA000123 /* video-portada.mp4 in Resources */,
+				AA000129 /* Vidos-zapatos.mp4 in Resources */,
 				AA000089 /* AIAssistantOrb.gif in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -606,13 +635,20 @@
 				AA000112 /* GeminiService.swift in Sources */,
 				AA000113 /* ImageStore.swift in Sources */,
 				AA000114 /* ClosetItemModel.swift in Sources */,
+				AA000124 /* ClosetProductMetadata.swift in Sources */,
+				AA000125 /* GoatAliasAPIService.swift in Sources */,
+				AA000126 /* GoatAccountSession.swift in Sources */,
+				AA000127 /* GoatAccountViewModel.swift in Sources */,
+				AA000128 /* GoatConnectSheetView.swift in Sources */,
 				AA000099 /* LookModel.swift in Sources */,
 				AA000117 /* ColorPaletteExtractor.swift in Sources */,
 				AA000100 /* ClosetDetailAndLooksViews.swift in Sources */,
 				AA000110 /* ClosetViewModels.swift in Sources */,
 				AA000111 /* ClosetViews.swift in Sources */,
+				AA000131 /* StockSearchScannerViews.swift in Sources */,
 				AA000119 /* FaceSetupView.swift in Sources */,
 				AA000118 /* ClosetPhotoExports.swift in Sources */,
+				AA000130 /* ClosetInventoryRepair.swift in Sources */,
 				AA000121 /* Shoe360VideoFrameExtractor.swift in Sources */,
 				AA000122 /* Shoe360ProViews.swift in Sources */,
 			);

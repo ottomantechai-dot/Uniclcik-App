@@ -204,6 +204,114 @@ actor GeminiService {
         return out
     }
 
+    // MARK: - Metadatos de producto (marca, talla, color, descripción, precio)
+
+    func enrichGarmentMetadata(
+        cropRelativePath: String,
+        category: ClothingCategory,
+        provisionalName: String
+    ) async throws -> GarmentEnrichment {
+        guard !apiKey.isEmpty else {
+            throw GeminiError.apiError("Falta GeminiAPIKey.")
+        }
+        guard let image = ImageStore.load(cropRelativePath),
+              let jpeg = image.jpegData(compressionQuality: 0.9)
+        else { throw GeminiError.encodingFailed }
+
+        let base64 = jpeg.base64EncodedString()
+        let isShoe = category == .shoes
+        let sizeHint = isShoe
+            ? "For shoes use EU/US sneaker sizes (e.g. EU 42, US 9)."
+            : "For apparel use standard sizes (XS–XXL, EU numeric, or waist like 32)."
+
+        let prompt = """
+        Analyze this \(category.displayName) product photo. Provisional name: "\(provisionalName)".
+
+        Return structured catalog metadata for a resale wardrobe app.
+        \(sizeHint)
+
+        Be realistic; if unknown use empty string for that field (not "unknown").
+        sku: official sneaker/apparel style code when identifiable (Nike e.g. DD1391-101, Adidas e.g. FW2499). Empty if not sure.
+        listing_platforms: suggest 2–4 resale marketplaces where this item sells well (e.g. StockX, GOAT, Wallapop, Vinted, Depop, eBay).
+        price_text: suggested resale price as short text with currency symbol (e.g. "$120", "€85").
+        product_description: 2–3 sentences in English describing the item for a listing (material, fit, condition assumed new/with tags unless visible wear).
+        """
+
+        let responseSchema: [String: Any] = [
+            "type": "OBJECT",
+            "properties": [
+                "brand": ["type": "STRING"],
+                "sku": ["type": "STRING"],
+                "size_text": ["type": "STRING"],
+                "color_label": ["type": "STRING"],
+                "product_description": ["type": "STRING"],
+                "price_text": ["type": "STRING"],
+                "listing_platforms": [
+                    "type": "ARRAY",
+                    "items": ["type": "STRING"],
+                ],
+            ],
+            "required": [
+                "brand", "sku", "size_text", "color_label", "product_description", "price_text", "listing_platforms",
+            ],
+        ]
+
+        let body: [String: Any] = [
+            "contents": [[
+                "role": "user",
+                "parts": [
+                    ["inline_data": ["mime_type": "image/jpeg", "data": base64]],
+                    ["text": prompt],
+                ],
+            ]],
+            "generationConfig": [
+                "temperature": 0.25,
+                "responseMimeType": "application/json",
+                "responseSchema": responseSchema,
+            ],
+        ]
+
+        let url = URL(
+            string:
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(apiKey)"
+        )!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
+            let bodyStr = String(data: data, encoding: .utf8) ?? ""
+            throw GeminiError.apiError(Self.humanGeminiHTTPError(statusCode: (response as? HTTPURLResponse)?.statusCode, body: bodyStr))
+        }
+
+        let jsonText = try Self.extractAllTextFromGeminiData(data)
+        guard let jsonData = jsonText.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+        else { throw GeminiError.parsingFailed }
+
+        let brand = (root["brand"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let sku = (root["sku"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let size = (root["size_text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let color = (root["color_label"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let desc = (root["product_description"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let price = (root["price_text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let platforms = (root["listing_platforms"] as? [String] ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return GarmentEnrichment(
+            brand: brand,
+            sku: sku,
+            sizeText: size,
+            colorLabel: color,
+            productDescription: desc,
+            priceText: price,
+            listingPlatforms: platforms
+        )
+    }
+
     // MARK: - Prettify (imagen producto, fondo blanco)
 
     func prettify(cropRelativePath: String, category: String, itemName: String) async throws -> String {
@@ -298,7 +406,7 @@ actor GeminiService {
                         "🔴 [Prettify] Sin imagen en la respuesta. Revisa model + responseModalities [TEXT,IMAGE]. Raw: \(raw.prefix(400))"
                     )
                     throw GeminiError.apiError(
-                        "Gemini no devolvió imagen (revisa consola Xcode filtrando [Prettify]). Comprueba modelo gemini-2.5-flash-image y modalities."
+                        "Gemini did not return an image (check Xcode console filtering [Prettify]). Verify gemini-2.5-flash-image model and modalities."
                     )
                 }
 
@@ -575,7 +683,7 @@ actor GeminiService {
         let cappedPaths = Array(garmentRelativePaths.prefix(8))
         let cappedLines = Array(itemDescriptionLines.prefix(8))
         guard cappedPaths.count >= 1 else {
-            throw GeminiError.apiError("No hay imágenes válidas para el avatar.")
+            throw GeminiError.apiError("No valid images for the avatar.")
         }
 
         var partsPayload: [[String: Any]] = []
@@ -616,7 +724,7 @@ actor GeminiService {
         let faceClause = hasFace
             ? """
             CRITICAL — IDENTITY:
-            The FIRST input image is a reference photo of the model's face. The generated avatar MUST closely match the SAME person's facial features, face shape, skin tone, hair color and hair style, eye color, and overall likeness as in that reference. Treat this as a styled studio portrait of THE SAME PERSON, now dressed in the garments from the following images.
+            The FIRST input image is a reference photo of the model's face. The generated avatar MUST closely match the SAME person's facial features, face shape, skin tone, hair color and hair style, eye color, and overall likeness as in that reference. Treat this as a full-body catalog portrait of THE SAME PERSON on pure flat #FFFFFF with zero backdrop shadows, now dressed in the garments from the following images.
             Keep natural ethnicity, approximate age, hair texture, and characteristic features. Use a neutral pleasant catalog expression.
             All images AFTER the first are clothing items only (no face to copy from those).
 
@@ -624,22 +732,31 @@ actor GeminiService {
             : ""
 
         let promptText = """
-        TASK: Generate a brand new photorealistic full-body studio fashion photograph of a \(genderText) wearing ALL of the clothing items shown in the input images. The output MUST be an image, not text.
+        TASK: Generate a brand new photorealistic full-body fashion photograph of a \(genderText) wearing ALL of the clothing items shown in the input images. The output MUST be an image, not text.
 
         \(faceClause)DRESS THE MODEL EXACTLY WITH THESE ITEMS:
         \(dressingList)
 
         Compose the outfit on a single person. If multiple items belong to the same category (e.g. two shirts), use only the first. Coordinate the items as a complete styled outfit.
 
-        STYLE REQUIREMENTS (mandatory):
-        - Background: ONLY flat pure #FFFFFF seamless studio cyclorama covering the FULL frame edges. Absolutely no vignette, no gradient panels, no light grey margins, no paper texture.
-        - NO SHADOWS ON THE WHITE SET: forbid floor contact shadow/disc, soft grey oval beneath feet, AO halos behind legs, mirrored reflection band, pedestal shadow blob, or directional cast shadow touching the backdrop. The garments and body may naturally shade themselves internally, but the backdrop must remain a clean uninterrupted white (#FFFFFF outside the clothed silhouette should read as identical white everywhere).
-        - Lighting: ultra-soft even frontal-top fashion softbox ONLY to shape the figure; neutral white balance — without painting cast shadows onto the infinity wall.
-        - Composition: VERTICAL TikTok/Reels/full-body SHORT-FORM cover — FULL-BODY HEAD-TO-TOE in frame, centered runway stance, fashionable catalog pose facing camera enough to recognize the outfit symmetrically at a neutral eye-level (~50 mm lens feel).
-        - Aspect & crop intent — CRITICAL OUTPUT SHAPE:
-          The final IMAGE MUST be VERTICAL portrait 9:16 (width:height = 9:16). Treat this as TikTok/Reels/mobile cover proportions (conceptual canonical 1080×1920). Do NOT produce 2:3, 4:5, 3:4, or square 1:1; never letterbox portrait artboard into widescreen.
-        - Negative space: purposeful tall negative white margin above helmet/hair clearance and below soles while keeping silhouette fully enclosed with comfortable safe margins (do NOT tightly crop ankles or hairstyle).
-        - Model: \(genderText), pleasantly neutral catalog gaze, realistically attractive 22–29 y/o (no uncanny/over-beautifying filter skin).
+        VISUAL REFERENCE (mandatory):
+        - Think Pinterest / Zara / ASOS / SSENSE «For you» catalog row: ONE model, full body, standing naturally, wearing the chosen products — isolated on a perfectly flat pure white field.
+        - The viewer should see ONLY the person and their outfit. Nothing else in the frame: no props, no furniture, no scenery, no studio equipment.
+
+        BACKGROUND & SHADOWS (NON-NEGOTIABLE — highest priority):
+        - Background: 100% uniform solid #FFFFFF from every edge and corner. No off-white, light grey, cream, beige, paper texture, vignette, gradient, cyclorama falloff, visible floor line, or horizon.
+        - ABSOLUTELY ZERO SHADOWS on the backdrop: forbid floor contact shadow, foot shadow disc, drop shadow, cast shadow, ambient-occlusion blob, grey oval under shoes, dark halo behind legs, edge darkening, or ANY darker/grey patch on the white area.
+        - The white behind and around the model must read as the exact same flat #FFFFFF everywhere — as if the person were cut out and placed on a blank white canvas.
+        - Internal shading ON the body and garments is OK; the backdrop itself must stay perfectly flat white with no painted shadows.
+
+        LIGHTING & POSE:
+        - Bright, soft, even frontal fashion studio lighting that shows the outfit clearly WITHOUT casting shadows onto the white background.
+        - \(genderText), pleasantly neutral catalog gaze, realistically attractive 22–29 y/o (no uncanny/over-beautifying filter skin).
+        - FULL-BODY head-to-toe in frame, centered catalog stance facing camera, neutral eye-level (~50 mm lens feel).
+
+        COMPOSITION:
+        - VERTICAL portrait 9:16 (width:height = 9:16). Conceptual canonical 1080×1920. Do NOT produce 2:3, 4:5, 3:4, or square 1:1.
+        - Tall white margin above hair and below soles; do NOT tightly crop ankles or hairstyle.
 
         FIDELITY (CRITICAL):
         - Each garment shown in the input images must appear on the model as faithfully as possible: same color, same pattern, same cut, same material. Do not invent new garments.
@@ -648,13 +765,13 @@ actor GeminiService {
 
         REMOVE / DO NOT INCLUDE:
         - Text overlays, watermarks, captions.
-        - Other people, animals, busy backgrounds.
-        - The original photo backgrounds from the input images.
+        - Other people, animals, busy backgrounds, neon, streets, interiors, mirrors, cars, furniture.
+        - Grey floor, shadow blobs, studio gradients, textured backdrops, or the original photo backgrounds from the input images.
 
-        Now generate the avatar image.
+        Now generate the look avatar image on pure white with zero shadows.
         """
 
-        let temperature = hasFace ? 0.35 : 0.6
+        let temperature = hasFace ? 0.28 : 0.38
         /// Partes de imagen antes de añadir el texto (prendas + opcional rostro).
         let garmentImageSlots = partsPayload.count - (hasFace ? 1 : 0)
 
@@ -690,7 +807,7 @@ actor GeminiService {
             let lower = bodyStr.lowercased()
             if lower.contains("prohibited_content") || (lower.contains("safety") && lower.contains("block")) {
                 throw GeminiError.apiError(
-                    "Gemini rechazó la imagen por políticas de seguridad. Prueba otra foto de rostro o desactiva «Usar mi rostro».")
+                    "Gemini rejected the image due to safety policies. Try another face photo or disable Use my face.")
             }
             throw GeminiError.apiError(Self.humanGeminiHTTPError(statusCode: (response as? HTTPURLResponse)?.statusCode, body: bodyStr))
         }
@@ -702,7 +819,7 @@ actor GeminiService {
         else {
             print("🔴 [Avatar] Gemini no devolvió imagen — revisa [Avatar] y responseModalities [TEXT,IMAGE].")
             throw GeminiError.apiError(
-                "Gemini no devolvió imagen de avatar (filtro Xcode: `[Avatar]`).")
+                "Gemini did not return an avatar image (Xcode filter: `[Avatar]`).")
         }
 
         guard let uiDecoded = UIImage(data: imgData) else {
@@ -807,7 +924,7 @@ actor GeminiService {
                 else {
                     print("🔴 [Shoe360] Sin imagen en la respuesta (modelo / modalities).")
                     throw GeminiError.apiError(
-                        "Gemini no devolvió imagen para vista 360° (consola `[Shoe360]`).")
+                        "Gemini did not return an image for 360° view (console `[Shoe360]`).")
                 }
                 let fname = "\(UUID().uuidString.lowercased()).jpg"
                 let rel = try ImageStore.save(imgData, inFolder: "shoe360", filename: fname)
@@ -916,7 +1033,7 @@ actor GeminiService {
                 else {
                     print("🔴 [360ProStudio] Sin imagen en la respuesta.")
                     throw GeminiError.apiError(
-                        "Gemini no devolvió imagen para 360° Pro (consola `[360ProStudio]`).")
+                        "Gemini did not return an image for 360° Pro (console `[360ProStudio]`).")
                 }
                 let fname = "\(UUID().uuidString.lowercased()).jpg"
                 let rel = try ImageStore.save(imgData, inFolder: "shoe360_pro_studio", filename: fname)
@@ -963,7 +1080,7 @@ actor GeminiService {
         var errorDescription: String? {
             switch self {
             case .encodingFailed: return "No se pudo codificar la imagen."
-            case .parsingFailed: return "Respuesta de IA inválida."
+            case .parsingFailed: return "Invalid AI response."
             case .apiError(let msg): return msg
             }
         }
@@ -984,7 +1101,7 @@ actor GeminiService {
             return "Gemini: cuota temporalmente agotada o demasiadas peticiones; revisa tu plan en Google AI Studio y reintenta en unos minutos."
         }
         if lowered.contains("api_key_invalid") || lowered.contains("api key not valid") {
-            return "Gemini rechazó la clave API: debe ser solo la cadena AIza… que copias de Google AI Studio (no una ruta de archivo ni otros textos después del igual)."
+            return "Gemini rejected the API key: it must be only the AIza… string copied from Google AI Studio (not a file path or other text after the equals sign)."
         }
         if let d = b.data(using: .utf8),
            let top = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
@@ -1022,12 +1139,12 @@ actor GeminiService {
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         if let pf = obj?["promptFeedback"] as? [String: Any],
            let reason = pf["blockReason"] as? String, !reason.isEmpty {
-            throw GeminiError.apiError("La petición fue bloqueada (\(reason)). Prueba con otra imagen.")
+            throw GeminiError.apiError("The request was blocked (\(reason)). Try another image.")
         }
         let candidates = obj?["candidates"] as? [[String: Any]] ?? []
         guard let first = candidates.first else {
             let errSummary = Self.topLevelGeminiSummary(obj)
-            throw GeminiError.apiError("Gemini no devolvió candidatos.\(errSummary)")
+            throw GeminiError.apiError("Gemini returned no candidates.\(errSummary)")
         }
         if let fr = first["finishReason"] as? String {
             let upper = fr.uppercased()
@@ -1045,7 +1162,7 @@ actor GeminiService {
         let trimmed = joined.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             let finish = (first["finishReason"] as? String) ?? "(desconocido)"
-            throw GeminiError.apiError("Gemini no devolvió JSON de texto (finish: \(finish)).")
+            throw GeminiError.apiError("Gemini did not return text JSON (finish: \(finish)).")
         }
         return Self.stripCodeFences(trimmed)
     }

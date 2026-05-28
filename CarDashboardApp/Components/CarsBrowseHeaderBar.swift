@@ -3,21 +3,16 @@ import UIKit
 
 /// Coches / Buscador: pastilla de búsqueda + ordenar/filtros. Ajustes: pestaña inferior «Ajustes».
 struct CarsBrowseHeaderBar: View {
-    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     @Binding var searchText: String
     var hasActiveFilters: Bool
     @FocusState.Binding var searchFieldFocused: Bool
     var onSort: () -> Void
     var onFilter: () -> Void
 
-    private var appLanguage: AppLanguage {
-        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
-    }
-
     var body: some View {
         ChromeSearchTrailingHeaderRow(
             searchText: $searchText,
-            prompt: Text(L10n.tr("cars.searchPrompt", lang: appLanguage))
+            prompt: Text(L10n.tr("cars.searchPrompt"))
                 .foregroundStyle(Color.black),
             showsSearchClearButton: true,
             searchFieldFocused: $searchFieldFocused
@@ -25,14 +20,14 @@ struct CarsBrowseHeaderBar: View {
             HStack(spacing: AppChromeHeaderMetrics.hStackSpacing) {
                 AppChromeHeaderCircleIconButton(
                     systemName: "arrow.up.arrow.down",
-                    accessibilityLabel: LocalizedStringKey(L10n.tr("common.sort", lang: appLanguage)),
+                    accessibilityLabel: LocalizedStringKey(L10n.tr("common.sort")),
                     action: onSort
                 )
 
                 ZStack(alignment: .topTrailing) {
                     AppChromeHeaderCircleIconButton(
                         systemName: "slider.horizontal.3",
-                        accessibilityLabel: LocalizedStringKey(L10n.tr("common.filters", lang: appLanguage)),
+                        accessibilityLabel: LocalizedStringKey(L10n.tr("common.filters")),
                         action: onFilter
                     )
                     if hasActiveFilters {

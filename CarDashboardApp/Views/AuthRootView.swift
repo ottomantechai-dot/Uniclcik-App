@@ -5,11 +5,6 @@ struct AuthRootView: View {
     @ObservedObject var auth: AuthViewModel
     @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject var settingsVM: SettingsViewModel
-    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
-
-    private var appLanguage: AppLanguage {
-        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
-    }
 
     var body: some View {
         Group {
@@ -17,7 +12,7 @@ struct AuthRootView: View {
                 ZStack {
                     Color(.systemGroupedBackground)
                         .ignoresSafeArea()
-                    ProgressView(L10n.tr("auth.connecting", lang: appLanguage))
+                    ProgressView(L10n.tr("auth.connecting"))
                 }
             } else if auth.isAuthenticated {
                 MainTabView()

@@ -15,10 +15,10 @@ enum AvatarGender: String, CaseIterable, Codable {
     case male
     case female
 
-    var displayNameSpanish: String {
+    var displayName: String {
         switch self {
-        case .male: return "Chico"
-        case .female: return "Chica"
+        case .male: return "Male"
+        case .female: return "Female"
         }
     }
 }
@@ -45,8 +45,8 @@ enum DressCode: String, CaseIterable, Codable {
         case .businessFormal: return "Business formal"
         case .casual: return "Casual"
         case .streetwear: return "Streetwear"
-        case .beach: return "Playa"
-        case .sport: return "Deportivo"
+        case .beach: return "Beach"
+        case .sport: return "Sport"
         }
     }
 }
@@ -56,10 +56,10 @@ enum Season: String, CaseIterable, Codable {
 
     var displayName: String {
         switch self {
-        case .spring: return "Primavera"
-        case .summer: return "Verano"
-        case .fall: return "Otoño"
-        case .winter: return "Invierno"
+        case .spring: return "Spring"
+        case .summer: return "Summer"
+        case .fall: return "Fall"
+        case .winter: return "Winter"
         }
     }
 }
@@ -80,23 +80,34 @@ enum ShoeAngle: Int, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .front: return "Frontal"
-        case .right: return "Lateral derecho"
-        case .back: return "Trasera"
-        case .left: return "Lateral izquierdo"
+        case .front: return "Front"
+        case .right: return "Right side"
+        case .back: return "Back"
+        case .left: return "Left side"
+        }
+    }
+
+    /// Segundo del vídeo guía (`Vidos-zapatos.mp4`) donde debe pausarse cada ángulo.
+    /// Para `.left` usa el último frame (`duration` − margen).
+    func guideVideoSeconds(duration: Double) -> Double {
+        switch self {
+        case .front: return 0
+        case .right: return 2
+        case .back: return 3
+        case .left: return max(0, duration - 0.04)
         }
     }
 
     var instruction: String {
         switch self {
         case .front:
-            return "Coloca el zapato apuntando hacia la cámara, mostrando la punta y los cordones."
+            return "Place the shoe pointing at the camera, showing the toe and laces."
         case .right:
-            return "Gira el zapato 90° y captura el lateral exterior completo."
+            return "Rotate the shoe 90° and capture the full outer side."
         case .back:
-            return "Captura la parte trasera del zapato mostrando el talón."
+            return "Capture the back of the shoe showing the heel."
         case .left:
-            return "Gira al lateral interior del zapato y captura el costado completo."
+            return "Turn to the inner side of the shoe and capture the full side."
         }
     }
 
@@ -112,10 +123,10 @@ enum ShoeAngle: Int, CaseIterable, Identifiable {
     /// Leyenda corta en listas: qué encaja en cada foto / ángulo.
     var slotCue: String {
         switch self {
-        case .front: return "→ Punta mirando a ti"
-        case .right: return "→ Costado exterior"
-        case .back: return "→ Talón / parte trasera"
-        case .left: return "→ Costado interior"
+        case .front: return "→ Toe facing you"
+        case .right: return "→ Outer side"
+        case .back: return "→ Heel / back"
+        case .left: return "→ Inner side"
         }
     }
 }
@@ -134,21 +145,21 @@ enum GarmentAngle: Int, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .front: return "Frente completo"
-        case .back: return "Espalda completa"
-        case .detail1: return "Detalle (estampado principal)"
-        case .detail2: return "Detalle (cuello / etiqueta)"
-        case .detail3: return "Detalle (tela / textura)"
+        case .front: return "Full front"
+        case .back: return "Full back"
+        case .detail1: return "Detail (main print)"
+        case .detail2: return "Detail (collar / label)"
+        case .detail3: return "Detail (fabric / texture)"
         }
     }
 
     var instruction: String {
         switch self {
-        case .front: return "Extiende la prenda y captura toda la parte frontal."
-        case .back: return "Voltea la prenda y captura la parte trasera completa."
-        case .detail1: return "Acércate al estampado, logo o motivo principal."
-        case .detail2: return "Primer plano de cuello, etiqueta interior o costuras finas."
-        case .detail3: return "Textura de la tela o etiqueta volante con macro."
+        case .front: return "Lay the garment flat and capture the full front."
+        case .back: return "Flip the garment and capture the full back."
+        case .detail1: return "Move closer to the print, logo, or main motif."
+        case .detail2: return "Close-up of collar, inner label, or fine seams."
+        case .detail3: return "Fabric texture or hang tag with macro."
         }
     }
 
@@ -217,13 +228,13 @@ enum ClothingCategory: String, CaseIterable, Codable {
     var displayName: String {
         switch self {
         case .tops: return "Tops"
-        case .dressesJumpsuits: return "Vestidos / monos"
-        case .pantsSkirts: return "Pantalones y faldas"
-        case .coats: return "Abrigos"
-        case .shoes: return "Zapatos"
-        case .accessories: return "Complementos"
-        case .bags: return "Bolsos"
-        case .underwear: return "Ropa interior"
+        case .dressesJumpsuits: return "Dresses / jumpsuits"
+        case .pantsSkirts: return "Pants & skirts"
+        case .coats: return "Coats"
+        case .shoes: return "Shoes"
+        case .accessories: return "Accessories"
+        case .bags: return "Bags"
+        case .underwear: return "Underwear"
         }
     }
 
@@ -267,6 +278,14 @@ struct ClosetDraftPiece: Identifiable, Equatable {
     var boundingBox: NormalizedRect?
     var name: String
     var brand: String
+    var skuText: String
+    var sizeText: String
+    var colorLabel: String
+    var productDescription: String
+    var purchasePriceText: String
+    var priceText: String
+    var marketPriceJSON: String?
+    var listingPlatformsRaw: String?
     var category: ClothingCategory?
     /// Prettify falló en el último intento.
     var prettifyFailedBadge: Bool
@@ -283,6 +302,14 @@ struct ClosetDraftPiecePersisted: Codable, Identifiable {
     var boundingBox: NormalizedRect?
     var name: String
     var brand: String
+    var skuText: String?
+    var sizeText: String?
+    var colorLabel: String?
+    var productDescription: String?
+    var purchasePriceText: String?
+    var priceText: String?
+    var marketPriceJSON: String?
+    var listingPlatformsRaw: String?
     var categoryRaw: String?
 
     func toDraft() -> ClosetDraftPiece {
@@ -295,6 +322,14 @@ struct ClosetDraftPiecePersisted: Codable, Identifiable {
             boundingBox: boundingBox,
             name: name,
             brand: brand,
+            skuText: skuText ?? "",
+            sizeText: sizeText ?? "",
+            colorLabel: colorLabel ?? "",
+            productDescription: productDescription ?? "",
+            purchasePriceText: purchasePriceText ?? "",
+            priceText: priceText ?? "",
+            marketPriceJSON: marketPriceJSON,
+            listingPlatformsRaw: listingPlatformsRaw,
             category: categoryRaw.flatMap { ClothingCategory(rawValue: $0) },
             prettifyFailedBadge: false
         )
@@ -312,6 +347,14 @@ extension ClosetDraftPiece {
             boundingBox: boundingBox,
             name: name,
             brand: brand,
+            skuText: skuText.isEmpty ? nil : skuText,
+            sizeText: sizeText,
+            colorLabel: colorLabel,
+            productDescription: productDescription,
+            purchasePriceText: purchasePriceText.isEmpty ? nil : purchasePriceText,
+            priceText: priceText,
+            marketPriceJSON: marketPriceJSON,
+            listingPlatformsRaw: listingPlatformsRaw,
             categoryRaw: category?.rawValue
         )
     }

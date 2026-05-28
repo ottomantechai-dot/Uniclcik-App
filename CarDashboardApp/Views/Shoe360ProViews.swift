@@ -144,6 +144,63 @@ struct ShoeFluidSpinPhaseLayer: View {
     }
 }
 
+/// Crossfade fluido entre fotos en memoria (captura 360° antes de guardar en disco).
+struct ShoeFluidSpinUIImageLayer: View {
+    let images: [UIImage]
+    let phase: CGFloat
+
+    var body: some View {
+        let n = images.count
+        ZStack {
+            Color.white
+
+            if n == 1 {
+                Image(uiImage: images[0])
+                    .resizable()
+                    .scaledToFit()
+                    .padding(8)
+            } else if n > 1 {
+                let p = ShoeFluidSpinMath.normalizePhase(phase, frameCount: n)
+                let baseFloor = CGFloat(floor(Double(p)))
+                let iA = ((Int(baseFloor) % n) + n) % n
+                let iB = (iA + 1) % n
+                let frac = p - baseFloor
+
+                ZStack {
+                    Image(uiImage: images[iA])
+                        .resizable()
+                        .scaledToFit()
+                        .padding(8)
+                        .opacity(Double(1 - frac))
+                    Image(uiImage: images[iB])
+                        .resizable()
+                        .scaledToFit()
+                        .padding(8)
+                        .opacity(Double(frac))
+                }
+                .drawingGroup(opaque: false)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Giro automático continuo al completar los 4 ángulos.
+struct ShoeCaptureAutoSpinPreview: View {
+    let images: [UIImage]
+    /// Segundos por vuelta completa.
+    var secondsPerRevolution: Double = 2.8
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let elapsed = timeline.date.timeIntervalSinceReferenceDate
+            let n = max(images.count, 1)
+            let phase = CGFloat((elapsed / secondsPerRevolution).truncatingRemainder(dividingBy: 1)) * CGFloat(n)
+            ShoeFluidSpinUIImageLayer(images: images, phase: phase)
+        }
+    }
+}
+
 // MARK: - UIKit bridge · vídeo (cámara o carrete)
 
 struct ClosetMoviePickerBridge: UIViewControllerRepresentable {
@@ -281,7 +338,7 @@ struct Shoe360ProCaptureView: View {
                             if UIImagePickerController.isSourceTypeAvailable(.camera) {
                                 showCameraRecorder = true
                             } else {
-                                errorText = "La cámara no está disponible en este dispositivo."
+                                errorText = "The camera is not available on this device."
                             }
                         } label: {
                             Label("Grabar video", systemImage: "video.circle.fill")
@@ -293,7 +350,7 @@ struct Shoe360ProCaptureView: View {
                         Button {
                             showLibraryPicker = true
                         } label: {
-                            Label("Elegir de la galería", systemImage: "film")
+                            Label("Choose from gallery", systemImage: "film")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(Color.black)
                                 .frame(maxWidth: .infinity, minHeight: 52)
@@ -365,7 +422,7 @@ struct Shoe360ProCaptureView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cerrar") { dismissWithCleanupIfNeeded() }
+                Button(L10n.tr("common.close")) { dismissWithCleanupIfNeeded() }
                     .foregroundStyle(Color.black)
             }
         }
@@ -408,7 +465,7 @@ struct Shoe360ProCaptureView: View {
                     Image(systemName: "video.fill")
                         .font(.system(size: 48))
                         .foregroundStyle(Color.black.opacity(0.28))
-                    Text("Vídeo listo para extraer")
+                    Text("Video ready to extract")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Color.black.opacity(0.62))
                 }
@@ -417,7 +474,7 @@ struct Shoe360ProCaptureView: View {
                     Image(systemName: "arrow.triangle.2.circlepath.camera")
                         .font(.system(size: 52))
                         .foregroundStyle(Color.black.opacity(0.22))
-                    Text("Sin vídeo")
+                    Text("No video")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(Color.black.opacity(0.45))
                 }
@@ -630,7 +687,7 @@ struct Shoe360ProViewer: View {
                                 } else {
                                     Image(systemName: "square.and.arrow.down")
                                 }
-                                Text("Fotos")
+                                Text("Photos")
                                     .font(.system(size: 12, weight: .semibold))
                             }
                             .foregroundStyle(Color.black)

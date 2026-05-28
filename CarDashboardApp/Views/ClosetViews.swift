@@ -12,6 +12,26 @@ private enum ClosetFlowPalette {
     static let destructive = Color(red: 229 / 255, green: 57 / 255, blue: 53 / 255)
 }
 
+private struct ClosetEmptySegmentProgressBar: View {
+    let filledCount: Int
+    let segmentCount: Int
+
+    init(filledCount: Int, segmentCount: Int = 5) {
+        self.segmentCount = max(1, segmentCount)
+        self.filledCount = min(self.segmentCount, max(0, filledCount))
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(0..<segmentCount, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(i < filledCount ? Color.black : Color.black.opacity(0.12))
+                    .frame(height: 8)
+            }
+        }
+    }
+}
+
 /// Token para `.sheet(item:)` al flujo 360° en borrador guardarropa.
 private struct Shoe360DraftSheetPieceID: Identifiable, Hashable {
     let pieceID: UUID
@@ -29,6 +49,7 @@ private struct ClosetDiskThumbnail: View {
                 Image(uiImage: ui)
                     .resizable()
                     .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ZStack {
                     Color.white
@@ -90,15 +111,18 @@ extension UIImage {
     }
 }
 
-// MARK: - Pestaña clóset + FAB + sheet entrada
+// MARK: - Pestaña clóset + sheet entrada
 
 struct ClosetView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var addFlow: AddToClosetFlowViewModel
-    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
-    private var appLanguage: AppLanguage { AppLanguage(rawValue: appLanguageRaw) ?? .spanish }
+    @EnvironmentObject private var goatVM: GoatAccountViewModel
     @Query(sort: \ClosetItem.createdAt, order: .reverse) private var closetItems: [ClosetItem]
-    @Query(sort: \Look.createdAt, order: .reverse) private var closetLooks: [Look]
+
+    /// Active inventory only — sold items live under the Sold tab.
+    private var activeClosetItems: [ClosetItem] {
+        closetItems.filter { !$0.isExplicitlySold }
+    }
 
     @State private var showAddMenuSheet = false
     @State private var showCamera = false
@@ -114,7 +138,6 @@ struct ClosetView: View {
     /// Ficha grande de una prenda (estudio).
     @State private var garmentDetailSheetItem: ClosetItem?
     @State private var showCreateLookSheet = false
-    @State private var openedLookSheet: Look?
 
     /// Tras elegir exactamente 4 fotos: elegir «outfit» o «zapatos 360°».
     @State private var stagingFiveGalleryImages: [UIImage] = []
@@ -126,10 +149,58 @@ struct ClosetView: View {
     @State private var showPrivateShoe360Flow = false
     /// Ropa lookbook foto a foto: camisetas, pantalones, cintos, calcetines, etc. (no zapatos).
     @State private var showPrivateGarmentLookbookFlow = false
+    @State private var stockSearchText = ""
+    @FocusState private var stockSearchFocused: Bool
+    @AppStorage("stockLayoutMode") private var stockLayoutModeRaw = StockLayoutMode.grid.rawValue
+    @State private var showBarcodeScanner = false
+    @State private var scanLookupPayload: StockScanLookupPayload?
+    @State private var scanLookupBusy = false
+
+    private var stockLayoutModeBinding: Binding<StockLayoutMode> {
+        Binding(
+            get: { StockLayoutMode(rawValue: stockLayoutModeRaw) ?? .grid },
+            set: { stockLayoutModeRaw = $0.rawValue }
+        )
+    }
+
+    private var stockSearchQuery: String {
+        stockSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func itemMatchesStockSearch(_ item: ClosetItem, query: String) -> Bool {
+        guard !query.isEmpty else { return true }
+        let blob = [
+            item.brand ?? "",
+            item.name,
+            item.catalogDisplayName,
+            item.skuText ?? "",
+            item.resolvedSKU ?? "",
+            item.colorLabel ?? "",
+            item.sizeText ?? "",
+            item.category.displayName,
+        ]
+        .joined(separator: " ")
+        .lowercased()
+        return blob.contains(query)
+    }
+
+    private var filteredActiveClosetItems: [ClosetItem] {
+        guard !stockSearchQuery.isEmpty else { return activeClosetItems }
+        return activeClosetItems.filter { itemMatchesStockSearch($0, query: stockSearchQuery) }
+    }
+
+    private var filteredClosetStockSections: [ClosetStockSection] {
+        let grouped = Dictionary(grouping: filteredActiveClosetItems) { $0.category }
+        return Self.stockCategoryPresentationOrder.compactMap { cat in
+            guard let arr = grouped[cat], !arr.isEmpty else { return nil }
+            let sorted = arr.sorted { $0.createdAt > $1.createdAt }
+            return ClosetStockSection(category: cat, items: sorted)
+        }
+    }
 
     private let gridColumns: [GridItem] = [
-        GridItem(.flexible(minimum: 156), spacing: 16),
-        GridItem(.flexible(minimum: 156), spacing: 16),
+        GridItem(.flexible(minimum: 148), spacing: 12),
+        GridItem(.flexible(minimum: 148), spacing: 12),
     ]
 
     /// Orden visual del armario por categoría (solo se pintan bloques con prendas).
@@ -143,25 +214,39 @@ struct ClosetView: View {
         let items: [ClosetItem]
     }
 
-    private var closetStockSections: [ClosetStockSection] {
-        let grouped = Dictionary(grouping: closetItems) { $0.category }
-        return Self.stockCategoryPresentationOrder.compactMap { cat in
-            guard let arr = grouped[cat], !arr.isEmpty else { return nil }
-            let sorted = arr.sorted { $0.createdAt > $1.createdAt }
-            return ClosetStockSection(category: cat, items: sorted)
+    /// Meta de onboarding: barra de 5 segmentos hasta tener 5 prendas guardadas.
+    private static let closetStarterGarmentGoal: Int = 5
+
+    private var showsClosetStarterProgress: Bool {
+        activeClosetItems.count < Self.closetStarterGarmentGoal
+    }
+
+    private func closetStarterProgressLabel() -> String {
+        let n = activeClosetItems.count
+        if n == 0 {
+            return L10n.tr("closet.progressGoalIntro")
         }
+        let remaining = Self.closetStarterGarmentGoal - n
+        guard remaining >= 2 else {
+            return L10n.tr("closet.progressGreatRemainingOne")
+        }
+        return String(format: L10n.tr("closet.progressGreatRemainingPlural"), Int64(remaining))
     }
 
     private var draftBannerCount: Int { ClosetLocalDraftStore.pendingCount }
 
-    /// Espacio bajo la rejilla para FAB, banner de borradores y barra de eliminar en bloque.
+    /// Espacio bajo la rejilla para banner de borradores y barra de eliminar en bloque.
     private var bottomInsetForClosetGrid: CGFloat {
-        var h: CGFloat = draftBannerCount > 0 ? 148 : 120
+        var h: CGFloat
+        if draftBannerCount > 0 {
+            h = 148
+        } else if activeClosetItems.isEmpty {
+            h = 100
+        } else {
+            h = 72
+        }
         if closetSelectionMode, !closetSelectedIDs.isEmpty {
             h += 88
-        }
-        if !closetLooks.isEmpty {
-            h += 154
         }
         return h
     }
@@ -170,51 +255,23 @@ struct ClosetView: View {
         ZStack(alignment: .bottom) {
             Color.white.ignoresSafeArea()
 
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
-                    closetHeaderRow
+            VStack(spacing: 0) {
+                if !activeClosetItems.isEmpty {
+                    StockBrowseSearchBar(
+                        searchText: $stockSearchText,
+                        layoutMode: stockLayoutModeBinding,
+                        onScan: { showBarcodeScanner = true },
+                        searchFocused: $stockSearchFocused
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 10)
+                    .background(Color.white)
+                }
 
-                    if !closetLooks.isEmpty {
-                        looksRibbon
-                    }
-
-                    if closetItems.isEmpty {
-                        Text(L10n.tr("closet.empty", lang: appLanguage))
-                            .font(.system(size: 14))
-                            .foregroundStyle(ClosetFlowPalette.secondaryText)
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, bottomInsetForClosetGrid)
-                    } else {
-                        LazyVStack(alignment: .leading, spacing: 24) {
-                            ForEach(closetStockSections) { section in
-                                VStack(alignment: .leading, spacing: 10) {
-                                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                        Text("\(section.category.emoji) \(section.category.displayName)")
-                                            .font(.system(size: 17, weight: .bold))
-                                            .foregroundStyle(Color.black)
-                                        Spacer(minLength: 8)
-                                        Text("\(section.items.count)")
-                                            .font(.system(size: 12, weight: .semibold))
-                                            .foregroundStyle(Color.black.opacity(0.42))
-                                            .padding(.horizontal, 9)
-                                            .padding(.vertical, 4)
-                                            .background(
-                                                Capsule(style: .continuous)
-                                                    .stroke(Color.black.opacity(0.12), lineWidth: 1)
-                                            )
-                                    }
-                                    .padding(.horizontal, 16)
-
-                                    LazyVGrid(columns: gridColumns, spacing: 16) {
-                                        ForEach(section.items) { item in
-                                            closetCell(item)
-                                        }
-                                    }
-                                    .padding(.horizontal, 14)
-                                }
-                            }
-                        }
-                        .padding(.bottom, bottomInsetForClosetGrid)
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        productsTabContent
                     }
                 }
             }
@@ -226,13 +283,16 @@ struct ClosetView: View {
             if closetSelectionMode, !closetSelectedIDs.isEmpty {
                 closetBulkDeleteBar
             }
-
-            if !closetSelectionMode {
-                plusFloatingButton
-            }
         }
         .toolbar(.hidden, for: .navigationBar)
         .preferredColorScheme(.light)
+        .onReceive(NotificationCenter.default.publisher(for: .upsoledPresentAddToClosetMenu)) { _ in
+            showAddMenuSheet = true
+        }
+        .task {
+            ClosetInventoryRepair.normalizeSoldFlags(in: modelContext)
+            ClosetInventoryRepair.backfillSKUFromNames(in: modelContext)
+        }
         .sheet(isPresented: $showAddMenuSheet) {
             addToClosetIntroSheet
                 .presentationDragIndicator(.visible)
@@ -247,7 +307,7 @@ struct ClosetView: View {
             NavigationStack {
                 VStack(spacing: 22) {
                     Text(
-                        "Elige hasta 5 fotos. Con exactamente 4 podrás elegir vista 360° de zapatos (frontal, derecha, trasera, izquierda, en orden) o analizar outfit con las fotos que elijas."
+                        "Choose up to 5 photos. With exactly 4 you can pick a 360° shoe view (front, right, back, left, in order) or analyze an outfit with the photos you choose."
                     )
                     .font(.system(size: 14))
                     .foregroundStyle(ClosetFlowPalette.secondaryText)
@@ -260,7 +320,7 @@ struct ClosetView: View {
                         matching: .images,
                         photoLibrary: .shared()
                     ) {
-                        Label("Abrir fotos", systemImage: "photo.on.rectangle.angled")
+                        Label("Open photos", systemImage: "photo.on.rectangle.angled")
                             .font(.system(size: 17, weight: .semibold))
                             .frame(maxWidth: .infinity, minHeight: 52)
                             .foregroundStyle(Color.white)
@@ -271,7 +331,7 @@ struct ClosetView: View {
                     Button {
                         Task { await ingestPhotoPickerItems(pickedGalleryItems) }
                     } label: {
-                        Label("Continuar", systemImage: "arrow.forward.circle.fill")
+                        Label("Continue", systemImage: "arrow.forward.circle.fill")
                             .font(.system(size: 17, weight: .semibold))
                             .frame(maxWidth: .infinity, minHeight: 52)
                             .foregroundStyle(Color.white)
@@ -280,7 +340,7 @@ struct ClosetView: View {
                     .tint(Color.black.opacity(0.82))
                     .disabled(pickedGalleryItems.isEmpty)
 
-                    Text("Selecciona las fotos y pulsa Continuar (elige 4 en orden para zapatos 360° u otra cantidad para outfit).")
+                    Text("Select photos and tap Continue (pick 4 in order for 360° shoes or another amount for an outfit).")
                         .font(.system(size: 11))
                         .foregroundStyle(Color.black.opacity(0.42))
                         .multilineTextAlignment(.center)
@@ -288,10 +348,10 @@ struct ClosetView: View {
                     Spacer()
                 }
                 .padding(.horizontal, 20)
-                .navigationTitle("Galería")
+                .navigationTitle("Gallery")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Cerrar") {
+                        Button(L10n.tr("common.close")) {
                             pickedGalleryItems.removeAll()
                             showGalleryPickSheet = false
                         }
@@ -345,49 +405,77 @@ struct ClosetView: View {
                 .presentationDetents([.large])
                 .preferredColorScheme(.light)
         }
-        .sheet(item: $openedLookSheet) { look in
-            ClosetLookDetailSheet(look: look)
-                .presentationDragIndicator(.visible)
-                .presentationDetents([.large])
-                .preferredColorScheme(.light)
+        .fullScreenCover(isPresented: $showBarcodeScanner) {
+            StockBarcodeScannerScreen(
+                onCode: { code in
+                    showBarcodeScanner = false
+                    stockSearchText = code
+                    Task { await handleScannedCode(code) }
+                },
+                onCancel: { showBarcodeScanner = false }
+            )
+        }
+        .sheet(item: $scanLookupPayload) { payload in
+            StockScanResultSheet(
+                payload: payload,
+                onViewStockItem: { id in
+                    scanLookupPayload = nil
+                    if let item = activeClosetItems.first(where: { $0.id == id }) {
+                        garmentDetailSheetItem = item
+                    }
+                },
+                onDismiss: { scanLookupPayload = nil }
+            )
+            .presentationDetents([.height(340), .medium])
+            .presentationDragIndicator(.visible)
+        }
+        .overlay {
+            if scanLookupBusy {
+                ZStack {
+                    Color.black.opacity(0.25).ignoresSafeArea()
+                    ProgressView(L10n.tr("price.searching"))
+                        .padding(20)
+                        .background(RoundedRectangle(cornerRadius: 16).fill(Color.white))
+                }
+            }
         }
         .confirmationDialog(
-            "¿Eliminar esta prenda del clóset?",
+            "Delete this item from your closet?",
             isPresented: Binding(
                 get: { closetItemPendingDelete != nil },
                 set: { if !$0 { closetItemPendingDelete = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("Eliminar", role: .destructive) {
+            Button("Delete", role: .destructive) {
                 if let item = closetItemPendingDelete {
                     deleteClosetItem(item)
                 }
                 closetItemPendingDelete = nil
             }
-            Button("Cancelar", role: .cancel) {
+            Button("Cancel", role: .cancel) {
                 closetItemPendingDelete = nil
             }
         } message: {
             if let item = closetItemPendingDelete {
-                Text("Se borrará «\(item.name)» y sus archivos en este dispositivo.")
+                Text("“\(item.name)” and its files on this device will be deleted.")
             }
         }
         .alert(
             closetSelectedIDs.count <= 1
-                ? "¿Eliminar esta prenda del clóset?"
-                : "¿Eliminar \(closetSelectedIDs.count) prendas?",
+                ? "Delete this item from your closet?"
+                : "Delete \(closetSelectedIDs.count) items?",
             isPresented: $confirmBulkDelete
         ) {
-            Button("Eliminar", role: .destructive) {
+            Button("Delete", role: .destructive) {
                 bulkDeleteSelectedClosetItems()
             }
-            Button("Cancelar", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         } message: {
             Text(
                 closetSelectedIDs.count <= 1
-                    ? "Se borrarán sus archivos en este dispositivo."
-                    : "Se borrarán las prendas seleccionadas y sus archivos locales."
+                    ? "Its files on this device will be deleted."
+                    : "Selected items and their local files will be deleted."
             )
         }
     }
@@ -395,13 +483,13 @@ struct ClosetView: View {
     private var fivePhotosUseModeSheet: some View {
         NavigationStack {
             VStack(spacing: 18) {
-                Text("4 fotos seleccionadas")
+                Text("4 photos selected")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(Color.black)
 
                 Text(
-                    "¿Zapatos? Las fotos 1→4 se asignan a: frontal, lateral derecho, trasera y lateral izquierdo. "
-                        + "Luego puedes corregir cualquier ángulo."
+                    "Shoes? Photos 1→4 map to: front, right side, back, and left side. "
+                        + "You can correct any angle afterward."
                 )
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Color.black.opacity(0.52))
@@ -420,9 +508,9 @@ struct ClosetView: View {
                         }
                     } label: {
                         VStack(spacing: 5) {
-                            Text("👞 Zapatos — vista 360°")
+                            Text("👞 Shoes — 360° view")
                                 .font(.system(size: 17, weight: .semibold))
-                            Text("Las 4 fotos = giro fluido al arrastrar (transición suave entre vistas)")
+                            Text("4 photos = smooth drag rotation (seamless transition between views)")
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(Color.black.opacity(0.45))
                         }
@@ -445,7 +533,7 @@ struct ClosetView: View {
                             addFlow.beginProcessing(images: snap)
                         }
                     } label: {
-                        Text("Detectar prendas en outfit")
+                        Text("Detect garments in outfit")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(Color.white)
                             .frame(maxWidth: .infinity, minHeight: 52)
@@ -454,7 +542,7 @@ struct ClosetView: View {
                     .buttonStyle(.plain)
                 }
 
-                Button("Cancelar", role: .cancel) {
+                Button("Cancel", role: .cancel) {
                     stagingFiveGalleryImages = []
                     showFivePhotosUseModeSheet = false
                 }
@@ -464,11 +552,11 @@ struct ClosetView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 18)
-            .navigationTitle("Usar tus 4 fotos")
+            .navigationTitle("Use your 4 photos")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cerrar") {
+                    Button(L10n.tr("common.close")) {
                         stagingFiveGalleryImages = []
                         showFivePhotosUseModeSheet = false
                     }
@@ -478,41 +566,88 @@ struct ClosetView: View {
         }
     }
 
-    /// Fila superior: título y entrada/salida del modo selección.
-    private var closetHeaderRow: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(L10n.tr("closet.title", lang: appLanguage))
-                .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(Color.black)
-
-            Spacer(minLength: 8)
-
-            if closetItems.count >= 2 {
-                Button("Crear look") {
-                    showCreateLookSheet = true
-                    ClosetAnalytics.named("closet_create_look_opened")
-                }
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.85))
-                .disabled(closetSelectionMode)
+    /// Estado vacío: layout tipo banner (referencia onboarding) — vídeo 16:9 visible completo (`resizeAspectFit`).
+    @ViewBuilder
+    private var closetEmptyOnboardingDesign: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(.secondarySystemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                    )
+                LoopingMutedBundledVideoView(
+                    resourceName: "video-portada",
+                    fileExtension: "mp4",
+                    videoGravity: .resizeAspect
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(4)
             }
+            .frame(maxWidth: .infinity)
+            .aspectRatio(16 / 9.0, contentMode: .fit)
+            .padding(.horizontal, 16)
 
-            if !closetItems.isEmpty {
-                Button(closetSelectionMode ? "Listo" : "Seleccionar") {
-                    if closetSelectionMode {
-                        closetSelectionMode = false
-                        closetSelectedIDs.removeAll()
-                    } else {
-                        closetSelectionMode = true
-                        closetSelectedIDs.removeAll()
-                    }
-                }
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.black)
+            VStack(alignment: .leading, spacing: 12) {
+                Text(closetStarterProgressLabel())
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.black)
+                    .fixedSize(horizontal: false, vertical: true)
+                ClosetEmptySegmentProgressBar(
+                    filledCount: min(Self.closetStarterGarmentGoal, activeClosetItems.count),
+                    segmentCount: Self.closetStarterGarmentGoal
+                )
             }
+            .padding(.horizontal, 16)
+
+            Button {
+                ClosetAnalytics.named("add_to_closet_opened")
+                showAddMenuSheet = true
+            } label: {
+                Text(L10n.tr("closet.addWide"))
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .background(Capsule(style: .continuous).fill(Color.black))
+                    .shadow(color: Color.black.opacity(0.22), radius: 10, x: 0, y: 5)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+        }
+    }
+
+    /// Progreso 5 prendas cuando ya hay prendas pero aún falta llegar al objetivo (encima de la rejilla).
+    private var closetStarterProgressStrip: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(closetStarterProgressLabel())
+                .font(.system(size: 15))
+                .foregroundStyle(Color.black)
+                .fixedSize(horizontal: false, vertical: true)
+            ClosetEmptySegmentProgressBar(
+                filledCount: min(Self.closetStarterGarmentGoal, activeClosetItems.count),
+                segmentCount: Self.closetStarterGarmentGoal
+            )
+            Button {
+                ClosetAnalytics.named("add_to_closet_opened")
+                showAddMenuSheet = true
+            } label: {
+                Text(L10n.tr("closet.addWide"))
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .background(Capsule(style: .continuous).fill(Color.black))
+                    .shadow(color: Color.black.opacity(0.22), radius: 10, x: 0, y: 5)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+
+            Text(L10n.tr("closet.starterReminderPartial"))
+                .font(.system(size: 13))
+                .foregroundStyle(ClosetFlowPalette.secondaryText)
         }
         .padding(.horizontal, 16)
-        .padding(.top, 8)
     }
 
     private var closetBulkDeleteBar: some View {
@@ -521,7 +656,7 @@ struct ClosetView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "trash.fill")
-                Text("Eliminar (\(closetSelectedIDs.count))")
+                Text("Delete (\(closetSelectedIDs.count))")
                     .font(.system(size: 17, weight: .semibold))
             }
             .foregroundStyle(Color.white)
@@ -584,77 +719,212 @@ struct ClosetView: View {
         confirmBulkDelete = false
     }
 
-    private func lookRibbonBadge(_ look: Look) -> String {
-        let short = look.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if short.isEmpty {
-            if let g = look.avatarGenderRaw, let ag = AvatarGender(rawValue: g) {
-                return ag.displayNameSpanish
-            }
-            return "Look"
-        }
-        return short.count <= 14 ? short : String(short.prefix(12)) + "…"
-    }
-
-    private var looksRibbon: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Mis looks tipo estudio")
-                .font(.system(size: 15, weight: .heavy))
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(closetLooks) { look in
-                        Button {
-                            openedLookSheet = look
-                        } label: {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .fill(Color.white)
-
-                                if let rel = ImageStore.lookRibbonThumbnailRelativePath(look: look) {
-                                    ClosetDiskThumbnail(relativePath: rel)
-                                        .padding(10)
-                                        .aspectRatio(9 / 16, contentMode: .fit)
-                                } else {
-                                    Image(systemName: "sparkles.rectangle.stack")
-                                        .foregroundStyle(Color.black.opacity(0.25))
-                                        .font(.system(size: 30))
-                                }
-
-                                VStack {
-                                    Spacer()
-                                    Text(lookRibbonBadge(look))
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundStyle(Color.white)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 5)
-                                        .background(Capsule().fill(Color.black.opacity(0.55)))
-                                        .padding(8)
-                                }
-                            }
-                            .frame(width: 112)
-                            .aspectRatio(9 / 16, contentMode: .fit)
-                        }
-                        .buttonStyle(.plain)
+    /// Productos · stock por categorías.
+    @ViewBuilder
+    private var productsTabContent: some View {
+        if !activeClosetItems.isEmpty {
+            let totalValue = filteredActiveClosetItems.reduce(0.0) { $0 + $1.stockValueUSD }
+            let invested = filteredActiveClosetItems.reduce(0.0) { $0 + $1.purchaseValueUSD }
+            let profit = filteredActiveClosetItems.reduce(0.0) { $0 + $1.projectedProfitUSD }
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(filteredActiveClosetItems.count) items")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.72))
+                    Text(PieceMarketPrice.formatUSD(Int(totalValue.rounded())))
+                        .font(.system(size: 22, weight: .heavy))
+                        .foregroundStyle(Color.black)
+                    Text("Market value")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.45))
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    if invested > 0 {
+                        Text(PieceMarketPrice.formatUSD(Int(invested.rounded())))
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.black.opacity(0.55))
+                        Text("Invested")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.black.opacity(0.45))
+                    }
+                    if profit != 0 || invested > 0 {
+                        Text(profit >= 0 ? "+\(PieceMarketPrice.formatUSD(Int(profit.rounded())))" : "−\(PieceMarketPrice.formatUSD(Int(abs(profit).rounded())))")
+                            .font(.system(size: 22, weight: .heavy))
+                            .foregroundStyle(profit >= 0 ? Color(red: 0.20, green: 0.70, blue: 0.45) : Color(red: 0.92, green: 0.30, blue: 0.30))
+                        Text("Potential profit")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.black.opacity(0.45))
                     }
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
         }
-        .padding(.horizontal, 16)
+
+        if showsClosetStarterProgress, activeClosetItems.isEmpty {
+            closetEmptyOnboardingDesign
+                .padding(.bottom, bottomInsetForClosetGrid)
+        } else if showsClosetStarterProgress {
+            closetStarterProgressStrip
+        }
+
+        if !activeClosetItems.isEmpty, filteredActiveClosetItems.isEmpty {
+            Text(L10n.tr("closet.searchEmpty"))
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color.black.opacity(0.45))
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 16)
+                .padding(.top, 24)
+        }
+
+        if !filteredActiveClosetItems.isEmpty {
+            LazyVStack(alignment: .leading, spacing: 24) {
+                ForEach(filteredClosetStockSections) { section in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("\(section.category.emoji) \(section.category.displayName)")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(Color.black)
+                            Spacer(minLength: 8)
+                            Text("\(section.items.count)")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.black.opacity(0.42))
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                                )
+                        }
+                        .padding(.horizontal, 16)
+
+                        if stockLayoutModeBinding.wrappedValue == .grid {
+                            LazyVGrid(columns: gridColumns, spacing: 12) {
+                                ForEach(section.items) { item in
+                                    closetCell(item)
+                                        .padding(.top, 10)
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                        } else {
+                            LazyVStack(spacing: 10) {
+                                ForEach(section.items) { item in
+                                    closetListRow(item)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                    }
+                }
+            }
+            .padding(.bottom, bottomInsetForClosetGrid)
+        }
     }
 
-    private var plusFloatingButton: some View {
-        Button {
-            ClosetAnalytics.named("add_to_closet_opened")
-            showAddMenuSheet = true
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 26, weight: .bold))
-                .foregroundStyle(Color.white)
-                .frame(width: 58, height: 58)
-                .background(Circle().fill(Color.black))
-                .shadow(color: Color.black.opacity(0.25), radius: 12, x: 0, y: 6)
+    @MainActor
+    private func handleScannedCode(_ code: String) async {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        scanLookupBusy = true
+        defer { scanLookupBusy = false }
+        scanLookupPayload = await StockScanLookupService.lookup(
+            code: trimmed,
+            stock: activeClosetItems,
+            goatVM: goatVM
+        )
+    }
+
+    private func closetListRow(_ item: ClosetItem) -> some View {
+        let selected = closetSelectedIDs.contains(item.id)
+        return HStack(alignment: .center, spacing: 12) {
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
+                        }
+                    ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
+                        .padding(6)
+                        .scaledToFit()
+                }
+                .frame(width: 76, height: 76)
+
+                if item.hasPricingForProfit, !closetSelectionMode {
+                    closetProfitCornerBadge(item)
+                        .scaleEffect(0.82)
+                        .offset(x: 6, y: -8)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text((item.brand ?? "Unknown Brand").uppercased())
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(0.6)
+                    .foregroundStyle(Color.black.opacity(0.55))
+                    .lineLimit(1)
+
+                Text(item.catalogDisplayName)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.88))
+                    .lineLimit(2)
+
+                if let sku = item.cardSKULabel {
+                    Text(sku)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                }
+
+                HStack(spacing: 8) {
+                    if let size = item.cardSizeLabel {
+                        Text(size)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.black.opacity(0.45))
+                    }
+                    if let price = item.cardPriceLabel {
+                        Text(price)
+                            .font(.system(size: 11, weight: .heavy))
+                            .foregroundStyle(Color.black.opacity(0.72))
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            if closetSelectionMode {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22))
+                    .foregroundStyle(selected ? Color.black : Color.black.opacity(0.25))
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.25))
+            }
         }
-        .padding(.bottom, 86)
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
+                }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if closetSelectionMode {
+                if selected {
+                    closetSelectedIDs.remove(item.id)
+                } else {
+                    closetSelectedIDs.insert(item.id)
+                }
+            } else {
+                garmentDetailSheetItem = item
+                ClosetAnalytics.named("closet_item_detail_open")
+            }
+        }
     }
 
     private var draftResumeBanner: some View {
@@ -665,9 +935,9 @@ struct ClosetView: View {
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Artículos en borrador")
+                    Text("Draft items")
                         .font(.system(size: 14, weight: .semibold))
-                    Text("\(draftBannerCount) artículos pendientes")
+                    Text("\(draftBannerCount) pending items")
                         .font(.system(size: 13))
                         .foregroundStyle(.white.opacity(0.92))
                 }
@@ -689,28 +959,21 @@ struct ClosetView: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
-        .padding(.bottom, 118)
+        .padding(.bottom, 36)
     }
 
     private var addToClosetIntroSheet: some View {
         VStack(spacing: 14) {
-            Text("Add to closet")
+            Text(L10n.tr("closet.addSheetTitle"))
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(Color.black)
                 .frame(maxWidth: .infinity)
 
-            Text(
-                "Personalize your future outfits and see how to style your closet items"
-            )
-            .font(.system(size: 14, weight: .regular))
-            .foregroundStyle(Color.black.opacity(0.55))
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-
-            Text("📷 Elige tus fotos del outfit")
+            Text(L10n.tr("closet.addSheetPhotoHint"))
                 .font(.system(size: 13, weight: .heavy))
                 .foregroundStyle(Color.black.opacity(0.72))
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
 
             VStack(spacing: 11) {
                 HStack(spacing: 11) {
@@ -723,9 +986,9 @@ struct ClosetView: View {
                         VStack(spacing: 6) {
                             Image(systemName: "photo.on.rectangle.angled")
                                 .font(.system(size: 22, weight: .semibold))
-                            Text("Galería")
+                            Text("Gallery")
                                 .font(.system(size: 16, weight: .semibold))
-                            Text("Hasta 5 fotos")
+                            Text("Up to 5 photos")
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(Color.black.opacity(0.45))
                         }
@@ -748,9 +1011,9 @@ struct ClosetView: View {
                         VStack(spacing: 6) {
                             Image(systemName: "camera.fill")
                                 .font(.system(size: 22, weight: .semibold))
-                            Text("Cámara")
+                            Text("Camera")
                                 .font(.system(size: 16, weight: .semibold))
-                            Text("Una foto al instante")
+                            Text("One photo instantly")
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(Color.black.opacity(0.45))
                         }
@@ -765,52 +1028,15 @@ struct ClosetView: View {
                     .buttonStyle(.plain)
                 }
 
-                VStack(spacing: 4) {
-                    Text("Con fotos de tu armario")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("La IA detecta prendas y el estudio opcional («Generar ✨») puede pulir cada pieza.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.black.opacity(0.45))
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .foregroundStyle(Color.black)
-                .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(Color.white))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .stroke(Color.black.opacity(0.07), lineWidth: 1)
-                }
-
                 shoePrivateStandalonePill
 
                 garmentPrivateStandalonePill
-
-                secondaryIntroPill(title: "Buscar artículos") {
-                    addFlow.showToast("Próximamente")
-                    showAddMenuSheet = false
-                }
-                secondaryIntroPill(title: "Reenviar recibos") {
-                    addFlow.showToast("Próximamente")
-                    showAddMenuSheet = false
-                }
             }
             Spacer(minLength: 10)
         }
         .padding(.horizontal, 20)
         .padding(.top, 22)
         .presentationBackground(Color.white)
-    }
-
-    private func secondaryIntroPill(title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Color.white)
-                .frame(maxWidth: .infinity, minHeight: 56)
-                .background(RoundedRectangle(cornerRadius: 28).fill(ClosetFlowPalette.darkerPillFill))
-        }
-        .buttonStyle(.plain)
     }
 
     /// Entrada aparte del outfit de galería: subir sólo zapatos y decidir foto por ángulo.
@@ -823,17 +1049,21 @@ struct ClosetView: View {
             }
         } label: {
             HStack(spacing: 14) {
-                Image(systemName: "shoe.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(Color.white)
-                    .frame(width: 42, height: 42)
-                    .background(Circle().fill(Color.white.opacity(0.2)))
+                Image("BannerZapatos")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 74, height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                    }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Zapatos solo tuyos (360°)")
+                    Text("Your shoes only (360°)")
                         .font(.system(size: 16, weight: .heavy))
                         .foregroundStyle(Color.white)
-                    Text("Frontal, lateral derecho, trasera e izquierda: toca cada lado y pon o cambia su foto.")
+                    Text("Front, right side, back, and left: tap each side and add or change its photo.")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.92))
                         .fixedSize(horizontal: false, vertical: true)
@@ -872,12 +1102,12 @@ struct ClosetView: View {
                     .background(Circle().fill(Color.white.opacity(0.22)))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Ropa · lookbook con IA")
+                    Text("Apparel · AI lookbook")
                         .font(.system(size: 16, weight: .heavy))
                         .foregroundStyle(Color.white)
                     Text(
-                        "Camisas, pantalones, medias, cinturones… 5 fotos guía "
-                            + "(frente, espalda, detalles) y generamos imágenes de catálogo y lifestyle para pasarlas con el dedo.")
+                        "Shirts, pants, socks, belts… 5 guide photos "
+                            + "(front, back, details) and we generate catalog and lifestyle images you can swipe through.")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.92))
                         .fixedSize(horizontal: false, vertical: true)
@@ -902,47 +1132,79 @@ struct ClosetView: View {
     private func closetCell(_ item: ClosetItem) -> some View {
         let selected = closetSelectedIDs.contains(item.id)
         return VStack(spacing: 9) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color.white)
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(Color.black.opacity(0.06), lineWidth: 1)
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(Color.white)
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.black.opacity(0.06), lineWidth: 1)
 
-                ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
-                    .padding(10)
-                    .scaledToFit()
-
-                if closetSelectionMode {
-                    Color.black.opacity(selected ? 0.12 : 0)
+                    ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
+                        .padding(4)
+                        .scaledToFit()
 
                     VStack {
-                        HStack {
-                            Spacer()
-                            ZStack {
-                                Circle()
-                                    .fill(selected ? Color.black : Color.white.opacity(0.95))
-                                    .frame(width: 28, height: 28)
-                                    .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 1)
-                                if !selected {
-                                    Circle().stroke(Color.black.opacity(0.35), lineWidth: 1.5)
-                                        .frame(width: 28, height: 28)
-                                } else {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 14, weight: .bold))
-                                        .foregroundStyle(Color.white)
-                                }
-                            }
-                            .padding(8)
-                        }
                         Spacer()
+                        HStack(alignment: .bottom) {
+                            if let size = item.cardSizeLabel {
+                                Text(size)
+                                    .font(.system(size: 10, weight: .heavy))
+                                    .foregroundStyle(Color.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Capsule().fill(Color.black.opacity(0.78)))
+                            }
+                            Spacer(minLength: 4)
+                            if let price = item.cardPriceLabel {
+                                Text(price)
+                                    .font(.system(size: 10, weight: .heavy))
+                                    .foregroundStyle(Color.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Capsule().fill(Color.black.opacity(0.78)))
+                            }
+                        }
+                        .padding(8)
                     }
                     .allowsHitTesting(false)
 
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(selected ? Color.black : Color.clear, lineWidth: 3)
+                    if closetSelectionMode {
+                        Color.black.opacity(selected ? 0.12 : 0)
+
+                        VStack {
+                            HStack {
+                                Spacer()
+                                ZStack {
+                                    Circle()
+                                        .fill(selected ? Color.black : Color.white.opacity(0.95))
+                                        .frame(width: 28, height: 28)
+                                        .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 1)
+                                    if !selected {
+                                        Circle().stroke(Color.black.opacity(0.35), lineWidth: 1.5)
+                                            .frame(width: 28, height: 28)
+                                    } else {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundStyle(Color.white)
+                                    }
+                                }
+                                .padding(8)
+                            }
+                            Spacer()
+                        }
+                        .allowsHitTesting(false)
+
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(selected ? Color.black : Color.clear, lineWidth: 3)
+                    }
+                }
+                .aspectRatio(1, contentMode: .fit)
+
+                if item.hasPricingForProfit, !closetSelectionMode {
+                    closetProfitCornerBadge(item)
+                        .offset(x: 2, y: -10)
                 }
             }
-            .aspectRatio(1, contentMode: .fit)
             .frame(maxWidth: .infinity)
 
             let brandLine = item.brand?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -953,7 +1215,15 @@ struct ClosetView: View {
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
 
-            Text(item.name)
+            if let sku = item.cardSKULabel {
+                Text(sku)
+                    .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(Color.black.opacity(0.72))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+            }
+
+            Text(item.catalogDisplayName)
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(Color.black.opacity(0.88))
                 .lineLimit(2)
@@ -978,10 +1248,38 @@ struct ClosetView: View {
                 Button(role: .destructive) {
                     closetItemPendingDelete = item
                 } label: {
-                    Label("Eliminar prenda", systemImage: "trash")
+                    Label("Delete item", systemImage: "trash")
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func closetProfitCornerBadge(_ item: ClosetItem) -> some View {
+        let isLoss = item.isProjectedLoss
+        let tint = isLoss
+            ? Color(red: 0.92, green: 0.30, blue: 0.30)
+            : Color(red: 0.20, green: 0.70, blue: 0.45)
+
+        VStack(alignment: .trailing, spacing: 2) {
+            if let usd = item.cardProfitUSDLabel {
+                Text(usd)
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+            }
+            if let pct = item.cardProfitPercentLabel {
+                Text(pct)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(tint)
+                .shadow(color: tint.opacity(0.35), radius: 6, y: 2)
+        }
+        .allowsHitTesting(false)
     }
 
     @MainActor
@@ -1043,8 +1341,8 @@ private struct ClosetShoe360FlowView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(
                         isPrivateFlow
-                            ? "Toca cada ángulo (frontal, derecha, trasera, izquierda) y usa Cámara o Galería para poner esa vista. Aquí decides qué foto es cada lado del zapato."
-                            : "Las fotos se tomaron en el orden que elegiste en la galería — toca un ángulo para corregirlo."
+                            ? "Tap each angle (front, right, back, left) and use Camera or Gallery to set that view. Here you decide which photo is each side of the shoe."
+                            : "Photos were taken in the order you chose in the gallery — tap an angle to correct it."
                     )
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.5))
@@ -1074,7 +1372,7 @@ private struct ClosetShoe360FlowView: View {
             .toolbarBackground(Color.white, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cerrar") { dismiss() }
+                    Button(L10n.tr("common.close")) { dismiss() }
                         .foregroundStyle(Color.black)
                 }
             }
@@ -1085,7 +1383,8 @@ private struct ClosetShoe360FlowView: View {
 
     private func saveToCloset(paths: [String]) {
         guard paths.count == ShoeAngle.allCases.count else { return }
-        let imageFile = paths[0]
+        let leftIdx = ShoeAngle.left.rawValue
+        let imageFile = paths.indices.contains(leftIdx) ? paths[leftIdx] : paths[0]
 
         var paletteJSON: String?
         if let ui = ImageStore.load(imageFile) {
@@ -1105,6 +1404,7 @@ private struct ClosetShoe360FlowView: View {
             seasonsRaw: nil,
             aiColorsJSON: nil,
             multiAngleFilenamesJSON: nil,
+            galleryCoverRelativePath: imageFile,
             category: .shoes,
             imageFilename: imageFile,
             originalCropFilename: nil,
@@ -1115,8 +1415,39 @@ private struct ClosetShoe360FlowView: View {
         row.multiAngleFilenames = paths
         modelContext.insert(row)
         try? modelContext.save()
+        Task {
+            await enrichSavedShoeMetadata(row: row, coverPath: imageFile)
+        }
         ClosetAnalytics.named(
             isPrivateFlow ? "closet_shoe360_private_saved" : "closet_shoe360_gallery_saved")
+    }
+
+    @MainActor
+    private func enrichSavedShoeMetadata(row: ClosetItem, coverPath: String) async {
+        guard GeminiService.apiKeyConfigured else { return }
+        do {
+            let meta = try await GeminiService.shared.enrichGarmentMetadata(
+                cropRelativePath: coverPath,
+                category: .shoes,
+                provisionalName: row.name
+            )
+            if !meta.brand.isEmpty { row.brand = meta.brand }
+            if !meta.sku.isEmpty {
+                row.skuText = meta.sku.uppercased()
+                let split = SneakerSKU.splitNameAndSKU(from: row.name)
+                if split.sku != nil, !split.name.isEmpty {
+                    row.name = split.name
+                }
+            }
+            if !meta.sizeText.isEmpty { row.sizeText = meta.sizeText }
+            if !meta.colorLabel.isEmpty { row.colorLabel = meta.colorLabel }
+            if !meta.productDescription.isEmpty { row.productDescription = meta.productDescription }
+            if !meta.priceText.isEmpty { row.priceText = meta.priceText }
+            if !meta.listingPlatforms.isEmpty { row.listingPlatforms = meta.listingPlatforms }
+            try? modelContext.save()
+        } catch {
+            // Metadatos opcionales al guardar zapatos directos.
+        }
     }
 }
 
@@ -1152,7 +1483,7 @@ private struct ClosetGarmentLookbookStandaloneFlowView: View {
 
     private var trimmedName: String {
         let t = garmentName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? "Prenda nueva" : t
+        return t.isEmpty ? "New item" : t
     }
 
     var body: some View {
@@ -1176,20 +1507,21 @@ private struct ClosetGarmentLookbookStandaloneFlowView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 Text(
-                    "Camisas, pantalones, medias y cinturones comparten esta ruta en lugar de zapato "
-                        + "(ahí tienes vista 360°). Tras crear la ficha vas a hacer 5 fotos de tu prenda por frente, espalda y detalles; "
-                        + "Gemini creará vistas de catálogo (fondo blanco) más escenarios lifestyle.")
+                    "Shirts, pants, socks, and belts use this flow instead of shoes "
+                        + "(360° view is separate). After creating the item you'll take 5 photos of your piece front, back, and details; "
+                        + "Gemini will create catalog views (white background) plus lifestyle scenes."
+                )
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.52))
 
-                TextField("Nombre (ej.: camisa denim azul)", text: $garmentName)
+                TextField("Name (e.g. blue denim shirt)", text: $garmentName)
                     .font(.system(size: 16))
                     .foregroundStyle(Color.black)
                     .padding(14)
                     .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.secondarySystemBackground)))
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Tipo de pieza").font(.subheadline.weight(.semibold))
+                    Text("Item type").font(.subheadline.weight(.semibold))
                     Menu {
                         ForEach(Self.categoryChoices, id: \.rawValue) { cat in
                             Button {
@@ -1238,7 +1570,7 @@ private struct ClosetGarmentLookbookStandaloneFlowView: View {
                         // Silenciar; siguiente intento válido
                     }
                 } label: {
-                    Label("Ir a las 5 fotos", systemImage: "camera.aperture")
+                    Label("Go to 5 photos", systemImage: "camera.aperture")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(Color.white)
                         .frame(maxWidth: .infinity, minHeight: 56)
@@ -1248,12 +1580,12 @@ private struct ClosetGarmentLookbookStandaloneFlowView: View {
             }
             .padding(20)
         }
-        .navigationTitle("Ropa — lookbook")
+        .navigationTitle("Apparel — lookbook")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color.white, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cerrar") { dismiss() }
+                Button(L10n.tr("common.close")) { dismiss() }
                     .foregroundStyle(Color.black)
             }
         }
@@ -1357,7 +1689,7 @@ struct AddToClosetPipelineView: View {
                         HStack(spacing: 5) {
                             if flow.isGeneratingStudioBatch {
                                 ProgressView().scaleEffect(0.82).tint(.white)
-                                Text("Generando…")
+                                Text("Generating…")
                             } else {
                                 Image(systemName: "sparkles")
                                 Text(flow.studioBatchInvocationFinished ? "Regenerar ✨" : "Generar ✨")
@@ -1378,7 +1710,7 @@ struct AddToClosetPipelineView: View {
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: "checkmark")
-                            Text("Agregar todo")
+                            Text("Add all")
                         }
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(
@@ -1396,17 +1728,17 @@ struct AddToClosetPipelineView: View {
                 }
             }
         }
-        .alert("Nombre de la prenda", isPresented: Binding(
+        .alert("Item name", isPresented: Binding(
             get: { editingPieceId != nil },
             set: { if !$0 { editingPieceId = nil } }
         )) {
             TextField("Nombre", text: $editNameDraft)
-            Button("Guardar") {
+            Button("Save") {
                 guard let id = editingPieceId, let ix = flow.pieces.firstIndex(where: { $0.id == id }) else { return }
                 flow.pieces[ix].name = editNameDraft
                 editingPieceId = nil
             }
-            Button("Cancelar", role: .cancel) { editingPieceId = nil }
+            Button("Cancel", role: .cancel) { editingPieceId = nil }
         }
         .sheet(isPresented: Binding(
             get: { categoryPickerPieceID != nil },
@@ -1484,7 +1816,7 @@ struct AddToClosetPipelineView: View {
             Image(systemName: "tshirt.fill")
                 .font(.system(size: 42))
                 .foregroundStyle(Color.black.opacity(0.18))
-            Text("Aquí aparecerán las prendas detectadas tras elegir tus fotos.")
+            Text("Detected items will appear here after you choose your photos.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(ClosetFlowPalette.secondaryText)
         }
@@ -1494,7 +1826,7 @@ struct AddToClosetPipelineView: View {
 
     private var uploadingSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Procesando")
+            Text("Processing")
                 .font(.system(size: 20, weight: .heavy))
                 .foregroundStyle(Color.black)
 
@@ -1527,7 +1859,7 @@ struct AddToClosetPipelineView: View {
 
     private var reviewSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Revisión")
+            Text("Review")
                 .font(.system(size: 18, weight: .heavy))
                 .foregroundStyle(Color.black)
 
@@ -1536,7 +1868,7 @@ struct AddToClosetPipelineView: View {
                     Text("👞")
                         .font(.system(size: 20))
                     Text(
-                        "Para zapatos, la app abrirá la vista 360° con 4 fotos guiadas "
+                        "For shoes, the app will open the 360° view with 4 guided photos "
                             + "(frontal, lateral derecho, trasera y lateral izquierdo)."
                     )
                     .font(.system(size: 12, weight: .medium))
@@ -1601,13 +1933,15 @@ struct AddToClosetPipelineView: View {
                     Divider().foregroundStyle(Color.black.opacity(0.06))
 
                     categoryRow(piece)
+
+                    draftPricingFields(piece)
                 }
             }
 
             HStack(spacing: 10) {
                 if piece.category == .shoes {
                     miniPill(
-                        title: piece.shoe360Complete ? "Editar vista 360°" : "Vista 360° 👞",
+                        title: piece.shoe360Complete ? "Edit 360° view" : "360° view 👞",
                         foreground: Color.black.opacity(0.88),
                         background: ClosetFlowPalette.mutedBackground
                     ) {
@@ -1631,7 +1965,7 @@ struct AddToClosetPipelineView: View {
                     .disabled(prettifyBlocked(piece))
                 }
 
-                miniPill(title: "Agregar ✓", foreground: Color.white, background: Color.black) {
+                miniPill(title: "Add ✓", foreground: Color.white, background: Color.black) {
                     do {
                         try flow.insertOne(pieceID: piece.id, modelContext: modelContext)
                     } catch {
@@ -1643,14 +1977,14 @@ struct AddToClosetPipelineView: View {
             }
 
             if piece.prettifyFailedBadge {
-                Text("Error al generar")
+                Text("Generation failed")
                     .font(.system(size: 11, weight: .heavy))
                     .foregroundStyle(ClosetFlowPalette.destructive)
             } else if flow.phase == .review, piece.prettifiedRelativePath == nil,
                       piece.category != .shoes,
                       !flow.generatingPieceIDs.contains(piece.id)
             {
-                Text("Sin generar")
+                Text("Not generated")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Color.black.opacity(0.45))
             }
@@ -1658,7 +1992,7 @@ struct AddToClosetPipelineView: View {
             if piece.category == .shoes, !piece.shoe360Complete,
                !flow.generatingPieceIDs.contains(piece.id)
             {
-                Text("Zapatos: captura frontal, derecha, atrás e izquierda antes de guardar.")
+                Text("Shoes: capture front, right, back, and left before saving.")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(ClosetFlowPalette.destructive.opacity(0.92))
             }
@@ -1693,8 +2027,58 @@ struct AddToClosetPipelineView: View {
                     .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 1)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Eliminar del borrador")
+            .accessibilityLabel("Remove from draft")
             .padding(8)
+        }
+    }
+
+    private func draftPricingFields(_ piece: ClosetDraftPiece) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Pricing")
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundStyle(Color.black.opacity(0.45))
+
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Paid")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.45))
+                    TextField("Purchase", text: Binding(
+                        get: {
+                            flow.pieces.first(where: { $0.id == piece.id })?.purchasePriceText ?? ""
+                        },
+                        set: { newVal in
+                            guard let ix = flow.pieces.firstIndex(where: { $0.id == piece.id }) else { return }
+                            flow.pieces[ix].purchasePriceText = newVal
+                        }
+                    ))
+                    .keyboardType(.decimalPad)
+                    .font(.system(size: 14, weight: .semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.white))
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Asking")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.45))
+                    TextField("Listing", text: Binding(
+                        get: {
+                            flow.pieces.first(where: { $0.id == piece.id })?.priceText ?? ""
+                        },
+                        set: { newVal in
+                            guard let ix = flow.pieces.firstIndex(where: { $0.id == piece.id }) else { return }
+                            flow.pieces[ix].priceText = newVal
+                        }
+                    ))
+                    .keyboardType(.decimalPad)
+                    .font(.system(size: 14, weight: .semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.white))
+                }
+            }
         }
     }
 
@@ -1718,7 +2102,7 @@ struct AddToClosetPipelineView: View {
                 ProgressView()
                     .controlSize(.small)
                     .tint(Color(red: 0.20, green: 0.45, blue: 0.85))
-                Text("Consultando precio de mercado…")
+                Text("Fetching market price…")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.black.opacity(0.60))
                 Spacer(minLength: 0)
@@ -1737,7 +2121,7 @@ struct AddToClosetPipelineView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "chart.line.uptrend.xyaxis")
                         .font(.system(size: 13, weight: .bold))
-                    Text("Consultar precio de mercado")
+                    Text("Look up market price")
                         .font(.system(size: 13, weight: .bold))
                     Spacer(minLength: 0)
                     Image(systemName: "sparkles")
@@ -1785,7 +2169,7 @@ struct AddToClosetPipelineView: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                Text("PRECIO DE MERCADO")
+                Text("MARKET PRICE")
                     .font(.system(size: 10, weight: .heavy))
                     .tracking(1.0)
                     .foregroundStyle(Color.black.opacity(0.55))
@@ -1882,11 +2266,11 @@ struct AddToClosetPipelineView: View {
                 Spacer()
 
                 VStack(spacing: 2) {
-                    Text("6 MESES")
+                    Text("6 MONTHS")
                         .font(.system(size: 9, weight: .heavy))
                         .tracking(0.5)
                         .foregroundStyle(Color.black.opacity(0.40))
-                    Text("Tendencia")
+                    Text("Trend")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(tint)
                 }
@@ -1939,10 +2323,14 @@ struct AddToClosetPipelineView: View {
     }
 
     private func runPriceLookup(for piece: ClosetDraftPiece) async {
-        let query = [piece.brand, piece.name]
-            .compactMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
-            .joined(separator: " ")
-        guard !query.isEmpty else { return }
+        let sku = piece.skuText.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let style = sku.isEmpty ? (SneakerSKU.extract(from: piece.name) ?? "") : sku
+        guard !style.isEmpty else {
+            await MainActor.run {
+                flow.showToast("Add a Style / SKU code to look up market price.")
+            }
+            return
+        }
 
         priceLookupBusy.insert(piece.id)
         defer { priceLookupBusy.remove(piece.id) }
@@ -1967,17 +2355,28 @@ struct AddToClosetPipelineView: View {
 
         // 2) Fallback: OpenAI con web_search (más caro pero siempre disponible)
         do {
-            let estimate = try await PieceMarketPrice.fetchFromOpenAI(
-                query: query,
-                category: piece.category?.displayName ?? "ropa",
-                apiKey: openaiAPIKey
+            let estimate = try await PieceMarketPrice.fetchStyleFromInternet(
+                styleCode: style,
+                brand: piece.brand.isEmpty ? nil : piece.brand,
+                category: piece.category?.displayName ?? "Shoes",
+                sizeText: piece.sizeText.isEmpty ? nil : piece.sizeText,
+                apiKey: openaiAPIKey,
+                useWebSearch: true
             )
             await MainActor.run {
                 priceEstimates[piece.id] = estimate
+                if let data = try? JSONEncoder().encode(estimate),
+                   let json = String(data: data, encoding: .utf8),
+                   let idx = flow.pieces.firstIndex(where: { $0.id == piece.id }) {
+                    flow.pieces[idx].marketPriceJSON = json
+                    if flow.pieces[idx].priceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        flow.pieces[idx].priceText = PieceMarketPrice.formatUSD(estimate.avg)
+                    }
+                }
             }
         } catch {
             await MainActor.run {
-                flow.showToast("Precio: \(error.localizedDescription)")
+                flow.showToast("Market price: \(error.localizedDescription)")
             }
         }
     }
@@ -2023,7 +2422,7 @@ struct AddToClosetPipelineView: View {
                     Spacer()
                 }
             } else {
-                Text("Seleccionar categoría")
+                Text("Select category")
                     .font(.system(size: 14, weight: .heavy))
                     .foregroundStyle(ClosetFlowPalette.destructive)
             }
@@ -2083,10 +2482,10 @@ struct AddToClosetPipelineView: View {
                     }
                 }
             }
-            .navigationTitle("Categoría")
+            .navigationTitle("Category")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Listo") { categoryPickerPieceID = nil }
+                    Button("Done") { categoryPickerPieceID = nil }
                 }
             }
         }
@@ -2141,7 +2540,7 @@ extension View {
 
 // MARK: - Estimación de precio de pieza (OpenAI)
 
-struct PieceMarketPrice {
+struct PieceMarketPrice: Codable {
     let avg: Int
     let min: Int
     let max: Int
@@ -2231,62 +2630,192 @@ private extension PieceMarketPrice {
         return "gpt-4o-mini"
     }
 
-    /// Llama a OpenAI Chat Completions con JSON mode para estimar el precio
-    /// medio de la pieza basándose en marca + nombre + categoría.
-    /// El parámetro `apiKey` se ignora si está vacío y hay key en Info.plist.
-    static func fetchFromOpenAI(query: String, category: String, apiKey: String = "") async throws -> PieceMarketPrice {
-        let effectiveKey: String
-        if let k = resolvedAPIKey {
-            effectiveKey = k
-        } else if !apiKey.isEmpty {
-            effectiveKey = apiKey
-        } else {
-            throw NSError(domain: "PieceMarketPrice", code: 401, userInfo: [
-                NSLocalizedDescriptionKey: "Falta OPENAI_API_KEY en DeveloperSettings.local.xcconfig"
-            ])
-        }
+    /// Live web lookups work more reliably on gpt-4o than mini.
+    private static var webSearchModel: String { "gpt-4o" }
 
-        guard effectiveKey.hasPrefix("sk-") else {
+    /// Tries GOAT (if configured) then OpenAI web search by Style/SKU.
+    @MainActor
+    static func lookupForItem(
+        _ item: ClosetItem,
+        goatVM: GoatAccountViewModel,
+        useWebSearch: Bool = true
+    ) async throws -> PieceMarketPrice {
+        let queries = item.marketLookupQueries
+        guard !queries.isEmpty else {
             throw NSError(domain: "PieceMarketPrice", code: 400, userInfo: [
-                NSLocalizedDescriptionKey: "Key inválida (debe empezar con sk-)"
+                NSLocalizedDescriptionKey: "Add a Style / SKU code (e.g. DD1391-101) to look up market price."
             ])
         }
 
-        // Endpoint Responses con web_search activado → busca en internet
-        // (StockX, GOAT, eBay) antes de responder.
-        let url = URL(string: "https://api.openai.com/v1/responses")!
+        if goatVM.hasProviderToken {
+            for query in queries {
+                if let est = await goatVM.fetchMarketPriceEstimate(query: query) {
+                    return est
+                }
+            }
+        }
+
+        let style = item.resolvedSKU ?? queries[0]
+        return try await fetchStyleFromInternet(
+            styleCode: style,
+            brand: item.brand,
+            category: item.category.displayName,
+            sizeText: item.sizeText,
+            useWebSearch: useWebSearch
+        )
+    }
+
+    static func fetchStyleFromInternet(
+        styleCode: String,
+        brand: String?,
+        category: String,
+        sizeText: String? = nil,
+        apiKey: String = "",
+        useWebSearch: Bool = true
+    ) async throws -> PieceMarketPrice {
+        let style = styleCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !style.isEmpty else {
+            throw NSError(domain: "PieceMarketPrice", code: 400, userInfo: [
+                NSLocalizedDescriptionKey: "Style / SKU code is required."
+            ])
+        }
+
+        let brandLine = brand?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? "Brand: \(brand!.trimmingCharacters(in: .whitespacesAndNewlines))\n"
+            : ""
+        let sizeLine = sizeText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? "Size: \(sizeText!.trimmingCharacters(in: .whitespacesAndNewlines))\n"
+            : ""
+
+        let userPrompt = """
+        Search the internet on StockX, GOAT, Flight Club, and eBay for this exact STYLE / SKU code:
+        \(style)
+        \(brandLine)\(sizeLine)Category: \(category)
+
+        Use the style code in your web search. Return the current resale price range in USD for this exact colorway/style.
+        """
+
+        if useWebSearch {
+            do {
+                return try await fetchViaResponsesWebSearch(
+                    query: userPrompt,
+                    category: category,
+                    key: try resolveEffectiveKey(fallback: apiKey),
+                    styleCode: style
+                )
+            } catch {
+                return try await fetchViaChatCompletions(
+                    query: userPrompt,
+                    category: category,
+                    key: try resolveEffectiveKey(fallback: apiKey),
+                    styleCode: style
+                )
+            }
+        }
+
+        return try await fetchViaChatCompletions(
+            query: userPrompt,
+            category: category,
+            key: try resolveEffectiveKey(fallback: apiKey),
+            styleCode: style
+        )
+    }
+
+    /// Llama a OpenAI para estimar precio de mercado. Por defecto usa Chat Completions
+    /// (más barato). Con `useWebSearch: true` intenta web search y cae a Chat si falla.
+    static func fetchFromOpenAI(
+        query: String,
+        category: String,
+        apiKey: String = "",
+        useWebSearch: Bool = false
+    ) async throws -> PieceMarketPrice {
+        let effectiveKey = try resolveEffectiveKey(fallback: apiKey)
+
+        if useWebSearch {
+            do {
+                return try await fetchViaResponsesWebSearch(
+                    query: query,
+                    category: category,
+                    key: effectiveKey
+                )
+            } catch {
+                return try await fetchViaChatCompletions(
+                    query: query,
+                    category: category,
+                    key: effectiveKey
+                )
+            }
+        }
+
+        return try await fetchViaChatCompletions(
+            query: query,
+            category: category,
+            key: effectiveKey
+        )
+    }
+
+    private static func resolveEffectiveKey(fallback: String) throws -> String {
+        if let k = resolvedAPIKey {
+            return k
+        }
+        if !fallback.isEmpty {
+            return fallback.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        throw NSError(domain: "PieceMarketPrice", code: 401, userInfo: [
+            NSLocalizedDescriptionKey: "Missing OPENAI_API_KEY in DeveloperSettings.local.xcconfig"
+        ])
+    }
+
+    private static func openAIError(statusCode: Int, data: Data) -> NSError {
+        if statusCode == 429 {
+            return NSError(domain: "OpenAI", code: 429, userInfo: [
+                NSLocalizedDescriptionKey: "OpenAI quota exceeded. Check billing at platform.openai.com."
+            ])
+        }
+        let bodyStr = String(data: data, encoding: .utf8) ?? ""
+        return NSError(domain: "OpenAI", code: statusCode, userInfo: [
+            NSLocalizedDescriptionKey: "HTTP \(statusCode) · \(bodyStr.prefix(160))"
+        ])
+    }
+
+    private static var priceInstructions: String {
+        """
+        You are a resale pricing analyst for sneakers and fashion. Search StockX, GOAT, and eBay \
+        using the exact STYLE / SKU code provided (e.g. DD1391-101). Return ONLY a valid JSON \
+        object (no markdown) with this exact shape:
+        {"avg_eur": number, "min_eur": number, "max_eur": number, "history_eur": [number, number, number, number, number, number]}
+        Even though fields are named `_eur`, values must be in USD. history_eur is 6 points from \
+        oldest to newest (month -5 to current). Base prices on real listings for that exact style code.
+        """
+    }
+
+    private static func fetchViaChatCompletions(
+        query: String,
+        category: String,
+        key: String,
+        styleCode: String? = nil
+    ) async throws -> PieceMarketPrice {
+        guard key.hasPrefix("sk-") else {
+            throw NSError(domain: "PieceMarketPrice", code: 400, userInfo: [
+                NSLocalizedDescriptionKey: "Invalid key (must start with sk-)"
+            ])
+        }
+
+        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bearer \(effectiveKey)", forHTTPHeaderField: "Authorization")
-        // Timeout generoso porque web_search añade 2-6s
-        req.timeoutInterval = 30
-
-        let instructions = """
-        Eres un analista de precios de reventa de sneakers y moda. Te pido el \
-        precio actual real en USD de la prenda/calzado indicado, usando web \
-        search en StockX, GOAT, eBay y otros marketplaces. Devuelve \
-        EXCLUSIVAMENTE un objeto JSON válido, sin markdown ni explicación, \
-        con este shape exacto:
-        {"avg_eur": number, "min_eur": number, "max_eur": number, "history_eur": [number, number, number, number, number, number]}
-        Aunque los campos se llamen `_eur`, los VALORES deben estar en USD. \
-        history_eur son 6 puntos del más antiguo al más reciente (mes -5 al \
-        actual). Si no encuentras datos exactos, usa la mejor estimación \
-        razonable basada en lo que sí encuentres y categoría.
-        """
-        let userPrompt = "Categoría: \(category)\nPrenda: \(query)"
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 25
 
         let body: [String: Any] = [
-            "model": Self.resolvedModel,
-            "input": [
-                ["role": "system", "content": instructions],
-                ["role": "user", "content": userPrompt]
+            "model": resolvedModel,
+            "messages": [
+                ["role": "system", "content": priceInstructions],
+                ["role": "user", "content": query]
             ],
-            "tools": [
-                ["type": "web_search"]
-            ],
-            "tool_choice": "auto",
-            "temperature": 0.3
+            "response_format": ["type": "json_object"],
+            "temperature": 0.2
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
@@ -2295,31 +2824,83 @@ private extension PieceMarketPrice {
             throw URLError(.badServerResponse)
         }
         guard (200..<300).contains(http.statusCode) else {
-            let bodyStr = String(data: data, encoding: .utf8) ?? ""
-            throw NSError(domain: "OpenAI", code: http.statusCode, userInfo: [
-                NSLocalizedDescriptionKey: "HTTP \(http.statusCode) · \(bodyStr.prefix(160))"
+            throw openAIError(statusCode: http.statusCode, data: data)
+        }
+
+        struct ChatEnvelope: Decodable {
+            struct Choice: Decodable {
+                struct Message: Decodable { let content: String? }
+                let message: Message
+            }
+            let choices: [Choice]
+        }
+
+        let envelope = try JSONDecoder().decode(ChatEnvelope.self, from: data)
+        guard let rawText = envelope.choices.first?.message.content, !rawText.isEmpty else {
+            throw NSError(domain: "OpenAI", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "Empty response"
             ])
+        }
+        return try parsePriceJSON(from: rawText)
+    }
+
+    private static func fetchViaResponsesWebSearch(
+        query: String,
+        category: String,
+        key: String,
+        styleCode: String? = nil
+    ) async throws -> PieceMarketPrice {
+        guard key.hasPrefix("sk-") else {
+            throw NSError(domain: "PieceMarketPrice", code: 400, userInfo: [
+                NSLocalizedDescriptionKey: "Invalid key (must start with sk-)"
+            ])
+        }
+
+        let url = URL(string: "https://api.openai.com/v1/responses")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 30
+
+        let body: [String: Any] = [
+            "model": webSearchModel,
+            "input": [
+                ["role": "system", "content": priceInstructions],
+                ["role": "user", "content": query]
+            ],
+            "tools": [["type": "web_search"]],
+            "tool_choice": "auto",
+            "temperature": 0.2
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw openAIError(statusCode: http.statusCode, data: data)
         }
 
         let envelope = try JSONDecoder().decode(ResponsesEnvelope.self, from: data)
         guard let rawText = envelope.finalText else {
             throw NSError(domain: "OpenAI", code: -1, userInfo: [
-                NSLocalizedDescriptionKey: "Respuesta vacía"
+                NSLocalizedDescriptionKey: "Empty response"
             ])
         }
+        return try parsePriceJSON(from: rawText)
+    }
 
-        // El modelo puede devolver el JSON envuelto en ```json ... ``` o con texto
-        // alrededor. Extraemos el bloque {...}.
+    private static func parsePriceJSON(from rawText: String) throws -> PieceMarketPrice {
         guard let jsonRange = extractFirstJSONObject(in: rawText),
               let jsonData = String(rawText[jsonRange]).data(using: .utf8) else {
             throw NSError(domain: "OpenAI", code: -2, userInfo: [
-                NSLocalizedDescriptionKey: "No se pudo extraer JSON · \(rawText.prefix(120))"
+                NSLocalizedDescriptionKey: "Could not parse price JSON · \(rawText.prefix(120))"
             ])
         }
 
         let parsed = try JSONDecoder().decode(OAPriceJSON.self, from: jsonData)
-
-        // Sanitiza el histórico: si llega vacío o con menos de 2 puntos, rellena con el avg
         let avgValue = parsed.avg_eur
         let history: [Double] = {
             let h = parsed.history_eur ?? []

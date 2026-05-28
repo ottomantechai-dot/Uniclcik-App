@@ -6,16 +6,11 @@ import UIKit
 // MARK: - Tarjeta resumen financiero (toca → detalle)
 
 struct DashboardFinancialSummaryCard: View {
-    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     @ObservedObject var stats: DealershipStatsViewModel
     @Binding var showDetail: Bool
     var lightSurface: Bool = false
 
     private let corner: CGFloat = 24
-
-    private var appLanguage: AppLanguage {
-        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
-    }
 
     var body: some View {
         Button {
@@ -23,7 +18,7 @@ struct DashboardFinancialSummaryCard: View {
         } label: {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text(appLanguage == .english ? "Financial overview" : "Información financiera")
+                    Text("Financial overview")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(lightSurface ? Color.black.opacity(0.48) : .white.opacity(0.52))
                     Spacer()
@@ -36,15 +31,22 @@ struct DashboardFinancialSummaryCard: View {
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundStyle(lightSurface ? Color.black.opacity(0.88) : .white)
 
-                Text("\(appLanguage == .english ? "Stock value" : "Valor stock") · \(stats.periodDisplayLabel)")
+                Text("\("Stock value") · \(stats.periodDisplayLabel)")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(lightSurface ? Color.black.opacity(0.42) : .white.opacity(0.45))
 
                 HStack(spacing: 14) {
-                    miniPill(title: appLanguage == .english ? "Sold" : "Vendidos", value: "\(stats.carsSold)")
-                    miniPill(title: appLanguage == .english ? "Profit" : "Beneficio", value: stats.salesProfit)
+                    miniPill(title: "Sold", value: "\(stats.carsSold)")
+                    miniPill(title: "Potential profit", value: stats.potentialProfit)
                 }
                 .padding(.top, 4)
+
+                if stats.totalInvested != "$0" {
+                    Text("Invested \(stats.totalInvested) · \(stats.potentialProfitSubtitle)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(lightSurface ? Color.black.opacity(0.42) : .white.opacity(0.45))
+                        .padding(.top, 2)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(18)
@@ -82,21 +84,17 @@ struct DashboardFinancialSummaryCard: View {
 
 struct DashboardFinancialDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("appLanguage") private var appLanguageRaw: String = AppLanguage.spanish.rawValue
     @ObservedObject var stats: DealershipStatsViewModel
 
     private let corner: CGFloat = 20
 
-    private var appLanguage: AppLanguage {
-        AppLanguage(rawValue: appLanguageRaw) ?? .spanish
-    }
-
     private var categories: [(icon: String, title: String, subtitle: String, amount: String, pct: String, color: Color)] {
         [
-            ("car.fill", appLanguage == .english ? "Active stock" : "Stock activo", "\(stats.vehiclesInStock) \(appLanguage == .english ? "units" : "unidades")", stats.totalStockValue, stats.vehiclesStockBadge, .cyan),
-            ("dollarsign.circle.fill", appLanguage == .english ? "Sales profit" : "Beneficio ventas", stats.periodDisplayLabel, stats.salesProfit, appLanguage == .english ? "Net" : "Neto", .mint),
-            ("person.2.fill", appLanguage == .english ? "Commissions" : "Comisiones", stats.commissionsSubtitle, stats.commercialCommissions, appLanguage == .english ? "Sales" : "Comercial", .orange),
-            ("chart.line.uptrend.xyaxis", appLanguage == .english ? "Store revenue" : "Ingresos concesión", stats.totalEarningsSubtitle, stats.totalDealershipEarnings, appLanguage == .english ? "Total" : "Total", .purple),
+            ("car.fill", "Active stock", "\(stats.vehiclesInStock) \("units")", stats.totalStockValue, stats.vehiclesStockBadge, .cyan),
+            ("chart.line.uptrend.xyaxis", "Potential profit", stats.potentialProfitSubtitle, stats.potentialProfit, "Stock", .mint),
+            ("dollarsign.circle.fill", "Realized profit", stats.periodDisplayLabel, stats.salesProfit, "Sold", .cyan),
+            ("person.2.fill", "Commissions", stats.commissionsSubtitle, stats.commercialCommissions, "Sales", .orange),
+            ("chart.line.uptrend.xyaxis", "Store revenue", stats.totalEarningsSubtitle, stats.totalDealershipEarnings, "Total", .purple),
         ]
     }
 
@@ -105,7 +103,7 @@ struct DashboardFinancialDetailSheet: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(appLanguage == .english ? "Period summary" : "Resumen del periodo")
+                        Text("Period summary")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(.white.opacity(0.5))
                         Text(stats.totalStockValue)
@@ -118,7 +116,7 @@ struct DashboardFinancialDetailSheet: View {
                         DashboardChromeCardBackground(cornerRadius: corner)
                     }
 
-                    Text(appLanguage == .english ? "By category" : "Por categoría")
+                    Text("By category")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
 
@@ -146,7 +144,7 @@ struct DashboardFinancialDetailSheet: View {
                 .padding(.bottom, 28)
             }
             .background(Color.black.ignoresSafeArea())
-            .navigationTitle(appLanguage == .english ? "Finances" : "Finanzas")
+            .navigationTitle("Finances")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.black, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -235,7 +233,7 @@ struct DashboardTeamMapCard: View {
         } label: {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("Ubicación del equipo")
+                    Text("Team location")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
                     Spacer()
@@ -260,7 +258,7 @@ struct DashboardTeamMapCard: View {
                     .allowsHitTesting(false)
 
                     if locationHub.authorizationStatus == .denied || locationHub.authorizationStatus == .restricted {
-                        Text("Activa la ubicación para compartir tu posición con el equipo y ver el mapa en vivo.")
+                        Text("Enable location to share your position with the team and see the live map.")
                             .font(.system(size: 12, weight: .medium))
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.white)
@@ -276,11 +274,11 @@ struct DashboardTeamMapCard: View {
                    locationHub.coordinate == nil,
                    !hasStoredSelfCoordinate
                 {
-                    Text("Cuando los usuarios compartan ubicación, aparecerán aquí. Toca para ver el mapa completo.")
+                    Text("When users share their location, they will appear here. Tap to see the full map.")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.42))
                 } else {
-                    Text("Toca para abrir el mapa con fotos y posición exacta de cada usuario.")
+                    Text("Tap to open the map with photos and each user's exact position.")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.white.opacity(0.42))
                 }
@@ -344,7 +342,7 @@ struct DashboardConnectedUsersStrip: View {
                 }
 
                 if members.isEmpty {
-                    Text("Aún no hay perfiles en el directorio o no tienes permisos de lectura.")
+                    Text("No profiles in the directory yet, or you don't have read permissions.")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.45))
                         .padding(.vertical, 8)

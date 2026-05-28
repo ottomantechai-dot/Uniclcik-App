@@ -102,7 +102,7 @@ struct AIContractGeneratorView: View {
                             .navigationBarTitleDisplayMode(.inline)
                             .toolbar {
                                 ToolbarItem(placement: .cancellationAction) {
-                                    Button("Cerrar") { showPDFPreview = false }
+                                    Button(L10n.tr("common.close")) { showPDFPreview = false }
                                 }
                                 ToolbarItem(placement: .confirmationAction) {
                                     Button("Compartir") {
@@ -184,11 +184,11 @@ struct AIContractGeneratorView: View {
                 }
                 .padding(.bottom, 8)
                 
-                Text("¿Qué deseas redactar?")
+                Text("What would you like to draft?")
                     .font(.system(size: 26, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                 
-                Text("Selecciona el tipo de contrato para cargar las cláusulas legales correspondientes.")
+                Text("Select the contract type to load the corresponding legal clauses.")
                     .font(.system(size: 15))
                     .foregroundStyle(.white.opacity(0.5))
                     .multilineTextAlignment(.center)
@@ -319,13 +319,13 @@ struct AIContractGeneratorView: View {
                         VStack(spacing: 12) {
                             customTextField(placeholder: "Nombre completo", text: $clientName, id: "name")
                             customTextField(placeholder: "DNI / NIE / NIF", text: $clientID, id: "dni")
-                            customTextField(placeholder: "Dirección completa", text: $clientAddress, id: "address")
+                            customTextField(placeholder: "Full address", text: $clientAddress, id: "address")
                         }
                     }
                     
                     // Operation Section
                     VStack(alignment: .leading, spacing: 16) {
-                        sectionHeader(title: "Datos de la Operación", icon: "car.fill")
+                        sectionHeader(title: "Transaction details", icon: "car.fill")
                         
                         VStack(spacing: 12) {
                             HStack(spacing: 12) {
@@ -415,7 +415,7 @@ struct AIContractGeneratorView: View {
                     .font(.system(size: 22, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                 
-                Text("Analizando marco legal, aplicando normativas\ny personalizando cláusulas.")
+                Text("Analyzing legal framework, applying regulations\nand customizing clauses.")
                     .font(.system(size: 15))
                     .foregroundStyle(.white.opacity(0.5))
                     .multilineTextAlignment(.center)
@@ -647,7 +647,7 @@ struct AIContractGeneratorView: View {
                     invoiceHistory.recordGeneratedContract(
                         kind: selectedDocumentKind,
                         clientName: name.isEmpty ? "Sin nombre" : name,
-                        vehicleSummary: vehicleLine.isEmpty ? "Sin vehículo" : vehicleLine
+                        vehicleSummary: vehicleLine.isEmpty ? "No vehicle" : vehicleLine
                     )
                     withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                         currentState = .result

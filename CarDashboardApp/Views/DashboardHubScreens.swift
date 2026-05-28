@@ -25,7 +25,7 @@ struct CommercialRankingSheet: View {
                             .padding(.horizontal, 4)
 
                         if ranked.isEmpty {
-                            Text("No hay perfiles en el directorio. Cuando existan usuarios en `profiles`, aparecerán aquí ordenados.")
+                            Text("No profiles in the directory. When users exist in `profiles`, they will appear here sorted.")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.45))
                                 .padding(.top, 8)
@@ -129,7 +129,7 @@ struct InvoiceAndContractsHubSheet: View {
                                     Text("Nuevo documento")
                                         .font(.system(size: 17, weight: .semibold))
                                         .foregroundStyle(.white)
-                                    Text("Contratos con IA y exportación PDF")
+                                    Text("AI contracts and PDF export")
                                         .font(.system(size: 13, weight: .medium))
                                         .foregroundStyle(.white.opacity(0.45))
                                 }
@@ -149,7 +149,7 @@ struct InvoiceAndContractsHubSheet: View {
                             .foregroundStyle(.white)
 
                         if invoiceHistory.entries.isEmpty {
-                            Text("Aún no hay documentos guardados. Al generar un contrato con la IA, se añadirá aquí automáticamente.")
+                            Text("No saved documents yet. When you generate a contract with AI, it will be added here automatically.")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.45))
                                 .padding(.vertical, 8)
@@ -272,7 +272,7 @@ struct BlitzHubSheet: View {
                                 }
                             }
                             if carsVM.cars.isEmpty {
-                                Text("Sin vehículos en inventario.")
+                                Text("No vehicles in inventory.")
                                     .font(.system(size: 14, weight: .medium))
                                     .foregroundStyle(.white.opacity(0.45))
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -304,9 +304,9 @@ struct BlitzHubSheet: View {
 
                         Button {
                             dismiss()
-                            tabRouter.selected = .cars
+                            tabRouter.selected = .closet
                         } label: {
-                            Label("Abrir coches / marketplace", systemImage: "magnifyingglass")
+                            Label("Ir a tu stock", systemImage: "archivebox.fill")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(.black)
                                 .frame(maxWidth: .infinity)
@@ -436,7 +436,7 @@ final class DashboardNotificationsStore: ObservableObject {
 
     private func seed() {
         items = [
-            Item(id: UUID(), title: "Stock actualizado", body: "Se sincronizaron vehículos desde el servidor.", date: Date().addingTimeInterval(-3600), isRead: false),
+            Item(id: UUID(), title: "Stock updated", body: "Vehicles were synced from the server.", date: Date().addingTimeInterval(-3600), isRead: false),
             Item(id: UUID(), title: "Lead nuevo", body: "Un comprador ha visto uno de tus anuncios destacados.", date: Date().addingTimeInterval(-86400 * 2), isRead: true),
             Item(id: UUID(), title: "Recordatorio", body: "Revisa los contratos pendientes de firma esta semana.", date: Date().addingTimeInterval(-2000), isRead: false),
         ]
@@ -513,7 +513,7 @@ struct DashboardNotificationsSheet: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Marcar leídas") {
+                    Button("Mark as read") {
                         store.markAllRead()
                     }
                     .font(.system(size: 14, weight: .semibold))

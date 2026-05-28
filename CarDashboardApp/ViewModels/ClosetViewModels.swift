@@ -177,6 +177,14 @@ final class AddToClosetFlowViewModel: ObservableObject {
                     boundingBox: d.boundingBox,
                     name: d.name,
                     brand: "",
+                    skuText: "",
+                    sizeText: "",
+                    colorLabel: "",
+                    productDescription: "",
+                    purchasePriceText: "",
+                    priceText: "",
+                    marketPriceJSON: nil,
+                    listingPlatformsRaw: nil,
                     category: d.category,
                     prettifyFailedBadge: false
                 )
@@ -187,6 +195,16 @@ final class AddToClosetFlowViewModel: ObservableObject {
                 for (_, p) in newPieces {
                     pieces.append(p)
                 }
+                if phase == .idle { phase = .review }
+            }
+
+            for (pieceID, draft) in newPieces {
+                await enrichDraftPiece(
+                    pieceID: pieceID,
+                    cropPath: draft.originalCropRelativePath,
+                    category: draft.category ?? .accessories,
+                    name: draft.name
+                )
             }
         } catch {
             await MainActor.run {
@@ -264,7 +282,11 @@ final class AddToClosetFlowViewModel: ObservableObject {
         else { return }
 
         pieces[idx].multiAngleFilenames = orderedPrettyPaths
-        pieces[idx].prettifiedRelativePath = orderedPrettyPaths[0]
+        let leftIdx = ShoeAngle.left.rawValue
+        pieces[idx].prettifiedRelativePath =
+            orderedPrettyPaths.indices.contains(leftIdx)
+            ? orderedPrettyPaths[leftIdx]
+            : orderedPrettyPaths[0]
         pieces[idx].prettifyFailedBadge = false
 
         studioBatchInvocationFinished = pieces.allSatisfy(\.isCatalogImageReady)
@@ -367,9 +389,23 @@ final class AddToClosetFlowViewModel: ObservableObject {
 
     private func persistPiece(at idx: Int, category: ClothingCategory, modelContext: ModelContext) throws {
         let p = pieces[idx]
-        let imageFile = p.prettifiedRelativePath ?? p.originalCropRelativePath
         let brandStored = p.brand.trimmingCharacters(in: .whitespacesAndNewlines)
         let displayBrand = brandStored.isEmpty ? "Unknown Brand" : brandStored
+
+        let imageFile: String
+        var coverPath: String?
+        if category == .shoes, p.shoe360Complete {
+            let angles = p.multiAngleFilenames
+            let leftIdx = ShoeAngle.left.rawValue
+            if angles.indices.contains(leftIdx) {
+                imageFile = angles[leftIdx]
+                coverPath = angles[leftIdx]
+            } else {
+                imageFile = p.prettifiedRelativePath ?? p.originalCropRelativePath
+            }
+        } else {
+            imageFile = p.prettifiedRelativePath ?? p.originalCropRelativePath
+        }
 
         var paletteJSON: String?
         if let ui = ImageStore.load(imageFile) {
@@ -383,15 +419,30 @@ final class AddToClosetFlowViewModel: ObservableObject {
         let shoeMultiJSON =
             category == .shoes && p.shoe360Complete ? p.multiAngleFilenamesJSON : nil
 
+        let priceStored = p.priceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let purchaseStored = p.purchasePriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let skuStored = p.skuText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sizeStored = p.sizeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let colorStored = p.colorLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let descStored = p.productDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+
         let row = ClosetItem(
             name: p.name.trimmingCharacters(in: .whitespacesAndNewlines),
             brand: displayBrand,
-            priceText: nil,
+            skuText: skuStored.isEmpty ? nil : skuStored.uppercased(),
+            purchasePriceText: purchaseStored.isEmpty ? nil : purchaseStored,
+            priceText: priceStored.isEmpty ? nil : priceStored,
+            sizeText: sizeStored.isEmpty ? nil : sizeStored,
+            colorLabel: colorStored.isEmpty ? nil : colorStored,
+            productDescription: descStored.isEmpty ? nil : descStored,
+            marketPriceJSON: p.marketPriceJSON,
+            listingPlatformsRaw: p.listingPlatformsRaw,
             colorPaletteJSON: paletteJSON,
             dressCodesRaw: nil,
             seasonsRaw: nil,
             aiColorsJSON: nil,
             multiAngleFilenamesJSON: shoeMultiJSON,
+            galleryCoverRelativePath: coverPath,
             category: category,
             imageFilename: imageFile,
             originalCropFilename: p.originalCropRelativePath,
@@ -401,5 +452,73 @@ final class AddToClosetFlowViewModel: ObservableObject {
         )
         modelContext.insert(row)
         try modelContext.save()
+    }
+
+    /// Gemini: marca, talla, color, descripción, precio sugerido + OpenAI mercado.
+    private func enrichDraftPiece(pieceID: UUID, cropPath: String, category: ClothingCategory, name: String) async {
+        guard GeminiService.apiKeyConfigured else { return }
+        do {
+            let meta = try await GeminiService.shared.enrichGarmentMetadata(
+                cropRelativePath: cropPath,
+                category: category,
+                provisionalName: name
+            )
+            await MainActor.run {
+                guard let idx = pieces.firstIndex(where: { $0.id == pieceID }) else { return }
+                if !meta.brand.isEmpty { pieces[idx].brand = meta.brand }
+                if !meta.sku.isEmpty {
+                    pieces[idx].skuText = meta.sku.uppercased()
+                    let split = SneakerSKU.splitNameAndSKU(from: pieces[idx].name)
+                    if split.sku != nil, !split.name.isEmpty {
+                        pieces[idx].name = split.name
+                    }
+                }
+                if !meta.sizeText.isEmpty { pieces[idx].sizeText = meta.sizeText }
+                if !meta.colorLabel.isEmpty { pieces[idx].colorLabel = meta.colorLabel }
+                if !meta.productDescription.isEmpty { pieces[idx].productDescription = meta.productDescription }
+                if !meta.priceText.isEmpty { pieces[idx].priceText = meta.priceText }
+                if !meta.listingPlatforms.isEmpty {
+                    pieces[idx].listingPlatformsRaw = meta.listingPlatforms.joined(separator: ",")
+                }
+                persistPiecesForLater()
+            }
+        } catch {
+            await MainActor.run {
+                showToast("Metadatos: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func fetchMarketPriceForDraftPiece(pieceID: UUID) async {
+        guard let idx = pieces.firstIndex(where: { $0.id == pieceID }) else { return }
+        let p = pieces[idx]
+        let query: String = {
+            let sku = p.skuText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !sku.isEmpty { return sku.uppercased() }
+            return [p.brand, p.name]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+        }()
+        guard !query.isEmpty else { return }
+        do {
+            let estimate = try await PieceMarketPrice.fetchFromOpenAI(
+                query: query,
+                category: (p.category ?? .accessories).displayName
+            )
+            if let data = try? JSONEncoder().encode(estimate),
+               let json = String(data: data, encoding: .utf8) {
+                await MainActor.run {
+                    guard let i = pieces.firstIndex(where: { $0.id == pieceID }) else { return }
+                    pieces[i].marketPriceJSON = json
+                    if pieces[i].priceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        pieces[i].priceText = PieceMarketPrice.formatUSD(estimate.avg)
+                    }
+                    persistPiecesForLater()
+                }
+            }
+        } catch {
+            // Silencioso: el usuario puede consultar manualmente en revisión.
+        }
     }
 }

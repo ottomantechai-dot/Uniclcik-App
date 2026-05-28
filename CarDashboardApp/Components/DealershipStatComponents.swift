@@ -278,7 +278,7 @@ struct AppChromeSearchCapsuleField: View {
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(
                     lightSurface
-                        ? Color.black.opacity(0.45)
+                        ? Color.black.opacity(0.85)
                         : .white.opacity(DashboardChromeSearchFieldStyle.iconOpacity)
                 )
 
@@ -289,7 +289,7 @@ struct AppChromeSearchCapsuleField: View {
                 .submitLabel(.search)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(lightSurface ? Color.black : .white)
-                .tint(lightSurface ? Color(red: 0.20, green: 0.45, blue: 0.85) : .white)
+                .tint(lightSurface ? Color.black : .white)
 
             if showsClearButton, !text.isEmpty {
                 Button {
@@ -299,7 +299,7 @@ struct AppChromeSearchCapsuleField: View {
                         .font(.system(size: 16))
                         .foregroundStyle(
                             lightSurface
-                                ? Color.black.opacity(0.35)
+                                ? Color.black.opacity(0.45)
                                 : .white.opacity(DashboardChromeSearchFieldStyle.iconClearOpacity)
                         )
                 }
@@ -329,33 +329,13 @@ struct AppChromeHeaderCircleIconButton: View {
         Button(action: action) {
             ZStack {
                 if lightSurface {
-                    // Base con gradiente vertical
                     Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white,
-                                    Color(red: 0.93, green: 0.96, blue: 1.0),
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
+                        .fill(Color(red: 0.96, green: 0.96, blue: 0.97))
                         .overlay {
                             Circle()
-                                .strokeBorder(
-                                    LinearGradient(
-                                        colors: [
-                                            Color.white.opacity(0.98),
-                                            Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.25),
-                                        ],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 1
-                                )
+                                .strokeBorder(Color.black.opacity(0.08), lineWidth: 0.8)
                         }
-                        .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.18), radius: 10, y: 4)
+                        .shadow(color: Color.black.opacity(0.06), radius: 8, y: 3)
                 } else {
                     DashboardChromeHeaderCircleBackground()
                 }
@@ -363,15 +343,8 @@ struct AppChromeHeaderCircleIconButton: View {
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(
                         lightSurface
-                            ? LinearGradient(
-                                colors: [
-                                    Color(red: 0.20, green: 0.50, blue: 0.95),
-                                    Color(red: 0.14, green: 0.36, blue: 0.85),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                            : LinearGradient(colors: [.white.opacity(0.95), .white.opacity(0.95)], startPoint: .top, endPoint: .bottom)
+                            ? Color.black.opacity(0.85)
+                            : Color.white.opacity(0.95)
                     )
             }
             .frame(width: AppChromeHeaderMetrics.circleButtonSize, height: AppChromeHeaderMetrics.circleButtonSize)

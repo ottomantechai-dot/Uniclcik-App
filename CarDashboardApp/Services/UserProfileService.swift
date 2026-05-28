@@ -166,3 +166,113 @@ enum UserProfileService {
         return nil
     }
 }
+
+// MARK: - Avatar upload
+
+extension UserProfileService {
+    enum AvatarUploadError: LocalizedError {
+        case notAuthenticated
+        case invalidImage
+        case uploadFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .notAuthenticated:
+                return "Sign in to update your profile photo."
+            case .invalidImage:
+                return "Could not process the photo."
+            case .uploadFailed(let msg):
+                return msg
+            }
+        }
+    }
+
+    /// Square JPEG for profile avatar (max side 512 px).
+    static func prepareAvatarJPEG(from image: UIImage, maxSide: CGFloat = 512) -> Data? {
+        let flat = flattenOrientation(image)
+        let side = min(flat.size.width, flat.size.height)
+        guard side > 0 else { return nil }
+
+        let cropRect = CGRect(
+            x: (flat.size.width - side) / 2,
+            y: (flat.size.height - side) / 2,
+            width: side,
+            height: side
+        )
+        guard let cg = flat.cgImage?.cropping(to: cropRect.integral) else { return nil }
+        var squared = UIImage(cgImage: cg, scale: flat.scale, orientation: .up)
+
+        let longest = max(squared.size.width, squared.size.height)
+        if longest > maxSide {
+            let scale = maxSide / longest
+            let newSize = CGSize(width: squared.size.width * scale, height: squared.size.height * scale)
+            UIGraphicsBeginImageContextWithOptions(newSize, false, 1)
+            squared.draw(in: CGRect(origin: .zero, size: newSize))
+            squared = UIGraphicsGetImageFromCurrentImageContext() ?? squared
+            UIGraphicsEndImageContext()
+        }
+
+        return squared.jpegData(compressionQuality: 0.88)
+    }
+
+    /// Uploads avatar to Storage and updates `avatar_url` on the profile row.
+    static func uploadProfileAvatar(
+        jpegData: Data,
+        userId: UUID,
+        client: SupabaseClient
+    ) async throws -> String {
+        _ = try await client.auth.session
+
+        let bucket = SupabaseClientProvider.userAvatarBucket
+        let path = "\(userId.uuidString.lowercased())/avatar.jpg"
+
+        do {
+            _ = try await client.storage
+                .from(bucket)
+                .upload(
+                    path,
+                    data: jpegData,
+                    options: FileOptions(contentType: "image/jpeg", upsert: true)
+                )
+        } catch {
+            throw AvatarUploadError.uploadFailed(error.localizedDescription)
+        }
+
+        struct AvatarPatch: Encodable {
+            let avatarUrl: String
+            enum CodingKeys: String, CodingKey {
+                case avatarUrl = "avatar_url"
+            }
+        }
+
+        let patch = AvatarPatch(avatarUrl: path)
+        let table = SupabaseClientProvider.profilesTableName
+        let uid = userId.uuidString.lowercased()
+
+        do {
+            try await client
+                .from(table)
+                .update(patch)
+                .eq("user_id", value: uid)
+                .execute()
+        } catch {
+            // Some schemas use `id` = auth.users.id instead of `user_id`.
+            try await client
+                .from(table)
+                .update(patch)
+                .eq("id", value: uid)
+                .execute()
+        }
+
+        return path
+    }
+
+    private static func flattenOrientation(_ image: UIImage) -> UIImage {
+        guard image.imageOrientation != .up else { return image }
+        UIGraphicsBeginImageContextWithOptions(image.size, false, image.scale)
+        image.draw(in: CGRect(origin: .zero, size: image.size))
+        let out = UIGraphicsGetImageFromCurrentImageContext() ?? image
+        UIGraphicsEndImageContext()
+        return out
+    }
+}

@@ -54,7 +54,7 @@ private struct LookGarmentsCollageView: View {
     var body: some View {
         Group {
             if items.isEmpty {
-                Text("Añade prendas al look para ver el collage.")
+                Text("Add items to the look to see the collage.")
                     .font(.system(size: 14))
                     .foregroundStyle(Color.black.opacity(0.45))
                     .multilineTextAlignment(.center)
@@ -140,24 +140,99 @@ private struct LookAvatarGarmentsToggle: View {
     }
 }
 
+// MARK: - Precio de mercado (ficha de prenda)
+
+struct GarmentMarketPriceCard: View {
+    let estimate: PieceMarketPrice
+    var onRefresh: () -> Void
+
+    private var tint: Color {
+        estimate.isUp
+            ? Color(red: 0.20, green: 0.70, blue: 0.45)
+            : Color(red: 0.92, green: 0.30, blue: 0.30)
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text("MARKET PRICE")
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(0.8)
+                    .foregroundStyle(Color.black.opacity(0.55))
+                Spacer()
+                Button(action: onRefresh) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(PieceMarketPrice.formatUSD(estimate.avg))
+                    .font(.system(size: 28, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.92))
+                Text(String(format: "%@%.1f%%", estimate.isUp ? "+" : "", estimate.changePercent))
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(tint)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(tint.opacity(0.14)))
+                Spacer(minLength: 0)
+            }
+
+            PriceTrendSparkline(points: estimate.history, isUp: estimate.isUp)
+                .frame(height: 44)
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("MIN").font(.system(size: 9, weight: .heavy)).foregroundStyle(Color.black.opacity(0.4))
+                    Text(PieceMarketPrice.formatUSD(estimate.min)).font(.system(size: 13, weight: .bold))
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("MAX").font(.system(size: 9, weight: .heavy)).foregroundStyle(Color.black.opacity(0.4))
+                    Text(PieceMarketPrice.formatUSD(estimate.max)).font(.system(size: 13, weight: .bold))
+                }
+            }
+        }
+        .padding(14)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                }
+        }
+    }
+}
+
 // MARK: - Detalle de prenda (estudio grande + datos)
 
 /// Ficha tras tocar una prenda en la rejilla.
 struct ClosetGarmentDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var goatVM: GoatAccountViewModel
 
     @Bindable var item: ClosetItem
 
     @State private var priceDraft: String = ""
+    @State private var purchasePriceDraft: String = ""
+    @State private var sizeDraft: String = ""
+    @State private var descriptionDraft: String = ""
     @FocusState private var priceFocused: Bool
     @State private var nameDraft: String = ""
+    @State private var skuDraft: String = ""
     @State private var prettifying = false
     @State private var showLookComposer = false
     @State private var showShoe360Capture = false
     @State private var showShoe360ProCapture = false
     @State private var showLookbookCapture = false
     @State private var toast: String?
+    @State private var marketPriceBusy = false
+    @State private var showMarkSoldConfirm = false
 
     private var secondary: Color {
         Color.black.opacity(0.55)
@@ -172,9 +247,9 @@ struct ClosetGarmentDetailView: View {
                     studioHero
 
                     VStack(alignment: .leading, spacing: 10) {
-                        fieldLabel("Nombre")
+                        fieldLabel("Name")
                         HStack(spacing: 8) {
-                            TextField("Nombre de la prenda", text: $nameDraft)
+                            TextField("Product name", text: $nameDraft)
                                 .font(.system(size: 18, weight: .semibold))
                                 .foregroundStyle(Color.black)
                                 .onChange(of: nameDraft) { _, new in
@@ -189,6 +264,20 @@ struct ClosetGarmentDetailView: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 14)
                         .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+
+                        fieldLabel("SKU")
+                        TextField("e.g. DD1391-101", text: $skuDraft)
+                            .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                            .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled()
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 14)
+                            .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                            .onChange(of: skuDraft) { _, new in
+                                let t = new.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                                item.skuText = t.isEmpty ? nil : t
+                                saveSilently()
+                            }
                     }
                     .padding(.horizontal, 18)
 
@@ -196,7 +285,7 @@ struct ClosetGarmentDetailView: View {
                     dressAndSeasonSection
 
                     VStack(alignment: .leading, spacing: 10) {
-                        fieldLabel("Categoría")
+                        fieldLabel("Category")
                         Menu {
                             ForEach(ClothingCategory.allCases, id: \.rawValue) { cat in
                                 Button {
@@ -241,25 +330,124 @@ struct ClosetGarmentDetailView: View {
                             .padding(.vertical, 14)
                             .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
 
-                        fieldLabel("Precio")
-                        TextField("Ej. €49 · 129 USD", text: $priceDraft)
-                            .focused($priceFocused)
+                        fieldLabel("Pricing")
+
+                        fieldLabel("Purchase price")
+                        TextField("What you paid", text: $purchasePriceDraft)
                             .keyboardType(.decimalPad)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 14)
                             .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
-                            .onChange(of: priceDraft) { _, new in
+                            .onChange(of: purchasePriceDraft) { _, new in
                                 let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
-                                item.priceText = t.isEmpty ? nil : t
+                                item.purchasePriceText = t.isEmpty ? nil : t
+                                saveSilently()
+                            }
+
+                        fieldLabel("Asking price")
+                        HStack(spacing: 8) {
+                            TextField("Your listing price", text: $priceDraft)
+                                .focused($priceFocused)
+                                .keyboardType(.decimalPad)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 14)
+                                .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                                .onChange(of: priceDraft) { _, new in
+                                    let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    item.priceText = t.isEmpty ? nil : t
+                                    saveSilently()
+                                }
+
+                            if let est = item.marketPrice, est.avg > 0 {
+                                Button {
+                                    priceDraft = PieceMarketPrice.formatUSD(est.avg)
+                                    item.priceText = priceDraft
+                                    saveSilently()
+                                } label: {
+                                    Text("Market")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(Color.white)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 14)
+                                        .background(RoundedRectangle(cornerRadius: 14).fill(Color.black))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        if item.hasPricingForProfit {
+                            garmentProfitSummaryCard
+                        }
+
+                        garmentMarketPriceSection
+
+                        fieldLabel("Size")
+                        TextField(
+                            item.category == .shoes ? "Ej. EU 42 · US 9" : "Ej. M · L · 32",
+                            text: $sizeDraft
+                        )
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 14)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                        .onChange(of: sizeDraft) { _, new in
+                            let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
+                            item.sizeText = t.isEmpty ? nil : t
+                            saveSilently()
+                        }
+
+                        if let color = item.colorLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !color.isEmpty {
+                            fieldLabel("Color")
+                            Text(color)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(Color.black.opacity(0.82))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 14)
+                                .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                        }
+
+                        if !item.listingPlatforms.isEmpty {
+                            fieldLabel("Platforms")
+                            Text(item.listingPlatforms.joined(separator: " · "))
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(Color.black.opacity(0.72))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 14)
+                                .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                        }
+
+                        fieldLabel("Description")
+                        TextEditor(text: $descriptionDraft)
+                            .frame(minHeight: 88)
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                            .onChange(of: descriptionDraft) { _, new in
+                                let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
+                                item.productDescription = t.isEmpty ? nil : t
                                 saveSilently()
                             }
                     }
                     .padding(.horizontal, 18)
 
+                    if !item.isSold {
+                        Button {
+                            showMarkSoldConfirm = true
+                        } label: {
+                            Label(L10n.tr("sold.markSold"), systemImage: "checkmark.seal.fill")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(Color.white)
+                                .frame(maxWidth: .infinity, minHeight: 56)
+                                .background(RoundedRectangle(cornerRadius: 28).fill(Color(red: 0.18, green: 0.62, blue: 0.40)))
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.top, 4)
+                    }
+
                     Button {
                         showLookComposer = true
                     } label: {
-                        Label("Crear looks", systemImage: "sparkles")
+                        Label("Create looks", systemImage: "sparkles")
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(Color.white)
                             .frame(maxWidth: .infinity, minHeight: 56)
@@ -274,11 +462,11 @@ struct ClosetGarmentDetailView: View {
                 .padding(.bottom, 32)
             }
             .background(Color.white.ignoresSafeArea())
-            .navigationTitle("Prenda")
+            .navigationTitle("Item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cerrar") { dismiss() }
+                    Button(L10n.tr("common.close")) { dismiss() }
                         .foregroundStyle(Color.black)
                 }
             }
@@ -286,8 +474,15 @@ struct ClosetGarmentDetailView: View {
         .preferredColorScheme(.light)
         .onAppear {
             priceDraft = item.priceText ?? ""
-            nameDraft = item.name
+            purchasePriceDraft = item.purchasePriceText ?? ""
+            sizeDraft = item.sizeText ?? ""
+            descriptionDraft = item.productDescription ?? ""
+            nameDraft = item.catalogDisplayName
+            skuDraft = item.resolvedSKU ?? ""
             ensureLocalPalette()
+            if item.marketPrice == nil, item.hasStyleForMarketLookup, !marketPriceBusy {
+                Task { await refreshMarketPrice() }
+            }
         }
         .onChange(of: priceFocused) { _, focused in
             if !focused {
@@ -303,6 +498,18 @@ struct ClosetGarmentDetailView: View {
                 .preferredColorScheme(.light)
         }
         .toastOverlay(message: $toast)
+        .confirmationDialog(
+            L10n.tr("sold.markSoldConfirmTitle"),
+            isPresented: $showMarkSoldConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.tr("sold.markSoldAction"), role: .destructive) {
+                markItemAsSold()
+            }
+            Button(L10n.tr("common.close"), role: .cancel) {}
+        } message: {
+            Text(L10n.tr("sold.markSoldConfirmMessage"))
+        }
         .sheet(isPresented: $showShoe360Capture) {
             NavigationStack {
                 ShoeMultiAngleCaptureView(garmentName: item.name) { paths in
@@ -327,123 +534,120 @@ struct ClosetGarmentDetailView: View {
     }
 
     private var studioHero: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color.white)
-
-            Group {
-                if item.category == .shoes, item.hasFullShoeSpinFromVideo {
-                    Shoe360ProViewer(filenames: item.spin360Filenames, toast: $toast)
-                        .padding(10)
-                } else if item.category == .shoes, item.hasShoeMultiAngle {
-                    Shoe360Viewer(filenames: item.multiAngleFilenames, toast: $toast)
-                        .padding(10)
-                } else if item.category != .shoes {
-                    LookbookGalleryView(item: item, toast: $toast)
-                        .padding(10)
-                } else {
+        Group {
+            if item.allSelectableImagePaths.count > 1 {
+                ProductCoverGalleryView(item: item, toast: $toast, style: .detail) {
+                    heroStudioActionBar
+                }
+            } else {
+                ZStack(alignment: .bottom) {
                     ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
-                        .padding(.vertical, 20)
-                        .padding(.horizontal, 16)
-                }
-            }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 4)
 
-            VStack {
-                Spacer()
-                HStack(spacing: 10) {
-                    Button {
-                        Task { await runPrettifyHero() }
-                    } label: {
-                        HStack(spacing: 6) {
-                            if prettifying {
-                                ProgressView().tint(.black).scaleEffect(0.85)
-                            } else {
-                                Image(systemName: "sparkles")
-                            }
-                            Text(prettifying ? "Generando…" : "Prettify foto")
-                                .font(.system(size: 14, weight: .semibold))
-                        }
-                        .foregroundStyle(Color.black)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(Capsule().fill(Color.white))
-                    }
-                    .buttonStyle(LookNoHighlightButtonStyle())
-                    .disabled(prettifying || !GeminiService.apiKeyConfigured)
-
-                    if item.category == .shoes {
-                        Menu {
-                            Button {
-                                showShoe360Capture = true
-                            } label: {
-                                Label(
-                                    item.hasShoeMultiAngle
-                                        ? "360° Lite · editar (fotos con IA)"
-                                        : "360° Lite · fotos con IA",
-                                    systemImage: "circle.grid.cross"
-                                )
-                            }
-                            Button {
-                                showShoe360ProCapture = true
-                            } label: {
-                                Label(
-                                    item.hasFullShoeSpinFromVideo
-                                        ? "360° Pro · editar (vídeo + estudio)"
-                                        : "360° Pro · vídeo + estudio Gemini",
-                                    systemImage: "film"
-                                )
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "rotate.3d")
-                                Text(
-                                    (item.hasFullShoeSpinFromVideo || item.hasShoeMultiAngle)
-                                        ? "Editar 360°"
-                                        : "Vista 360°"
-                                )
-                                    .font(.system(size: 14, weight: .semibold))
-                            }
-                            .foregroundStyle(Color.black)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(Capsule().fill(Color(.secondarySystemBackground)))
-                        }
-                        .buttonStyle(LookNoHighlightButtonStyle())
-                    } else {
-                        Button {
-                            showLookbookCapture = true
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "sparkles.rectangle.stack")
-                                Text(item.hasLookbook ? "Editar lookbook" : "Crear lookbook")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.82)
-                            }
-                            .foregroundStyle(Color.black)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(Capsule().fill(Color(.secondarySystemBackground)))
-                        }
-                        .buttonStyle(LookNoHighlightButtonStyle())
-                    }
+                    heroStudioActionBar
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 12)
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 16)
+                .aspectRatio(0.72, contentMode: .fit)
             }
         }
-        .frame(maxWidth: .infinity)
-        .aspectRatio(0.92, contentMode: .fit)
-        .padding(.horizontal, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color.white)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(.horizontal, 10)
+    }
+
+    private var heroStudioActionBar: some View {
+        HStack(spacing: 10) {
+            Button {
+                Task { await runPrettifyHero() }
+            } label: {
+                HStack(spacing: 6) {
+                    if prettifying {
+                        ProgressView().tint(.black).scaleEffect(0.85)
+                    } else {
+                        Image(systemName: "sparkles")
+                    }
+                    Text(prettifying ? "Generating…" : "Prettify photo")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundStyle(Color.black)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Capsule().fill(Color.white.opacity(0.94)))
+            }
+            .buttonStyle(LookNoHighlightButtonStyle())
+            .disabled(prettifying || !GeminiService.apiKeyConfigured)
+
+            if item.category == .shoes {
+                Menu {
+                    Button {
+                        showShoe360Capture = true
+                    } label: {
+                        Label(
+                            item.hasShoeMultiAngle
+                                ? "360° Lite · edit (AI photos)"
+                                : "360° Lite · AI photos",
+                            systemImage: "circle.grid.cross"
+                        )
+                    }
+                    Button {
+                        showShoe360ProCapture = true
+                    } label: {
+                        Label(
+                            item.hasFullShoeSpinFromVideo
+                                ? "360° Pro · edit (video + studio)"
+                                : "360° Pro · video + Gemini studio",
+                            systemImage: "film"
+                        )
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "rotate.3d")
+                        Text(
+                            (item.hasFullShoeSpinFromVideo || item.hasShoeMultiAngle)
+                                ? "Edit 360°"
+                                : "360° view"
+                        )
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.black)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Capsule().fill(Color.white.opacity(0.94)))
+                }
+                .buttonStyle(LookNoHighlightButtonStyle())
+            } else {
+                Button {
+                    showLookbookCapture = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles.rectangle.stack")
+                        Text(item.hasLookbook ? "Edit lookbook" : "Create lookbook")
+                            .font(.system(size: 14, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                    }
+                    .foregroundStyle(Color.black)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Capsule().fill(Color.white.opacity(0.94)))
+                }
+                .buttonStyle(LookNoHighlightButtonStyle())
+            }
+        }
     }
 
     private var localPaletteSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            fieldLabel("Paleta de colores")
+            fieldLabel("Color palette")
                 .padding(.horizontal, 18)
 
             if paletteHexes.isEmpty {
-                Text("No hay suficiente contraste en la foto; añade una imagen tipo catálogo o pulsa Prettify.")
+                Text("Not enough contrast in the photo; add a catalog-style image or tap Prettify.")
                     .font(.system(size: 13))
                     .foregroundStyle(secondary)
                     .padding(.horizontal, 18)
@@ -464,10 +668,10 @@ struct ClosetGarmentDetailView: View {
 
     private var dressAndSeasonSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            chipRow(title: "Códigos de vestimenta", all: DressCode.allCases, selected: item.dressCodesStored) { code in
+            chipRow(title: "Dress codes", all: DressCode.allCases, selected: item.dressCodesStored) { code in
                 toggleDress(code)
             }
-            chipRow(title: "Estación", all: Season.allCases, selected: item.seasonsStored) { season in
+            chipRow(title: "Season", all: Season.allCases, selected: item.seasonsStored) { season in
                 toggleSeason(season)
             }
         }
@@ -540,6 +744,138 @@ struct ClosetGarmentDetailView: View {
         try? modelContext.save()
     }
 
+    private func markItemAsSold() {
+        item.isSold = true
+        item.soldAt = Date()
+        saveSilently()
+        toast = L10n.tr("sold.markedSoldToast")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            dismiss()
+        }
+    }
+
+    @ViewBuilder
+    private var garmentProfitSummaryCard: some View {
+        let profit = item.projectedProfitUSD
+        let tint = profit >= 0
+            ? Color(red: 0.20, green: 0.70, blue: 0.45)
+            : Color(red: 0.92, green: 0.30, blue: 0.30)
+
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("POTENTIAL PROFIT")
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(0.8)
+                    .foregroundStyle(Color.black.opacity(0.55))
+                Spacer()
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(profit >= 0 ? "+\(PieceMarketPrice.formatUSD(Int(profit.rounded())))" : "−\(PieceMarketPrice.formatUSD(Int(abs(profit).rounded())))")
+                    .font(.system(size: 26, weight: .heavy, design: .rounded))
+                    .foregroundStyle(tint)
+                Spacer(minLength: 0)
+            }
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("PAID")
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundStyle(Color.black.opacity(0.4))
+                    Text(PieceMarketPrice.formatUSD(Int(item.purchaseValueUSD.rounded())))
+                        .font(.system(size: 13, weight: .bold))
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("SELL AT")
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundStyle(Color.black.opacity(0.4))
+                    Text(PieceMarketPrice.formatUSD(Int(item.effectiveSellValueUSD.rounded())))
+                        .font(.system(size: 13, weight: .bold))
+                }
+            }
+        }
+        .padding(14)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(tint.opacity(0.08))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(tint.opacity(0.22), lineWidth: 1)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var garmentMarketPriceSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            fieldLabel("Market price")
+
+            if let style = item.resolvedSKU {
+                Text("Style \(style)")
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(secondary)
+            } else {
+                Text("Add a Style / SKU to search StockX & GOAT on the web.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.orange.opacity(0.85))
+            }
+
+            if marketPriceBusy {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Searching market price for Style…")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+            } else if let est = item.marketPrice {
+                GarmentMarketPriceCard(estimate: est) {
+                    Task { await refreshMarketPrice() }
+                }
+            } else {
+                Button {
+                    Task { await refreshMarketPrice() }
+                } label: {
+                    Label("Look up market price by Style", systemImage: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.white)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(Color.black))
+                }
+                .buttonStyle(.plain)
+                .disabled(!item.hasStyleForMarketLookup)
+                .opacity(item.hasStyleForMarketLookup ? 1 : 0.45)
+            }
+        }
+    }
+
+    @MainActor
+    private func refreshMarketPrice() async {
+        guard item.hasStyleForMarketLookup else {
+            toast = "Add a Style / SKU code first (e.g. DD1391-101)."
+            return
+        }
+        marketPriceBusy = true
+        defer { marketPriceBusy = false }
+
+        do {
+            let est = try await PieceMarketPrice.lookupForItem(item, goatVM: goatVM, useWebSearch: true)
+            item.marketPrice = est
+            saveSilently()
+            toast = "Market price: \(PieceMarketPrice.formatUSD(est.avg))"
+        } catch {
+            let message = (error as NSError).localizedDescription
+            if message.contains("429") || message.localizedCaseInsensitiveContains("quota") {
+                toast = "OpenAI quota exceeded. Check billing or try again later."
+            } else {
+                toast = message
+            }
+        }
+    }
+
     private func ensureLocalPalette() {
         guard item.colorPaletteJSON == nil || item.colorPaletteJSON?.isEmpty == true else { return }
         guard let ui = ImageStore.load(item.imageFilename) else { return }
@@ -594,6 +930,10 @@ struct CreateLookComposerView: View {
     @Query(sort: \ClosetItem.createdAt, order: .reverse)
     private var closetItems: [ClosetItem]
 
+    private var selectableClosetItems: [ClosetItem] {
+        closetItems.filter { !$0.isExplicitlySold }
+    }
+
     @State private var selectedIDs = Set<UUID>()
     @State private var lookTitle: String = ""
     @State private var composerToast: String?
@@ -601,7 +941,7 @@ struct CreateLookComposerView: View {
     private let gridCols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
     private var selectedOrderedPieces: [ClosetItem] {
-        closetItems.filter { selectedIDs.contains($0.id) }
+        selectableClosetItems.filter { selectedIDs.contains($0.id) }
     }
 
     var body: some View {
@@ -610,7 +950,7 @@ struct CreateLookComposerView: View {
                 Color.white.ignoresSafeArea()
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Selecciona al menos una prenda. Podrás generar el avatar tipo estudio desde el detalle del look.")
+                        Text("Select at least one item. You can generate the studio-style avatar from the look detail.")
                             .font(.system(size: 14))
                             .foregroundStyle(Color.black.opacity(0.55))
                             .padding(.horizontal, 18)
@@ -623,7 +963,7 @@ struct CreateLookComposerView: View {
 
                         if !selectedOrderedPieces.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text("Tu look — prendas seleccionadas")
+                                Text("Your look — selected items")
                                     .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(Color.black.opacity(0.48))
                                     .padding(.horizontal, 18)
@@ -633,14 +973,14 @@ struct CreateLookComposerView: View {
                         }
 
                         if closetItems.isEmpty {
-                            Text("Aún no tienes prendas en el clóset. Añade fotos antes de crear un look.")
+                            Text("You have no items in your closet yet. Add photos before creating a look.")
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(Color.black.opacity(0.45))
                                 .padding(.horizontal, 18)
                                 .padding(.top, 12)
                         } else {
                             LazyVGrid(columns: gridCols, spacing: 12) {
-                                ForEach(closetItems) { item in
+                                ForEach(selectableClosetItems) { item in
                                     lookPickerCell(item)
                                 }
                             }
@@ -659,7 +999,7 @@ struct CreateLookComposerView: View {
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "checkmark.circle.fill")
-                            Text("Guardar look")
+                            Text("Save look")
                         }
                         .font(.system(size: 17, weight: .heavy))
                         .foregroundStyle(Color.white)
@@ -682,11 +1022,11 @@ struct CreateLookComposerView: View {
                     }
                 }
             }
-            .navigationTitle("Crear looks")
+            .navigationTitle("Create looks")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cerrar") { dismiss() }.foregroundStyle(Color.black)
+                    Button(L10n.tr("common.close")) { dismiss() }.foregroundStyle(Color.black)
                 }
             }
             .toastOverlay(message: $composerToast)
@@ -708,7 +1048,7 @@ struct CreateLookComposerView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white)
                     ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
-                        .padding(10)
+                        .padding(4)
 
                     VStack {
                         HStack {
@@ -716,7 +1056,7 @@ struct CreateLookComposerView: View {
                             Image(systemName: on ? "checkmark.circle.fill" : "circle")
                                 .font(.system(size: 22))
                                 .foregroundStyle(on ? Color.black : Color.black.opacity(0.25))
-                                .padding(10)
+                                .padding(8)
                                 .allowsHitTesting(false)
                         }
                         Spacer()
@@ -724,7 +1064,7 @@ struct CreateLookComposerView: View {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(on ? Color.black : Color.clear, lineWidth: on ? 2.5 : 0)
                 }
-                .aspectRatio(0.92, contentMode: .fit)
+                .aspectRatio(0.72, contentMode: .fit)
 
                 Text(item.name)
                     .font(.system(size: 12, weight: .bold))
@@ -745,7 +1085,7 @@ struct CreateLookComposerView: View {
         modelContext.insert(look)
         try? modelContext.save()
         ClosetAnalytics.named("closet_look_saved", params: "items:\(ordered.count)")
-        pulseToast("Look guardado.")
+        pulseToast("Look saved.")
         dismiss()
     }
 
@@ -809,7 +1149,7 @@ struct ClosetLookDetailSheet: View {
                                             } else {
                                                 Image(systemName: "square.and.arrow.down")
                                             }
-                                            Text("Fotos 9:16")
+                                            Text("9:16 photos")
                                                 .font(.system(size: 13, weight: .semibold))
                                         }
                                         .foregroundStyle(Color.white)
@@ -840,7 +1180,7 @@ struct ClosetLookDetailSheet: View {
                     lookRibbonCoverSection
 
                     if look.avatarRelativePath == nil {
-                        Text("Prendas en este look (\(pieces.count))")
+                        Text("Items in this look (\(pieces.count))")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(Color.black.opacity(0.52))
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -852,7 +1192,7 @@ struct ClosetLookDetailSheet: View {
                         Button {
                             showAvatarGenerator = true
                         } label: {
-                            Label("Crear avatar", systemImage: "sparkles")
+                            Label("Create avatar", systemImage: "sparkles")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(Color.white)
                                 .padding(.horizontal, 18)
@@ -868,7 +1208,7 @@ struct ClosetLookDetailSheet: View {
                     Button(role: .destructive) {
                         confirmDelete = true
                     } label: {
-                        Text("Eliminar este look")
+                        Text("Delete this look")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(LookNoHighlightButtonStyle())
@@ -889,19 +1229,19 @@ struct ClosetLookDetailSheet: View {
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cerrar") { dismiss() }.foregroundStyle(Color.black)
+                    Button(L10n.tr("common.close")) { dismiss() }.foregroundStyle(Color.black)
                 }
             }
             .confirmationDialog(
-                "¿Eliminar este look?",
+                "Delete this look?",
                 isPresented: $confirmDelete,
                 titleVisibility: .visible
             ) {
-                Button("Eliminar", role: .destructive) {
+                Button("Delete", role: .destructive) {
                     deleteLook()
                     dismiss()
                 }
-                Button("Cancelar", role: .cancel) {}
+                Button("Cancel", role: .cancel) {}
             }
             .sheet(isPresented: $showAvatarGenerator) {
                 LookAvatarGeneratorSheet(look: look)
@@ -920,7 +1260,7 @@ struct ClosetLookDetailSheet: View {
         let show = candidates.count > 1 || look.avatarRelativePath != nil
         if show {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Portada del carrusel «Mis looks»")
+                Text("Cover for the My Looks carousel")
                     .font(.system(size: 14, weight: .heavy))
                     .foregroundStyle(Color.black.opacity(0.62))
                     .padding(.horizontal, 16)
@@ -930,7 +1270,7 @@ struct ClosetLookDetailSheet: View {
                         Button {
                             look.ribbonCoverRelativePath = nil
                             persistLookRibbonSettings()
-                            lookDetailToast = "Portada automática (avatar → prendas)."
+                            lookDetailToast = "Automatic cover (avatar → items)."
                         } label: {
                             VStack(spacing: 6) {
                                 Image(systemName: "sparkles")
@@ -1038,7 +1378,7 @@ struct ClosetLookDetailSheet: View {
         defer { exportingAvatar = false }
         do {
             try await ClosetPhotoExports.saveClosetAvatarForTikTokExport(relativePath: path)
-            lookDetailToast = "Avatar listo para TikTok guardado en Fotos."
+            lookDetailToast = "TikTok-ready avatar saved to Photos."
         } catch {
             lookDetailToast = error.localizedDescription
         }
@@ -1114,7 +1454,7 @@ struct LookAvatarGeneratorSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cerrar") { dismiss() }.foregroundStyle(Color.black)
+                    Button(L10n.tr("common.close")) { dismiss() }.foregroundStyle(Color.black)
                 }
                 ToolbarItemGroup(placement: .confirmationAction) {
                     Button {
@@ -1138,9 +1478,9 @@ struct LookAvatarGeneratorSheet: View {
                     }
                     .buttonStyle(LookNoHighlightButtonStyle())
                     .disabled(avatarExportBusy || avatarDisplayPath == nil)
-                    .accessibilityLabel("Guardar avatar en Fotos")
+                    .accessibilityLabel("Save avatar to Photos")
 
-                    Button("Guardar") { saveTapped() }
+                    Button("Save") { saveTapped() }
                         .disabled(avatarDisplayPath == nil)
                 }
             }
@@ -1171,7 +1511,7 @@ struct LookAvatarGeneratorSheet: View {
         defer { avatarExportBusy = false }
         do {
             try await ClosetPhotoExports.saveClosetAvatarForTikTokExport(relativePath: rel)
-            avatarExportToast = "Avatar 9:16 guardado en Fotos."
+            avatarExportToast = "9:16 avatar saved to Photos."
         } catch {
             avatarExportToast = error.localizedDescription
         }
@@ -1208,7 +1548,7 @@ struct LookAvatarGeneratorSheet: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
         } else {
-            Text("Aquí verás el avatar de estudio. Elige modelo abajo y toca «Generar».")
+            Text("Your look will appear here: full-body model on a pure white background, no shadows. Choose a model below and tap Generate.")
                 .font(.system(size: 15))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(Color.black.opacity(0.42))
@@ -1282,7 +1622,7 @@ struct LookAvatarGeneratorSheet: View {
                     HStack(spacing: 8) {
                         Image(systemName: "face.smiling")
                             .foregroundStyle(Color.black.opacity(0.55))
-                        Text("Que se parezca a mí")
+                        Text("Make it look like me")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Color.black.opacity(0.82))
                     }
@@ -1307,7 +1647,7 @@ struct LookAvatarGeneratorSheet: View {
     /// Modelo físico pedido al generador — independiente del interruptor prendas / avatar.
     private var genderRow: some View {
         HStack(spacing: 10) {
-            Text("Modelo")
+            Text("Model")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.black.opacity(0.45))
 
@@ -1320,7 +1660,7 @@ struct LookAvatarGeneratorSheet: View {
                             try? modelContext.save()
                         }
                     } label: {
-                        Text(g.displayNameSpanish)
+                        Text(g.displayName)
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(gender == g ? Color.white : Color.black)
                             .padding(.horizontal, 16)
@@ -1423,7 +1763,7 @@ private struct Shoe360Viewer: View {
                                 } else {
                                     Image(systemName: "square.and.arrow.down")
                                 }
-                                Text("Fotos")
+                                Text("Photos")
                                     .font(.system(size: 12, weight: .semibold))
                             }
                             .foregroundStyle(Color.black)
@@ -1532,52 +1872,67 @@ struct ShoeMultiAngleCaptureView: View {
     @State private var cameraUIImage: UIImage?
     @State private var isProcessing = false
     @State private var errorMessage: String?
+    @State private var autoSpinPhase: CGFloat = 0
+    @State private var autoSpinTimer: Timer?
+
+    private var orderedCapturedImages: [UIImage] {
+        ShoeAngle.allCases.compactMap { captured[$0] }
+    }
+
+    private var orderedPrettifiedPaths: [String] {
+        ShoeAngle.allCases.compactMap { prettifiedFilenames[$0] }
+    }
 
     private var allCaptured: Bool { ShoeAngle.allCases.allSatisfy { captured[$0] != nil } }
     private var allPrettified: Bool { ShoeAngle.allCases.allSatisfy { prettifiedFilenames[$0] != nil } }
 
+    /// Primer ángulo en orden (Front → Right → Back → Left) que aún no tiene foto.
+    private var firstMissingAngle: ShoeAngle? {
+        ShoeAngle.allCases.first { captured[$0] == nil }
+    }
+
+    /// Solo puedes abrir ángulos ya completados (para reemplazar) o el siguiente pendiente.
+    private func isAngleAccessible(_ angle: ShoeAngle) -> Bool {
+        if captured[angle] != nil { return true }
+        return angle == firstMissingAngle
+    }
+
+    private var canCaptureCurrentAngle: Bool {
+        isAngleAccessible(currentAngle) && !allCaptured
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                Text("Cada imagen generada con IA tiene un coste aproximado; 4 ángulos ≈ 4 salidas.")
+                Text("Each AI-generated image has an approximate cost; 4 angles ≈ 4 outputs.")
                     .font(.system(size: 12))
                     .foregroundStyle(Color.black.opacity(0.5))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 20)
 
                 ZStack {
-                    RoundedRectangle(cornerRadius: 16).fill(Color(.systemGray6))
-                    if let img = displayHeroImage {
-                        Image(uiImage: img)
-                            .resizable()
-                            .scaledToFit()
-                            .padding(12)
-                    } else {
-                        VStack(spacing: 12) {
-                            Image(systemName: currentAngle.icon)
-                                .font(.system(size: 56))
-                                .foregroundStyle(Color.gray)
-                            Text(currentAngle.displayName)
-                                .font(.title3.bold())
-                        }
-                    }
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(red: 240/255, green: 240/255, blue: 240/255))
+                    captureHeroContent
                 }
                 .frame(height: 280)
                 .padding(.horizontal, 16)
 
-                Text(currentAngle.instruction)
-                    .font(.caption)
-                    .foregroundStyle(Color.black.opacity(0.55))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 28)
+                if !allCaptured {
+                    Text(currentAngle.instruction)
+                        .font(.caption)
+                        .foregroundStyle(Color.black.opacity(0.55))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 28)
+                }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Las 4 posiciones")
+                    Text("The 4 positions")
                         .font(.system(size: 14, weight: .heavy))
                         .foregroundStyle(Color.black)
                     Text(
-                        "Toca un lado y abajo usa Cámara o Galería para poner esa vista. "
-                            + "Vuelve a tocar cualquier lado para sustituir su foto antes de generar."
+                        "Complete each side in order: Front, Right, Back, then Left. "
+                            + "You can tap a completed side to replace its photo."
                     )
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.48))
@@ -1589,6 +1944,7 @@ struct ShoeMultiAngleCaptureView: View {
                 VStack(spacing: 8) {
                     ForEach(ShoeAngle.allCases) { angle in
                         Button {
+                            guard isAngleAccessible(angle) else { return }
                             currentAngle = angle
                         } label: {
                             HStack(spacing: 10) {
@@ -1596,22 +1952,23 @@ struct ShoeMultiAngleCaptureView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(angle.displayName)
                                         .font(.system(size: 15, weight: .semibold))
-                                        .foregroundStyle(Color.black)
-                                    Text(angle.slotCue)
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundStyle(Color.black.opacity(0.45))
-                                        .lineLimit(2)
-                                        .minimumScaleFactor(0.9)
-                                        .multilineTextAlignment(.leading)
+                                        .foregroundStyle(
+                                            isAngleAccessible(angle) ? Color.black : Color.black.opacity(0.35)
+                                        )
                                 }
                                 Spacer(minLength: 6)
 
                                 angleRowThumbnail(for: angle)
 
                                 if currentAngle == angle {
-                                    Text("Editando")
+                                    Text("Editing")
                                         .font(.caption.weight(.semibold))
                                         .foregroundStyle(Color.black.opacity(0.5))
+                                        .frame(width: 70, alignment: .trailing)
+                                } else if !isAngleAccessible(angle) {
+                                    Text("Locked")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(Color.black.opacity(0.35))
                                         .frame(width: 70, alignment: .trailing)
                                 }
                             }
@@ -1621,6 +1978,8 @@ struct ShoeMultiAngleCaptureView: View {
                                     .fill(currentAngle == angle ? Color(.systemGray5) : Color.clear))
                         }
                         .buttonStyle(.plain)
+                        .disabled(!isAngleAccessible(angle))
+                        .opacity(isAngleAccessible(angle) ? 1 : 0.55)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -1632,7 +1991,7 @@ struct ShoeMultiAngleCaptureView: View {
                         HStack {
                             if isProcessing { ProgressView().tint(.white) }
                             Image(systemName: "sparkles")
-                            Text(isProcessing ? "Generando…" : "Generar vista 360°")
+                            Text(isProcessing ? "Generating…" : "Generate 360° view")
                         }
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color.white)
@@ -1646,7 +2005,7 @@ struct ShoeMultiAngleCaptureView: View {
                     Button {
                         saveMultiAngle()
                     } label: {
-                        Label("Guardar vista 360°", systemImage: "checkmark")
+                        Label("Save 360° view", systemImage: "checkmark")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(Color.white)
                             .frame(maxWidth: .infinity)
@@ -1659,22 +2018,26 @@ struct ShoeMultiAngleCaptureView: View {
                         Button {
                             showCamera = true
                         } label: {
-                            Label("Tomar foto", systemImage: "camera")
+                            Label("Take photo", systemImage: "camera")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(Color.white)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
                                 .background(Capsule().fill(Color.black))
                         }
+                        .disabled(!canCaptureCurrentAngle)
+
                         PhotosPicker(selection: $pickerItem, matching: .images) {
-                            Label("Galería", systemImage: "photo")
+                            Label("Gallery", systemImage: "photo")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(Color.black)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
                                 .background(Capsule().fill(Color(.systemGray6)))
                         }
+                        .disabled(!canCaptureCurrentAngle)
                     }
+                    .opacity(canCaptureCurrentAngle ? 1 : 0.45)
                     .padding(.horizontal, 16)
                 }
 
@@ -1688,24 +2051,25 @@ struct ShoeMultiAngleCaptureView: View {
             }
             .padding(.bottom, 32)
         }
-        .navigationTitle("Vista 360°")
+        .navigationTitle("360° view")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if showsCloseButton {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cerrar") { dismiss() }
+                    Button(L10n.tr("common.close")) { dismiss() }
                         .foregroundStyle(Color.black)
                 }
             }
         }
         .onAppear {
             applyPrefillIfNeeded()
+            syncCurrentAngleToFlow()
         }
         .onChange(of: pickerItem) { _, newVal in
             Task { await loadPickedGallery(newVal) }
         }
         .onChange(of: cameraUIImage) { _, newVal in
-            guard let newVal else { return }
+            guard let newVal, canCaptureCurrentAngle else { return }
             let flat = newVal.closetFlattenedForShoeCapture()
             captured[currentAngle] = flat
             cameraUIImage = nil
@@ -1715,6 +2079,16 @@ struct ShoeMultiAngleCaptureView: View {
             ClosetUIImagePickerBridge(image: $cameraUIImage)
                 .background(Color.black)
                 .ignoresSafeArea()
+        }
+        .onDisappear {
+            stopHeroAutoSpin()
+        }
+        .onChange(of: allPrettified) { _, ready in
+            if ready, orderedPrettifiedPaths.count == ShoeAngle.allCases.count {
+                startHeroAutoSpin(frameCount: ShoeAngle.allCases.count)
+            } else {
+                stopHeroAutoSpin()
+            }
         }
     }
 
@@ -1727,7 +2101,61 @@ struct ShoeMultiAngleCaptureView: View {
         for (i, img) in imgs.enumerated() {
             captured[ShoeAngle.allCases[i]] = img.closetFlattenedForShoeCapture()
         }
-        currentAngle = .front
+        syncCurrentAngleToFlow()
+    }
+
+    private func syncCurrentAngleToFlow() {
+        if let missing = firstMissingAngle {
+            if !isAngleAccessible(currentAngle) {
+                currentAngle = missing
+            }
+        } else if let last = ShoeAngle.allCases.last {
+            currentAngle = last
+        }
+    }
+
+    @ViewBuilder
+    private var captureHeroContent: some View {
+        if allPrettified, orderedPrettifiedPaths.count == ShoeAngle.allCases.count {
+            ShoeFluidSpinPhaseLayer(filenames: orderedPrettifiedPaths, phase: autoSpinPhase)
+                .onAppear { startHeroAutoSpin(frameCount: ShoeAngle.allCases.count) }
+        } else if allCaptured, orderedCapturedImages.count == ShoeAngle.allCases.count {
+            ShoeCaptureAutoSpinPreview(images: orderedCapturedImages)
+        } else if let img = displayHeroImage {
+            Image(uiImage: img)
+                .resizable()
+                .scaledToFit()
+                .padding(12)
+        } else {
+            ShoeGuideAngleVideoView(
+                resourceName: "Vidos-zapatos",
+                fileExtension: "mp4",
+                angle: currentAngle,
+                videoGravity: .resizeAspect
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(6)
+            .animation(.easeInOut(duration: 0.45), value: currentAngle)
+        }
+    }
+
+    private func startHeroAutoSpin(frameCount: Int) {
+        autoSpinTimer?.invalidate()
+        autoSpinPhase = 0
+        let n = max(frameCount, 1)
+        autoSpinTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { _ in
+            Task { @MainActor in
+                autoSpinPhase = ShoeFluidSpinMath.normalizePhase(
+                    autoSpinPhase + CGFloat(n) / (2.8 * 30),
+                    frameCount: n
+                )
+            }
+        }
+    }
+
+    private func stopHeroAutoSpin() {
+        autoSpinTimer?.invalidate()
+        autoSpinTimer = nil
     }
 
     private var displayHeroImage: UIImage? {
@@ -1741,6 +2169,8 @@ struct ShoeMultiAngleCaptureView: View {
             Image(systemName: "checkmark.seal.fill").foregroundStyle(Color.green)
         } else if captured[angle] != nil {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.black)
+        } else if !isAngleAccessible(angle) {
+            Image(systemName: "lock.fill").foregroundStyle(Color.gray.opacity(0.45))
         } else if currentAngle == angle {
             Image(systemName: "camera.fill").foregroundStyle(Color.black)
         } else {
@@ -1762,7 +2192,7 @@ struct ShoeMultiAngleCaptureView: View {
                     .fill(Color(.systemGray5))
                     .frame(width: 46, height: 46)
                     .overlay {
-                        Image(systemName: angle.icon)
+                        Image(systemName: "shoeprints.fill")
                             .font(.system(size: 16))
                             .foregroundStyle(Color.gray.opacity(0.75))
                     }
@@ -1782,6 +2212,7 @@ struct ShoeMultiAngleCaptureView: View {
     }
 
     private func loadPickedGallery(_ item: PhotosPickerItem?) async {
+        guard canCaptureCurrentAngle else { return }
         guard let item,
               let data = try? await item.loadTransferable(type: Data.self),
               let img = UIImage(data: data)
@@ -1827,7 +2258,7 @@ struct ShoeMultiAngleCaptureView: View {
         let need = ShoeAngle.allCases.count
         if prettifiedFilenames.count < need {
             errorMessage =
-                "Algunos ángulos no se generaron. Reintenta con «Generar vista 360°» o vuelve a capturarlos."
+                "Some angles were not generated. Retry with Generate 360° view or capture them again."
         }
     }
 
@@ -1835,7 +2266,7 @@ struct ShoeMultiAngleCaptureView: View {
         let ordered = ShoeAngle.allCases.compactMap { prettifiedFilenames[$0] }
         guard ordered.count == ShoeAngle.allCases.count else {
             errorMessage =
-                "Faltan imágenes generadas (necesitas \(ShoeAngle.allCases.count))."
+                "Missing generated images (you need \(ShoeAngle.allCases.count))."
             return
         }
         onOrderedPathsCommitted(ordered)
@@ -1874,6 +2305,7 @@ private struct ClosetDiskThumbnail: View {
                 Image(uiImage: ui)
                     .resizable()
                     .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ProgressView().tint(.black)
             }
@@ -1883,75 +2315,234 @@ private struct ClosetDiskThumbnail: View {
 
 // MARK: - Lookbook (Feature 6): galería en detalle + captura 5 refs → 10 generaciones Gemini
 
-/// Galería en la ficha de prenda: fotos generadas (lookbook) y/o imagen principal; descarga a Fotos y portada en el armario.
-struct LookbookGalleryView: View {
+enum ProductCoverGalleryStyle {
+    case hero
+    case carousel
+    case strip
+    case detail
+}
+
+/// Browse every product image and pick which one appears as the closet cover.
+struct ProductCoverGalleryView<PhotoOverlay: View>: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var item: ClosetItem
     @Binding var toast: String?
+    var style: ProductCoverGalleryStyle = .hero
+    @ViewBuilder var photoOverlay: () -> PhotoOverlay
 
     @State private var selectedIndex: Int = 0
+    @State private var selectedScrollID: String?
     @State private var exporting = false
 
-    private var paths: [String] {
-        let lb = item.lookbookAllFilenamesInOrder
-        if !lb.isEmpty { return lb }
-        let trimmed = item.imageFilename.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? [] : [trimmed]
+    init(
+        item: ClosetItem,
+        toast: Binding<String?>,
+        style: ProductCoverGalleryStyle = .hero,
+        @ViewBuilder photoOverlay: @escaping () -> PhotoOverlay = { EmptyView() }
+    ) {
+        self.item = item
+        self._toast = toast
+        self.style = style
+        self.photoOverlay = photoOverlay
     }
+
+    private var paths: [String] { item.allSelectableImagePaths }
 
     private var currentPathIfAny: String? {
         guard paths.indices.contains(selectedIndex) else { return nil }
         return paths[selectedIndex]
     }
 
+    private var activeCoverPath: String {
+        ImageStore.preferredCatalogCoverPath(for: item)
+    }
+
+    private var isCurrentSelectionCover: Bool {
+        guard let current = currentPathIfAny else { return false }
+        return current == activeCoverPath
+    }
+
     var body: some View {
-        VStack(spacing: 12) {
-            ZStack(alignment: .bottom) {
-                carouselBlock
-
-                if currentPathIfAny != nil {
-                    heroActionBar
-                        .padding(.horizontal, 10)
-                        .padding(.bottom, 10)
-                }
-            }
-            .frame(minHeight: 280)
-
-            if paths.count > 1 {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(paths.enumerated()), id: \.offset) { i, rel in
-                            if let ui = ImageStore.load(rel) {
-                                Image(uiImage: ui)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 56, height: 76)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .stroke(i == selectedIndex ? Color.black : Color.clear, lineWidth: 2)
-                                    )
-                                    .onTapGesture { selectedIndex = i }
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, 2)
+        Group {
+            switch style {
+            case .hero:
+                heroGalleryBody
+            case .carousel:
+                carouselGalleryBody
+            case .strip:
+                stripGalleryBody
+            case .detail:
+                detailGalleryBody
             }
         }
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .onAppear(perform: syncSelectedFromCoverPreference)
+        .onAppear {
+            syncSelectedFromCoverPreference()
+            syncScrollIDFromIndex()
+        }
         .onChange(of: paths.count) { _, newCount in
             guard newCount > 0 else {
                 selectedIndex = 0
+                selectedScrollID = nil
                 return
             }
             selectedIndex = min(selectedIndex, newCount - 1)
             syncSelectedFromCoverPreference()
+            syncScrollIDFromIndex()
         }
         .onChange(of: item.galleryCoverRelativePath) { _, _ in
             syncSelectedFromCoverPreference()
+            syncScrollIDFromIndex()
+        }
+        .onChange(of: selectedIndex) { _, _ in
+            syncScrollIDFromIndex()
+        }
+        .onChange(of: selectedScrollID) { _, newID in
+            guard let newID, let idx = paths.firstIndex(of: newID), idx != selectedIndex else { return }
+            selectedIndex = idx
+        }
+    }
+
+    private var detailGalleryBody: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .bottom) {
+                carouselBlock
+
+                if currentPathIfAny != nil {
+                    VStack(spacing: 8) {
+                        photoOverlay()
+                        heroActionBar
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 10)
+                }
+            }
+            .aspectRatio(0.72, contentMode: .fit)
+            .padding(4)
+
+            stripGalleryBody
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
+        }
+    }
+
+    private var heroGalleryBody: some View {
+        VStack(spacing: 12) {
+            carouselPane(showPhotoOverlay: false)
+
+            thumbnailStrip
+        }
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var carouselGalleryBody: some View {
+        carouselPane(showPhotoOverlay: true)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private func carouselPane(showPhotoOverlay: Bool) -> some View {
+        ZStack(alignment: .bottom) {
+            carouselBlock
+
+            if currentPathIfAny != nil {
+                VStack(spacing: 8) {
+                    if showPhotoOverlay {
+                        photoOverlay()
+                    }
+                    heroActionBar
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 10)
+            }
+        }
+        .frame(minHeight: style == .hero ? 280 : 0)
+    }
+
+    private var stripGalleryBody: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text("Cover photo")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.black)
+                Spacer(minLength: 8)
+                if isCurrentSelectionCover {
+                    Label("Current cover", systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.72))
+                } else if currentPathIfAny != nil {
+                    Button {
+                        setCurrentAsCover()
+                    } label: {
+                        Text("Set as cover")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(Capsule().fill(Color.black))
+                    }
+                    .buttonStyle(LookNoHighlightButtonStyle())
+                }
+            }
+
+            thumbnailStrip
+        }
+        .padding(.top, 4)
+    }
+
+    private var thumbnailStrip: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Array(paths.enumerated()), id: \.offset) { i, rel in
+                        thumbnailTile(rel, index: i)
+                            .id(rel)
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+            .onChange(of: selectedIndex) { _, new in
+                guard paths.indices.contains(new) else { return }
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo(paths[new], anchor: .center)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func thumbnailTile(_ rel: String, index: Int) -> some View {
+        if let ui = ImageStore.load(rel) {
+            ZStack(alignment: .topTrailing) {
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(
+                        width: style == .strip ? 72 : 76,
+                        height: style == .strip ? 92 : 98
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(
+                                index == selectedIndex ? Color.black : Color.black.opacity(0.08),
+                                lineWidth: index == selectedIndex ? 2 : 1
+                            )
+                    )
+                    .onTapGesture {
+                        selectedIndex = index
+                        selectedScrollID = rel
+                    }
+
+                if rel == activeCoverPath {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Color.white)
+                        .padding(4)
+                        .background(Circle().fill(Color.black.opacity(0.72)))
+                        .offset(x: 4, y: -4)
+                }
+            }
         }
     }
 
@@ -1959,32 +2550,42 @@ struct LookbookGalleryView: View {
     private var carouselBlock: some View {
         Group {
             if paths.count > 1 {
-                TabView(selection: $selectedIndex) {
-                    ForEach(Array(paths.enumerated()), id: \.offset) { i, rel in
-                        heroImageTile(rel)
-                            .tag(i)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(paths, id: \.self) { rel in
+                            heroImageTile(rel)
+                                .containerRelativeFrame(.horizontal)
+                                .id(rel)
+                        }
                     }
+                    .scrollTargetLayout()
                 }
-                .tabViewStyle(.page(indexDisplayMode: .automatic))
-                .overlay(alignment: .bottomTrailing) {
-                    Text("Desliza")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(Color.white.opacity(0.95))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(Color.black.opacity(0.45)))
-                        .padding(14)
-                        .allowsHitTesting(false)
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $selectedScrollID)
+                .scrollIndicators(.hidden)
+                .overlay(alignment: .topTrailing) {
+                    if paths.indices.contains(selectedIndex) {
+                        Text("\(selectedIndex + 1) / \(paths.count)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.white.opacity(0.95))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(Color.black.opacity(0.52)))
+                            .padding(12)
+                            .allowsHitTesting(false)
+                    }
                 }
             } else if let only = paths.first {
                 heroImageTile(only)
             } else {
                 RoundedRectangle(cornerRadius: 16)
                     .fill(Color.white)
-                    .frame(height: 220)
+                    .frame(height: 280)
                     .overlay(Image(systemName: "photo").foregroundStyle(.secondary))
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder
@@ -1994,7 +2595,7 @@ struct LookbookGalleryView: View {
                 Image(uiImage: ui)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.white)
             } else {
                 RoundedRectangle(cornerRadius: 16)
@@ -2016,7 +2617,7 @@ struct LookbookGalleryView: View {
                     } else {
                         Image(systemName: "square.and.arrow.down")
                     }
-                    Text("Guardar en Fotos")
+                    Text("Save to Photos")
                         .font(.system(size: 13, weight: .semibold))
                 }
                 .foregroundStyle(Color.white)
@@ -2031,8 +2632,12 @@ struct LookbookGalleryView: View {
                 setCurrentAsCover()
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "photo.on.rectangle.angled")
-                    Text("Portada")
+                    Image(
+                        systemName: isCurrentSelectionCover
+                            ? "checkmark.circle.fill"
+                            : "photo.on.rectangle.angled"
+                    )
+                    Text(isCurrentSelectionCover ? "Cover photo" : "Set as cover")
                         .font(.system(size: 13, weight: .semibold))
                 }
                 .foregroundStyle(Color.black)
@@ -2041,22 +2646,29 @@ struct LookbookGalleryView: View {
                 .background(Capsule().fill(Color.white.opacity(0.92)))
             }
             .buttonStyle(LookNoHighlightButtonStyle())
+            .disabled(isCurrentSelectionCover)
         }
     }
 
     private func syncSelectedFromCoverPreference() {
-        guard let cov = item.galleryCoverRelativePath?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !cov.isEmpty,
-              let idx = paths.firstIndex(of: cov)
-        else { return }
+        let cover = activeCoverPath
+        guard !cover.isEmpty, let idx = paths.firstIndex(of: cover) else { return }
         selectedIndex = idx
+    }
+
+    private func syncScrollIDFromIndex() {
+        guard paths.indices.contains(selectedIndex) else {
+            selectedScrollID = paths.first
+            return
+        }
+        selectedScrollID = paths[selectedIndex]
     }
 
     private func setCurrentAsCover() {
         guard let p = currentPathIfAny else { return }
         item.galleryCoverRelativePath = p
         try? modelContext.save()
-        toast = "Esta foto es la portada en el armario."
+        toast = "This photo is now the closet cover."
     }
 
     @MainActor
@@ -2066,12 +2678,15 @@ struct LookbookGalleryView: View {
         defer { exporting = false }
         do {
             try await ClosetPhotoExports.saveRelativeClosetImageToPhotoAlbum(relativePath: p)
-            toast = "Imagen guardada en Fotos."
+            toast = "Saved to Photos."
         } catch {
             toast = error.localizedDescription
         }
     }
 }
+
+/// Backward-compatible alias for lookbook-only call sites.
+typealias LookbookGalleryView = ProductCoverGalleryView<EmptyView>
 
 struct GarmentLookbookCaptureView: View {
     @Bindable var item: ClosetItem
@@ -2117,8 +2732,8 @@ struct GarmentLookbookCaptureView: View {
         ScrollView {
             VStack(spacing: 16) {
                 Text(
-                    "Se crearán \(totalTasks) imágenes en orden: primero las de estudio y luego lifestyle. "
-                        + "Por estabilidad cada una se envía a Gemini por separado."
+                    "\(totalTasks) images will be created in order: studio first, then lifestyle. "
+                        + "For stability each one is sent to Gemini separately."
                 )
                 .font(.system(size: 12))
                 .foregroundStyle(Color.black.opacity(0.5))
@@ -2151,7 +2766,7 @@ struct GarmentLookbookCaptureView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cerrar") {
+                Button(L10n.tr("common.close")) {
                     if !item.hasLookbook {
                         onAbortStandaloneDraftNotYetSaved?(item)
                     }
@@ -2209,7 +2824,7 @@ struct GarmentLookbookCaptureView: View {
                             .foregroundStyle(Color.black)
                         Spacer()
                         if currentAngle == angle {
-                            Text("Actual")
+                            Text("Current")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(Color.black.opacity(0.52))
                         }
@@ -2251,7 +2866,7 @@ struct GarmentLookbookCaptureView: View {
                         .background(Capsule().fill(Color.black))
                 }
                 PhotosPicker(selection: $pickerItem, matching: .images) {
-                    Label("Galería", systemImage: "photo")
+                    Label("Gallery", systemImage: "photo")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Color.black)
                         .frame(maxWidth: .infinity)
@@ -2266,7 +2881,7 @@ struct GarmentLookbookCaptureView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkles")
-                    Text("Generar \(totalTasks) imágenes con IA")
+                    Text("Generate \(totalTasks) AI images")
                 }
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Color.white)
@@ -2280,7 +2895,7 @@ struct GarmentLookbookCaptureView: View {
             VStack(spacing: 8) {
                 ProgressView(value: Double(progressCount), total: Double(totalTasks))
                     .tint(.black)
-                Text("Generando… \(progressCount)/\(totalTasks)")
+                Text("Generating… \(progressCount)/\(totalTasks)")
                     .font(.caption)
                     .foregroundStyle(Color.black.opacity(0.54))
             }
@@ -2290,7 +2905,7 @@ struct GarmentLookbookCaptureView: View {
             Button {
                 persistLookbook()
             } label: {
-                Label("Guardar lookbook", systemImage: "checkmark")
+                Label("Save lookbook", systemImage: "checkmark")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.white)
                     .frame(maxWidth: .infinity)
@@ -2362,7 +2977,7 @@ struct GarmentLookbookCaptureView: View {
             guard let img = captured[angle],
                   let j = img.jpegData(compressionQuality: 0.92)
             else {
-                errorMessage = "Faltan fotos por ángulo."
+                errorMessage = "Missing photos for some angles."
                 return
             }
             do {

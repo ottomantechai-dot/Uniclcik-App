@@ -8,12 +8,12 @@ struct CarsSortSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Ordenar catálogo")
+            Text("Sort catalog")
                 .font(.system(size: 20, weight: .bold))
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
 
-            Text("Zapatillas, ropa y accesorios — elige cómo ordenar la lista")
+            Text("Sneakers, apparel, and accessories — choose how to sort the list")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 20)
@@ -79,7 +79,7 @@ struct CarsFilterSheet: View {
                             .padding(.top, 8)
                             .padding(.bottom, 12)
 
-                        FilterAccordionRow(title: "Categoría", systemImage: "tshirt") {
+                        FilterAccordionRow(title: "Category", systemImage: "tshirt") {
                             multiPickSection(options: bodyOptions, selection: $filters.bodyTypes)
                         }
 
@@ -103,7 +103,7 @@ struct CarsFilterSheet: View {
                                 .padding(.vertical, 4)
                         }
 
-                        FilterAccordionRow(title: "Ubicación", systemImage: "mappin.and.ellipse") {
+                        FilterAccordionRow(title: "Location", systemImage: "mappin.and.ellipse") {
                             multiPickSection(options: locationOptions, selection: $filters.locations)
                         }
 
@@ -111,7 +111,7 @@ struct CarsFilterSheet: View {
                             multiPickSection(options: sellerOptions, selection: $filters.sellerKinds)
                         }
 
-                        FilterAccordionRow(title: "Año o temporada", systemImage: "calendar") {
+                        FilterAccordionRow(title: "Year or season", systemImage: "calendar") {
                             yearSection
                         }
 
@@ -151,7 +151,7 @@ struct CarsFilterSheet: View {
     }
 
     private var filterHintBanner: some View {
-        Text("Combina filtros para acotar zapatillas, ropa u otros artículos. El total se revisa al volver atrás.")
+        Text("Combine filters to narrow sneakers, apparel, or other items. The total updates when you go back.")
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(.white)
             .padding(14)
@@ -213,7 +213,7 @@ struct CarsFilterSheet: View {
     private func multiPickSection(options: [String], selection: Binding<Set<String>>) -> some View {
         Group {
             if options.isEmpty {
-                Text("No hay valores en los productos cargados. Cuando haya datos en Supabase, aparecerán aquí.")
+                Text("No values in loaded products. When data exists in Supabase, it will appear here.")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 4)
@@ -250,7 +250,7 @@ struct CarsFilterSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Mín. $")
+                    Text("Min. $")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
                     TextField("0", text: priceMinBinding)
@@ -258,10 +258,10 @@ struct CarsFilterSheet: View {
                         .textFieldStyle(.roundedBorder)
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Máx. $")
+                    Text("Max. $")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
-                    TextField("Sin límite", text: priceMaxBinding)
+                    TextField("No limit", text: priceMaxBinding)
                         .keyboardType(.decimalPad)
                         .textFieldStyle(.roundedBorder)
                 }
@@ -302,7 +302,7 @@ struct CarsFilterSheet: View {
     private var yearSection: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Desde (año)")
+                Text("From (year)")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
                 TextField("2020", text: yearMinBinding)
@@ -310,7 +310,7 @@ struct CarsFilterSheet: View {
                     .textFieldStyle(.roundedBorder)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text("Hasta (año)")
+                Text("To (year)")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
                 TextField("2026", text: yearMaxBinding)
@@ -346,12 +346,12 @@ struct CarsFilterSheet: View {
 
     private var kmSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Filtra por el campo numérico del producto (útil como talla EU si lo guardáis así en datos).")
+            Text("Filter by the product's numeric field (useful as EU size if stored that way).")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
             HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Mín.")
+                Text("Min.")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
                 TextField("Ej. 40", text: kmMinBinding)
@@ -359,7 +359,7 @@ struct CarsFilterSheet: View {
                     .textFieldStyle(.roundedBorder)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text("Máx.")
+                Text("Max.")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
                 TextField("Ej. 45", text: kmMaxBinding)

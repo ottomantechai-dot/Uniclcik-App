@@ -142,7 +142,7 @@ struct TeamLiveMapView: View {
     var body: some View {
         Map(position: $position) {
             if let c = myCoordinate {
-                Annotation("Tú", coordinate: c) {
+                Annotation("You", coordinate: c) {
                     TeamMapPersonPin(
                         diameter: pinDiameter,
                         borderColor: .cyan,
@@ -245,7 +245,7 @@ struct TeamMapDetailSheet: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                         if locationHub.authorizationStatus == .denied || locationHub.authorizationStatus == .restricted {
-                            Text("Activa ubicación en Ajustes para compartir tu posición en tiempo real con el equipo.")
+                            Text("Enable location in Settings to share your real-time position with the team.")
                                 .font(.system(size: 12, weight: .medium))
                                 .multilineTextAlignment(.center)
                                 .foregroundStyle(.white)
@@ -262,7 +262,7 @@ struct TeamMapDetailSheet: View {
             .refreshable {
                 await community.refresh()
             }
-            .navigationTitle("Ubicación del equipo")
+            .navigationTitle("Team location")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.black, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -284,7 +284,7 @@ struct TeamMapDetailSheet: View {
 
     private var teamListPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Posición por usuario")
+            Text("Position per user")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.5))
                 .padding(.horizontal, 16)
@@ -295,7 +295,7 @@ struct TeamMapDetailSheet: View {
                 VStack(spacing: 0) {
                     if let c = myCoordinate {
                         TeamLocationMemberRow(
-                            title: "Tú",
+                            title: "You",
                             subtitle: coordinateSubtitle(c),
                             footnote: myLocationFootnote,
                             profileImage: currentUserProfileImage,
@@ -321,7 +321,7 @@ struct TeamMapDetailSheet: View {
                         }
                     }
                     if myCoordinate == nil, mapPeers.isEmpty {
-                        Text("Nadie del equipo tiene ubicación compartida ahora. Activa la ubicación y espera la sincronización.")
+                        Text("No team members are sharing location right now. Enable location and wait for sync.")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(.white.opacity(0.45))
                             .multilineTextAlignment(.center)
@@ -351,16 +351,16 @@ struct TeamMapDetailSheet: View {
         if let uid = currentUserId,
            let row = community.directory.first(where: { $0.userId == uid }),
            let d = row.locationUpdatedDate {
-            return "Última posición en servidor: \(Self.relativeTime(d))"
+            return "Last server position: \(Self.relativeTime(d))"
         }
-        return "Posición guardada en tu perfil"
+        return "Position saved to your profile"
     }
 
     private func peerFootnote(_ row: CommunityProfilesService.DirectoryRow) -> String {
         if let d = row.locationUpdatedDate {
             return "Actualizado: \(Self.relativeTime(d))"
         }
-        return "Ubicación en perfil (sin fecha)"
+        return "Location on profile (no date)"
     }
 
     private func coordinateSubtitle(_ c: CLLocationCoordinate2D) -> String {

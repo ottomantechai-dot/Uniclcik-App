@@ -3,7 +3,7 @@ import Combine
 import Foundation
 import Speech
 
-/// Transcripción en tiempo real del micrófono (es-ES). Requiere permisos de micrófono y reconocimiento de voz.
+/// Real-time microphone transcription (en-US). Requires microphone and speech recognition permissions.
 final class LiveSpeechTranscriber: NSObject, ObservableObject {
     @Published private(set) var partialText: String = ""
     @Published private(set) var authorizationStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
@@ -13,7 +13,7 @@ final class LiveSpeechTranscriber: NSObject, ObservableObject {
     private let audioEngine = AVAudioEngine()
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
-    private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "es-ES"))
+    private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
 
     init(waveformMonitor: AudioWaveformMonitor? = nil) {
         self.waveformMonitor = waveformMonitor
@@ -90,9 +90,9 @@ final class LiveSpeechTranscriber: NSObject, ObservableObject {
         var errorDescription: String? {
             switch self {
             case .recognizerUnavailable:
-                return "El reconocimiento de voz en español no está disponible en este dispositivo."
+                return "English speech recognition is not available on this device."
             case .setupFailed:
-                return "No se pudo iniciar la captura de audio."
+                return "Could not start audio capture."
             }
         }
     }

@@ -19,6 +19,7 @@ enum ClosetPhotoExports {
 
     /// Composición 9:16 (1080×1920 pts, scale 1) con fondo #FFFFFF; escala la imagen con `aspectFit`.
     static func tikTokWhitePortraitComposite(image: UIImage) -> UIImage {
+        let flattened = flattenNearWhiteBackdrop(image)
         let canvasW: CGFloat = 1080
         let canvasH: CGFloat = 1920
         let format = UIGraphicsImageRendererFormat()
@@ -26,7 +27,7 @@ enum ClosetPhotoExports {
         format.scale = 1
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvasW, height: canvasH), format: format)
 
-        let prepared = horizontallyUpImage(image)
+        let prepared = horizontallyUpImage(flattened)
         return renderer.image { ctx in
             UIColor.white.setFill()
             ctx.fill(CGRect(x: 0, y: 0, width: canvasW, height: canvasH))
@@ -67,6 +68,50 @@ enum ClosetPhotoExports {
         }
         let tik = tikTokWhitePortraitComposite(image: img)
         try await saveToPhotoAlbum(tik)
+    }
+
+    /// Convierte grises claros del fondo (sombras de suelo) a blanco puro #FFFFFF.
+    static func flattenNearWhiteBackdrop(_ image: UIImage) -> UIImage {
+        guard let cg = image.cgImage else { return image }
+        let width = cg.width
+        let height = cg.height
+        guard width > 0, height > 0 else { return image }
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+        guard
+            let ctx = CGContext(
+                data: nil,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo
+            ),
+            let data = ctx.data
+        else { return image }
+
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
+
+        for offset in stride(from: 0, to: width * height * 4, by: 4) {
+            let r = Int(pixels[offset])
+            let g = Int(pixels[offset + 1])
+            let b = Int(pixels[offset + 2])
+            let maxC = max(r, g, b)
+            let minC = min(r, g, b)
+            let lum = (299 * r + 587 * g + 114 * b) / 1000
+            if lum >= 205, maxC - minC <= 22 {
+                pixels[offset] = 255
+                pixels[offset + 1] = 255
+                pixels[offset + 2] = 255
+                pixels[offset + 3] = 255
+            }
+        }
+
+        guard let out = ctx.makeImage() else { return image }
+        return UIImage(cgImage: out, scale: image.scale, orientation: image.imageOrientation)
     }
 
     /// Normaliza orientation para dibujado predecible.

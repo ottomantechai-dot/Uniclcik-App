@@ -21,7 +21,7 @@ struct LeadsListView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
 
-                        Button("Reintentar") {
+                        Button("Retry") {
                             Task { await vm.load() }
                         }
                         .buttonStyle(.borderedProminent)
