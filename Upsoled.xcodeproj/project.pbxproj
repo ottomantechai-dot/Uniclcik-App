@@ -501,7 +501,7 @@
 					};
 				};
 			};
-			buildConfigurationList = AF000001 /* Build configuration list for PBXProject "CarDashboardApp" */;
+			buildConfigurationList = AF000001 /* Build configuration list for PBXProject "Upsoled" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = es;
 			hasScannedForEncodings = 0;
@@ -862,7 +862,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		AF000001 /* Build configuration list for PBXProject "CarDashboardApp" */ = {
+		AF000001 /* Build configuration list for PBXProject "Upsoled" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AF000001D /* Debug */,

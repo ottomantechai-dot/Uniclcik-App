@@ -19,7 +19,8 @@ playground.xcworkspace
 .build/
 .swiftpm/
 Packages/
-Package.resolved
+# No ignorar el lock de SPM del proyecto Xcode (evita "Missing package product Supabase")
+!Upsoled.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 *.moved-aside
 *.xccheckout
 *.xcscmblueprint
