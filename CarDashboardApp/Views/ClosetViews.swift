@@ -2152,6 +2152,64 @@ struct AddToClosetPipelineView: View {
         }
     }
 
+    /// Campo inline para que el usuario introduzca su talla y refresque la consulta.
+    /// Actualiza `flow.pieces[idx].sizeText`, así la talla se persiste con la pieza.
+    private func sizeFilterField(piece: ClosetDraftPiece, isBusy: Bool) -> some View {
+        let binding = Binding<String>(
+            get: { piece.sizeText },
+            set: { newValue in
+                if let idx = flow.pieces.firstIndex(where: { $0.id == piece.id }) {
+                    flow.pieces[idx].sizeText = newValue
+                }
+            }
+        )
+        return HStack(spacing: 8) {
+            Image(systemName: "ruler")
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.85))
+            Text("TALLA")
+                .font(.system(size: 9, weight: .heavy))
+                .tracking(0.6)
+                .foregroundStyle(Color.black.opacity(0.45))
+            TextField("US 10 · EU 44 · 10.5", text: binding)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.black.opacity(0.85))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .submitLabel(.search)
+                .onSubmit {
+                    Task { await runPriceLookup(for: piece) }
+                }
+            if !piece.sizeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button {
+                    Task { await runPriceLookup(for: piece) }
+                } label: {
+                    Text("Aplicar")
+                        .font(.system(size: 10, weight: .heavy))
+                        .tracking(0.4)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background {
+                            Capsule().fill(Color(red: 0.20, green: 0.45, blue: 0.85))
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(isBusy)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.06))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.18), lineWidth: 1)
+                }
+        }
+    }
+
     private func priceResultCard(_ est: PieceMarketPrice, piece: ClosetDraftPiece, isBusy: Bool) -> some View {
         let tint: Color = est.isUp
             ? Color(red: 0.20, green: 0.70, blue: 0.45)
@@ -2187,13 +2245,66 @@ struct AddToClosetPipelineView: View {
                 .disabled(isBusy)
             }
 
-            // Precio principal + pill de cambio
+            // Producto realmente emparejado (para que el usuario sepa qué colorway/modelo se encontró)
+            if let matched = est.matchedTitle, !matched.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.75))
+                    Text(matched)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                    if let sku = est.matchedSKU, !sku.isEmpty {
+                        Text("· \(sku)")
+                            .font(.system(size: 10, weight: .heavy))
+                            .tracking(0.4)
+                            .foregroundStyle(Color.black.opacity(0.40))
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, -2)
+            }
+
+            // Precio principal: si hay talla concreta, mostramos esa; si no, AVG combinada.
+            // Pill de cambio % a la derecha.
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(formatEUR(est.avg))
-                    .font(.system(size: 32, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.92))
-                    .minimumScaleFactor(0.7)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(formatEUR(est.avg))
+                            .font(.system(size: 32, weight: .heavy, design: .rounded))
+                            .foregroundStyle(Color.black.opacity(0.92))
+                            .minimumScaleFactor(0.7)
+                            .lineLimit(1)
+                        Text(est.sizeUsed != nil ? "talla \(est.sizeUsed!)" : "media")
+                            .font(.system(size: 10, weight: .heavy))
+                            .tracking(0.6)
+                            .foregroundStyle(Color.black.opacity(0.45))
+                            .padding(.bottom, 4)
+                    }
+                    // Sub-fila: precio mínimo y máximo (lo que ve el usuario en StockX/GOAT)
+                    HStack(spacing: 10) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(Color(red: 0.18, green: 0.65, blue: 0.40))
+                            Text("Desde \(formatEUR(est.min))")
+                                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                                .foregroundStyle(Color.black.opacity(0.70))
+                        }
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(Color.black.opacity(0.35))
+                            Text("Hasta \(formatEUR(est.max))")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Color.black.opacity(0.45))
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
 
                 HStack(spacing: 3) {
                     Image(systemName: est.isUp ? "arrow.up.right" : "arrow.down.right")
@@ -2209,85 +2320,30 @@ struct AddToClosetPipelineView: View {
                 .background {
                     Capsule().fill(tint.opacity(0.14))
                 }
-
-                Spacer(minLength: 0)
             }
 
-            // Sparkline grande con líneas por plataforma superpuestas
+            // Selector de talla: si el usuario rellena su talla, el lookup la usa
+            // para mostrar el precio de ESA talla en concreto en vez del promedio.
+            sizeFilterField(piece: piece, isBusy: isBusy)
+
+            // Sparkline (sólo la línea principal, sin lineas por plataforma)
             PriceTrendSparkline(
                 points: est.history,
                 isUp: est.isUp,
-                platforms: est.platforms
+                platforms: []
             )
             .frame(height: 48)
 
-            // Desglose por plataforma (solo si hay datos de varias fuentes)
-            if est.platforms.count >= 2 {
-                HStack(spacing: 12) {
+            // Desglose por plataforma. Siempre se muestra si llega al menos un dato,
+            // para que el usuario vea de qué fuente viene el precio.
+            if !est.platforms.isEmpty {
+                HStack(spacing: 8) {
                     ForEach(est.platforms) { platform in
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(platform.color)
-                                .frame(width: 7, height: 7)
-                            Text(platform.name)
-                                .font(.system(size: 11, weight: .heavy))
-                                .tracking(0.3)
-                                .foregroundStyle(Color.black.opacity(0.65))
-                            Text(formatEUR(platform.avg))
-                                .font(.system(size: 12, weight: .bold, design: .rounded))
-                                .foregroundStyle(Color.black.opacity(0.85))
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background {
-                            Capsule()
-                                .fill(platform.color.opacity(0.08))
-                                .overlay {
-                                    Capsule().strokeBorder(platform.color.opacity(0.25), lineWidth: 0.7)
-                                }
-                        }
+                        PlatformPriceTag(platform: platform, formatted: formatEUR(platform.avg))
                     }
                     Spacer(minLength: 0)
                 }
             }
-
-            // Eje: rango min – max abajo
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("MIN")
-                        .font(.system(size: 9, weight: .heavy))
-                        .tracking(0.5)
-                        .foregroundStyle(Color.black.opacity(0.40))
-                    Text(formatEUR(est.min))
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.75))
-                }
-
-                Spacer()
-
-                VStack(spacing: 2) {
-                    Text("6 MONTHS")
-                        .font(.system(size: 9, weight: .heavy))
-                        .tracking(0.5)
-                        .foregroundStyle(Color.black.opacity(0.40))
-                    Text("Trend")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(tint)
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("MAX")
-                        .font(.system(size: 9, weight: .heavy))
-                        .tracking(0.5)
-                        .foregroundStyle(Color.black.opacity(0.40))
-                    Text(formatEUR(est.max))
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.75))
-                }
-            }
-            .padding(.top, 2)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
@@ -2323,11 +2379,35 @@ struct AddToClosetPipelineView: View {
     }
 
     private func runPriceLookup(for piece: ClosetDraftPiece) async {
-        let sku = piece.skuText.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let style = sku.isEmpty ? (SneakerSKU.extract(from: piece.name) ?? "") : sku
-        guard !style.isEmpty else {
+        // Reúne posibles queries: SKU explícito, SKU detectado en el nombre, nombre del modelo.
+        let typedSKU = piece.skuText.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let extractedSKU = SneakerSKU.extract(from: piece.name)?.uppercased() ?? ""
+        let cleanName = piece.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let brand = piece.brand.trimmingCharacters(in: .whitespacesAndNewlines)
+        let composedName: String = {
+            if cleanName.isEmpty { return brand }
+            if brand.isEmpty || cleanName.lowercased().contains(brand.lowercased()) {
+                return cleanName
+            }
+            return "\(brand) \(cleanName)"
+        }()
+
+        // Query principal: SKU si lo hay (mejor precisión), si no el nombre.
+        let primaryQuery: String = {
+            if !typedSKU.isEmpty { return typedSKU }
+            if !extractedSKU.isEmpty { return extractedSKU }
+            return composedName
+        }()
+        // Query de fallback (lo que use GOAT si por SKU no encuentra).
+        let fallbackQuery: String? = {
+            // Si el principal ya es el nombre, no hace falta fallback.
+            if primaryQuery == composedName { return nil }
+            return composedName.isEmpty ? nil : composedName
+        }()
+
+        guard !primaryQuery.isEmpty else {
             await MainActor.run {
-                flow.showToast("Add a Style / SKU code to look up market price.")
+                flow.showToast("Add a name or SKU to look up market price.")
             }
             return
         }
@@ -2335,10 +2415,16 @@ struct AddToClosetPipelineView: View {
         priceLookupBusy.insert(piece.id)
         defer { priceLookupBusy.remove(piece.id) }
 
-        // 1) Intenta KicksDB primero — consulta StockX + GOAT + Flight Club en paralelo
+        // 1) Intenta KicksDB primero — consulta StockX + GOAT en paralelo.
+        //    Pasamos el nombre del modelo como query secundaria porque GOAT a menudo
+        //    no encuentra por SKU pero sí por nombre.
         if KicksDBClient.isConfigured {
+            // Talla del usuario: si la ha rellenado, la pasamos para que filtre por esa.
+            let size = piece.sizeText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let sizeQuery: String? = size.isEmpty ? nil : size
+
             do {
-                if let estimate = try await KicksDBClient.fetchAggregated(query: query) {
+                if let estimate = try await KicksDBClient.fetchAggregated(query: primaryQuery, fallbackQuery: fallbackQuery, sizeQuery: sizeQuery) {
                     await MainActor.run {
                         priceEstimates[piece.id] = estimate
                     }
@@ -2356,7 +2442,7 @@ struct AddToClosetPipelineView: View {
         // 2) Fallback: OpenAI con web_search (más caro pero siempre disponible)
         do {
             let estimate = try await PieceMarketPrice.fetchStyleFromInternet(
-                styleCode: style,
+                styleCode: primaryQuery,
                 brand: piece.brand.isEmpty ? nil : piece.brand,
                 category: piece.category?.displayName ?? "Shoes",
                 sizeText: piece.sizeText.isEmpty ? nil : piece.sizeText,
@@ -2547,15 +2633,50 @@ struct PieceMarketPrice: Codable {
     /// 6 puntos cronológicos (de más antiguo a más reciente), en USD (combinado).
     let history: [Double]
     /// Desglose por plataforma cuando hay datos (StockX, GOAT, etc.). Vacío si la
-    /// estimación viene de una sola fuente (p.ej. OpenAI fallback).
+    /// estimación viene de una sola fuente (p.ej. OpenAI fallback). No se persiste en JSON.
     let platforms: [PlatformPrice]
+    /// Título del producto realmente emparejado en el marketplace (ej. "adidas Yeezy Boost 350 V2 Onyx").
+    /// Permite al usuario ver si la búsqueda devolvió EXACTAMENTE su colorway.
+    let matchedTitle: String?
+    /// SKU del producto emparejado, si la fuente lo provee.
+    let matchedSKU: String?
+    /// Si los precios son de una talla concreta (ej. "10", "EU 43"), aquí se guarda
+    /// para que la UI muestre "talla X" en lugar de "media".
+    let sizeUsed: String?
 
-    init(avg: Int, min: Int, max: Int, history: [Double], platforms: [PlatformPrice] = []) {
+    private enum CodingKeys: String, CodingKey {
+        case avg, min, max, history
+    }
+
+    init(avg: Int, min: Int, max: Int, history: [Double], platforms: [PlatformPrice] = [], matchedTitle: String? = nil, matchedSKU: String? = nil, sizeUsed: String? = nil) {
         self.avg = avg
         self.min = min
         self.max = max
         self.history = history
         self.platforms = platforms
+        self.matchedTitle = matchedTitle
+        self.matchedSKU = matchedSKU
+        self.sizeUsed = sizeUsed
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        avg = try container.decode(Int.self, forKey: .avg)
+        min = try container.decode(Int.self, forKey: .min)
+        max = try container.decode(Int.self, forKey: .max)
+        history = try container.decode([Double].self, forKey: .history)
+        platforms = []
+        matchedTitle = nil
+        matchedSKU = nil
+        sizeUsed = nil
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(avg, forKey: .avg)
+        try container.encode(min, forKey: .min)
+        try container.encode(max, forKey: .max)
+        try container.encode(history, forKey: .history)
     }
 
     /// Cambio porcentual entre el primer y último punto del histórico.
@@ -2577,7 +2698,96 @@ struct PlatformPrice: Identifiable {
     let history: [Double] // misma longitud que history del combinado
 }
 
-private extension PieceMarketPrice {
+// MARK: - Platform breakdown UI
+
+/// Badge con el "logo" estilizado de la plataforma (StockX / GOAT / Flight Club).
+/// Usa una pastilla circular con el color de marca y la inicial de la plataforma
+/// para que la fuente del precio sea obvia incluso sin assets externos.
+struct PlatformBrandBadge: View {
+    let name: String
+    let color: Color
+    var size: CGFloat = 18
+
+    /// Carácter mostrado dentro de la insignia. Mantiene 1 char salvo para
+    /// "FC" (Flight Club) que se ve mejor con 2 letras.
+    private var glyph: String {
+        switch name.uppercased() {
+        case "STOCKX":      return "X"
+        case "GOAT":        return "G"
+        case "FLIGHT CLUB": return "FC"
+        default:            return String(name.prefix(1)).uppercased()
+        }
+    }
+
+    /// Color del texto dentro del badge: blanco sobre fondos oscuros, negro
+    /// sobre el verde de StockX para mejor legibilidad.
+    private var glyphColor: Color {
+        name.uppercased() == "STOCKX" ? .black : .white
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [color, color.opacity(0.78)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            Text(glyph)
+                .font(.system(size: size * 0.55, weight: .heavy, design: .rounded))
+                .foregroundStyle(glyphColor)
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+        }
+        .frame(width: size, height: size)
+        .overlay(
+            Circle().strokeBorder(Color.white.opacity(0.85), lineWidth: 1)
+        )
+        .shadow(color: color.opacity(0.35), radius: 3, y: 1)
+    }
+}
+
+/// Pill por plataforma: logo + nombre + precio.
+struct PlatformPriceTag: View {
+    let platform: PlatformPrice
+    let formatted: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            PlatformBrandBadge(name: platform.name, color: platform.color, size: 18)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(platform.name.uppercased())
+                    .font(.system(size: 9, weight: .heavy))
+                    .tracking(0.6)
+                    .foregroundStyle(Color.black.opacity(0.55))
+                Text(formatted)
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.88))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(platform.color.opacity(0.06))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(platform.color.opacity(0.30), lineWidth: 1)
+                }
+        }
+        .shadow(color: platform.color.opacity(0.10), radius: 4, y: 1)
+    }
+}
+
+extension PieceMarketPrice {
 
     /// Envoltura del endpoint /v1/responses. Tiene `output_text` con la respuesta final.
     private struct ResponsesEnvelope: Decodable {
@@ -2988,23 +3198,7 @@ struct PriceTrendSparkline: View {
                     )
                 )
 
-                // 2) Líneas finas por plataforma (debajo de la principal)
-                ForEach(platforms) { platform in
-                    let n = normalize(platform.history, domain: domain)
-                    Path { p in
-                        guard let first = n.first else { return }
-                        p.move(to: CGPoint(x: 0, y: first * geo.size.height))
-                        for (i, v) in n.enumerated().dropFirst() {
-                            p.addLine(to: CGPoint(x: stepX * CGFloat(i), y: v * geo.size.height))
-                        }
-                    }
-                    .stroke(
-                        platform.color.opacity(0.65),
-                        style: StrokeStyle(lineWidth: 1.1, lineCap: .round, lineJoin: .round, dash: [3, 2])
-                    )
-                }
-
-                // 3) Línea principal (combinada) encima
+                // 3) Línea principal (promedio combinado)
                 Path { p in
                     guard let first = normalizedMain.first else { return }
                     p.move(to: CGPoint(x: 0, y: first * geo.size.height))
@@ -3068,36 +3262,219 @@ enum KicksDBClient {
     }
 
     struct ProductHit: Decodable {
+        /// StockX devuelve UUID string. GOAT devuelve Int. Lo normalizamos a String.
         let id: String?
         let slug: String?
+        /// StockX: "title". GOAT: nil (usa "name").
         let title: String?
+        /// GOAT: "name" del producto. StockX: nil (usa "title").
+        let name: String?
         let brand: String?
         let model: String?
         let image: String?
+        let sku: String?
+        /// Algunos endpoints usan `style_id` en lugar de `sku`.
+        let style_id: String?
         let min_price: Double?
         let max_price: Double?
         let avg_price: Double?
         /// Para GOAT: variantes con `lowest_ask`. Usado para inferir avg/min/max si no vienen directos.
         let variants: [Variant]?
+        /// GOAT/KicksDB suele devolver el precio en céntimos en estos campos cuando el
+        /// search no incluye `avg_price` ni `variants`.
+        let lowest_price_cents: Int?
+        let retail_price_cents: Int?
 
         struct Variant: Decodable {
             let lowest_ask: Double?
+            /// GOAT también devuelve `available`; algunas variantes tienen `lowest_ask: null`
+            /// y `available: false`. Las filtramos por precio > 0.
+            let available: Bool?
+            /// Talla del variant. StockX devuelve "US M 10" / "EU 44" / etc. en `size`,
+            /// GOAT devuelve "10" / "10.5".
+            let size: String?
+
+            private enum CodingKeys: String, CodingKey {
+                case lowest_ask, available, size
+            }
+
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                // lowest_ask puede venir como Int (GOAT: 202), Double (StockX a veces), o null.
+                if let d = try? c.decode(Double.self, forKey: .lowest_ask) {
+                    lowest_ask = d
+                } else if let i = try? c.decode(Int.self, forKey: .lowest_ask) {
+                    lowest_ask = Double(i)
+                } else {
+                    lowest_ask = nil
+                }
+                available = try? c.decode(Bool.self, forKey: .available)
+                // size puede ser String ("10") o Double (10.5 en GOAT). Aceptamos ambos.
+                if let s = try? c.decode(String.self, forKey: .size) {
+                    size = s
+                } else if let d = try? c.decode(Double.self, forKey: .size) {
+                    size = d == floor(d) ? String(Int(d)) : String(d)
+                } else if let i = try? c.decode(Int.self, forKey: .size) {
+                    size = String(i)
+                } else {
+                    size = nil
+                }
+            }
         }
+
+        /// Devuelve cualquier SKU que el hit traiga (sku, style_id), normalizado.
+        /// GOAT devuelve los SKU con espacio en lugar de guion ("854866 019"); lo
+        /// dejamos tal cual para mostrarlo y la comparación lo normaliza.
+        var resolvedSKU: String? {
+            let raw = sku ?? style_id
+            return raw?.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        /// Nombre legible del producto, priorizando StockX `title` y cayendo en GOAT `name`.
+        var displayName: String? {
+            if let t = title?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { return t }
+            if let n = name?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty { return n }
+            return nil
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case id, slug, title, name, brand, model, image, sku, style_id
+            case min_price, max_price, avg_price, variants
+            case lowest_price_cents, retail_price_cents
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            // id puede ser String (StockX UUID) o Int (GOAT). Aceptamos ambos.
+            if let s = try? c.decode(String.self, forKey: .id) {
+                id = s
+            } else if let i = try? c.decode(Int.self, forKey: .id) {
+                id = String(i)
+            } else {
+                id = nil
+            }
+            slug = try? c.decode(String.self, forKey: .slug)
+            title = try? c.decode(String.self, forKey: .title)
+            name = try? c.decode(String.self, forKey: .name)
+            brand = try? c.decode(String.self, forKey: .brand)
+            model = try? c.decode(String.self, forKey: .model)
+            image = try? c.decode(String.self, forKey: .image)
+            sku = try? c.decode(String.self, forKey: .sku)
+            style_id = try? c.decode(String.self, forKey: .style_id)
+            min_price = try? c.decode(Double.self, forKey: .min_price)
+            max_price = try? c.decode(Double.self, forKey: .max_price)
+            avg_price = try? c.decode(Double.self, forKey: .avg_price)
+            variants = try? c.decode([Variant].self, forKey: .variants)
+            lowest_price_cents = try? c.decode(Int.self, forKey: .lowest_price_cents)
+            retail_price_cents = try? c.decode(Int.self, forKey: .retail_price_cents)
+        }
+    }
+
+    /// ¿Esta query parece un SKU/style code (ej. "FQ7929-100", "DD1391-101", "CU9981-001")?
+    /// Heurística: contiene un guion + dígitos al final o tiene formato de código alfanumérico corto.
+    static func looksLikeSKU(_ q: String) -> Bool {
+        let t = q.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !t.contains(" "), t.count <= 16 else { return false }
+        // Patrón típico Nike/Jordan: 2-4 letras + 3-5 dígitos + guion opcional + 2-4 dígitos.
+        let pattern = "^[A-Z0-9]{2,6}-?[A-Z0-9]{2,5}$"
+        return t.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    /// Compara una talla buscada por el usuario con la talla devuelta por una variant.
+    /// Acepta formatos como "10", "10.5", "EU 44", "US 10", "US M 10". Compara extrayendo
+    /// solo los números y comparándolos numéricamente, tolerante a prefijos/sufijos.
+    static func sizeMatches(_ query: String, _ variantSize: String?) -> Bool {
+        guard let variantSize = variantSize else { return false }
+        func extractNumber(_ s: String) -> Double? {
+            // Coge el ÚLTIMO número del string (StockX a veces da "US M 10"; queremos "10").
+            let pattern = #"(\d+(?:\.\d+)?)"#
+            var lastMatch: Double? = nil
+            let nsString = s as NSString
+            let regex = try? NSRegularExpression(pattern: pattern)
+            regex?.enumerateMatches(in: s, range: NSRange(location: 0, length: nsString.length)) { match, _, _ in
+                if let r = match?.range, let d = Double(nsString.substring(with: r)) {
+                    lastMatch = d
+                }
+            }
+            return lastMatch
+        }
+        guard let q = extractNumber(query), let v = extractNumber(variantSize) else { return false }
+        return abs(q - v) < 0.01
+    }
+
+    /// Compara dos códigos de SKU/estilo ignorando mayúsculas, guiones y espacios.
+    static func skuMatches(_ a: String, _ b: String?) -> Bool {
+        guard let b = b else { return false }
+        func norm(_ s: String) -> String {
+            s.uppercased()
+                .replacingOccurrences(of: "-", with: "")
+                .replacingOccurrences(of: " ", with: "")
+        }
+        return norm(a) == norm(b)
+    }
+
+    /// Verifica que un hit obtenido por búsqueda de nombre (fallback) sea realmente
+    /// relevante para lo que el usuario pidió. Evita aceptar productos que comparten
+    /// algún término pero son zapatillas distintas (p.ej. "Air Ship" cuando se pidió
+    /// "Air Jordan 4").
+    ///
+    /// Criterios:
+    /// 1. Si la query contiene un número de modelo (1-3 dígitos como "4", "350"),
+    ///    el título del hit debe contener ese mismo número como palabra completa.
+    /// 2. Al menos una palabra significativa de la query (>=4 letras, no stopword)
+    ///    debe aparecer en el título/slug del hit.
+    static func hitIsRelevant(_ hit: ProductHit, to query: String) -> Bool {
+        // Buscamos coincidencias en title (StockX), name (GOAT) Y slug.
+        let title = ((hit.title ?? "") + " " + (hit.name ?? "") + " " + (hit.slug ?? "")).lowercased()
+        let q = query.lowercased()
+
+        // 1) Número de modelo (1-3 dígitos)
+        if let range = q.range(of: #"\b\d{1,3}\b"#, options: .regularExpression) {
+            let modelNum = String(q[range])
+            let pattern = "\\b\(modelNum)\\b"
+            if title.range(of: pattern, options: .regularExpression) == nil {
+                return false
+            }
+        }
+
+        // 2) Solape de palabras significativas (al menos 1 coincidencia)
+        let stopwords: Set<String> = [
+            "nike", "adidas", "jordan", "retro", "shoes",
+            "size", "edition", "the", "and", "with"
+        ]
+        let words: [String] = q.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+            .filter { w in
+                w.count >= 4 &&
+                !stopwords.contains(w) &&
+                !w.allSatisfy { $0.isNumber }
+            }
+        if !words.isEmpty {
+            let matched = words.contains(where: { title.contains($0) })
+            if !matched { return false }
+        }
+        return true
     }
 
     /// Busca el primer hit en una plataforma concreta.
     static func search(platform: Platform, query: String) async throws -> ProductHit? {
+        let path = "/\(platform.rawValue)/products?query="
+        return try await getFirst(at: path + (query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""))
+    }
+
+    /// Para GOAT necesitamos llamar al endpoint de detalle (`/products/{slug}`)
+    /// porque el search no incluye `variants[].lowest_ask`. Para StockX, las variants
+    /// requieren `?display[variants]=true`.
+    static func detail(platform: Platform, slugOrID: String) async throws -> ProductHit? {
+        let needsVariantsParam = (platform == .stockx)
+        let path = "/\(platform.rawValue)/products/\(slugOrID)" + (needsVariantsParam ? "?display[variants]=true" : "")
+        struct DetailEnvelope: Decodable { let data: ProductHit? }
         guard let key = apiKey else {
             throw NSError(domain: "KicksDB", code: 401, userInfo: [
                 NSLocalizedDescriptionKey: "Falta KICKSDB_API_KEY"
             ])
         }
-        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-            throw URLError(.badURL)
-        }
-        guard let url = URL(string: "\(baseURL)/\(platform.rawValue)/products?query=\(encoded)") else {
-            throw URLError(.badURL)
-        }
+        guard let url = URL(string: "\(baseURL)\(path)") else { throw URLError(.badURL) }
 
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
@@ -3106,24 +3483,52 @@ enum KicksDBClient {
         req.timeoutInterval = 15
 
         let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            return nil
         }
+        let envelope = try JSONDecoder().decode(DetailEnvelope.self, from: data)
+        return envelope.data
+    }
+
+    private static func getFirst(at path: String) async throws -> ProductHit? {
+        guard let key = apiKey else {
+            throw NSError(domain: "KicksDB", code: 401, userInfo: [
+                NSLocalizedDescriptionKey: "Falta KICKSDB_API_KEY"
+            ])
+        }
+        guard let url = URL(string: "\(baseURL)\(path)") else { throw URLError(.badURL) }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.timeoutInterval = 15
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         guard (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
+            print("[KicksDB] HTTP \(http.statusCode) en \(path) · body: \(body.prefix(200))")
             throw NSError(domain: "KicksDB", code: http.statusCode, userInfo: [
-                NSLocalizedDescriptionKey: "KicksDB \(platform.rawValue) HTTP \(http.statusCode) · \(body.prefix(120))"
+                NSLocalizedDescriptionKey: "KicksDB HTTP \(http.statusCode) · \(body.prefix(120))"
             ])
         }
 
         let envelope = try JSONDecoder().decode(SearchEnvelope.self, from: data)
-        return envelope.data?.first
+        let result = envelope.data?.first
+        if result == nil {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            print("[KicksDB] 200 OK pero sin data en \(path) · body: \(body.prefix(240))")
+        }
+        return result
     }
 
-    /// Extrae avg/min/max de un hit. StockX viene con campos directos; GOAT
-    /// suele dar `variants[].lowest_ask` (entonces calculamos avg/min/max de
-    /// los lowest_ask). Flight Club puede venir como cualquiera de los dos.
+    /// Extrae avg/min/max de un hit. StockX viene con campos directos (avg_price);
+    /// GOAT suele dar `variants[].lowest_ask` en el endpoint de detalle, o
+    /// `lowest_price_cents` / `retail_price_cents` (en céntimos) en el search.
+    /// Devolvemos lo mejor que podamos reconstruir.
     private static func extractPrices(from hit: ProductHit) -> (avg: Double, min: Double, max: Double)? {
+        // 1) avg/min/max directos (StockX search)
         if let avg = hit.avg_price, avg > 0 {
             return (
                 avg,
@@ -3131,11 +3536,21 @@ enum KicksDBClient {
                 hit.max_price ?? avg * 1.15
             )
         }
-        // Calcular desde variants[].lowest_ask
+        // 2) Variants con lowest_ask (GOAT detail, StockX con variants)
         let asks = (hit.variants ?? []).compactMap { $0.lowest_ask }.filter { $0 > 0 }
-        guard !asks.isEmpty else { return nil }
-        let avg = asks.reduce(0, +) / Double(asks.count)
-        return (avg, asks.min() ?? avg, asks.max() ?? avg)
+        if !asks.isEmpty {
+            let avg = asks.reduce(0, +) / Double(asks.count)
+            return (avg, asks.min() ?? avg, asks.max() ?? avg)
+        }
+        // 3) Precio único en céntimos (GOAT search). Sin rango real, sintetizamos
+        //    ±15% alrededor del único punto.
+        if let cents = hit.lowest_price_cents, cents > 0 {
+            let p = Double(cents) / 100.0
+            let retail = hit.retail_price_cents.map { Double($0) / 100.0 }
+            let maxV = retail.map { Swift.max($0, p * 1.20) } ?? (p * 1.20)
+            return (p, p * 0.92, maxV)
+        }
+        return nil
     }
 
     /// Color de marca para cada plataforma en el chart.
@@ -3153,6 +3568,76 @@ enum KicksDBClient {
         case .goat:       return "GOAT"
         case .flightclub: return "Flight Club"
         }
+    }
+
+    /// A partir de un nombre largo ("Nike Nigel Sylvester x Air Jordan 4 Retro") genera
+    /// variantes más cortas y limpias para mejorar las posibilidades de que GOAT lo
+    /// encuentre. Devuelve duplicadas eliminadas, en orden de "más específica" a más amplia.
+    static func nameQueryVariants(_ raw: String) -> [String] {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        var results: [String] = []
+        func add(_ s: String) {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "  ", with: " ")
+            guard !t.isEmpty else { return }
+            if !results.contains(where: { $0.lowercased() == t.lowercased() }) {
+                results.append(t)
+            }
+        }
+
+        // 1) Tal cual
+        add(trimmed)
+
+        // 2) Sin "Nike " inicial
+        var t2 = trimmed
+        for prefix in ["Nike ", "Adidas ", "Jordan Brand "] {
+            if t2.lowercased().hasPrefix(prefix.lowercased()) {
+                t2 = String(t2.dropFirst(prefix.count))
+                add(t2)
+                break
+            }
+        }
+
+        // 3) Reemplazar " x " por " " (collabs: "Nigel Sylvester x Air Jordan 4")
+        if trimmed.lowercased().contains(" x ") {
+            add(trimmed.replacingOccurrences(of: " x ", with: " "))
+            add(t2.replacingOccurrences(of: " x ", with: " "))
+        }
+
+        // 4) Sin palabras "filler" comunes que confunden la búsqueda
+        for filler in [" Retro", " Boost", " OG", " SP", " PE"] {
+            let cleaned = trimmed.replacingOccurrences(of: filler, with: "", options: .caseInsensitive)
+            if cleaned != trimmed { add(cleaned) }
+        }
+        // Combinaciones (sin "Adidas " y sin "Boost")
+        var t3 = t2.replacingOccurrences(of: " Boost", with: "", options: .caseInsensitive)
+        add(t3)
+
+        // 5) Sólo lo de antes de la primera "x" (a menudo es el nombre del colaborador): "Nigel Sylvester"
+        if let xRange = trimmed.range(of: " x ", options: .caseInsensitive) {
+            add(String(trimmed[..<xRange.lowerBound]))
+        }
+
+        // 6) Sólo lo de después de la última "x": "Air Jordan 4"
+        if let xRange = trimmed.range(of: " x ", options: [.caseInsensitive, .backwards]) {
+            add(String(trimmed[xRange.upperBound...]))
+        }
+
+        // 7) Sin la última palabra (suele ser la colorway: "Onyx", "Zebra", "Mocha")
+        //    Aplicado a varias formas para que GOAT pueda encontrar el modelo sin colorway.
+        for base in [trimmed, t2, t3] {
+            let tokens = base.split(separator: " ")
+            if tokens.count >= 3 {
+                add(tokens.dropLast().joined(separator: " "))
+            }
+            if tokens.count >= 4 {
+                add(tokens.dropLast(2).joined(separator: " "))
+            }
+        }
+
+        return results
     }
 
     /// Sintetiza 6 puntos plausibles alrededor de un avg, con variación derivada
@@ -3174,7 +3659,7 @@ enum KicksDBClient {
     /// free tier), así que solo se incluye si tienes plan paid.
     /// Devuelve también el desglose por plataforma (`platforms`) para que la UI
     /// pueda mostrar líneas separadas en el chart.
-    static func fetchAggregated(query: String) async throws -> PieceMarketPrice? {
+    static func fetchAggregated(query: String, fallbackQuery: String? = nil, sizeQuery: String? = nil) async throws -> PieceMarketPrice? {
         guard isConfigured else {
             throw NSError(domain: "KicksDB", code: 401, userInfo: [
                 NSLocalizedDescriptionKey: "Falta KICKSDB_API_KEY"
@@ -3184,17 +3669,164 @@ enum KicksDBClient {
         // Lanza las plataformas free-tier en paralelo y conserva qué plataforma
         // produjo cada hit para poder construir el desglose.
         async let stockxTask: ProductHit? = try? search(platform: .stockx, query: query)
-        async let goatTask: ProductHit? = try? search(platform: .goat, query: query)
+        async let goatSearchTask: ProductHit? = try? search(platform: .goat, query: query)
 
-        let stockxHit = await stockxTask
-        let goatHit = await goatTask
+        var stockxHit = await stockxTask
+        var goatSearchHit = await goatSearchTask
+
+        print("[KicksDB] query=\(query) fallback=\(fallbackQuery ?? "-")")
+        if let s = stockxHit {
+            print("[KicksDB] StockX hit: slug=\(s.slug ?? "nil") sku=\(s.resolvedSKU ?? "-") avg=\(s.avg_price ?? -1) min=\(s.min_price ?? -1) max=\(s.max_price ?? -1) variants=\(s.variants?.count ?? 0)")
+        } else {
+            print("[KicksDB] StockX: sin hit")
+        }
+        if let g = goatSearchHit {
+            print("[KicksDB] GOAT search: name=\(g.displayName ?? "nil") slug=\(g.slug ?? "nil") id=\(g.id ?? "nil") sku=\(g.resolvedSKU ?? "-") avg=\(g.avg_price ?? -1) lowestCents=\(g.lowest_price_cents ?? -1) variants=\(g.variants?.count ?? 0)")
+        } else {
+            print("[KicksDB] GOAT: sin hit con la query principal")
+        }
+
+        // Si la query era un SKU, validamos que el hit devuelto corresponda. Si no, descartamos
+        // el hit y reintentamos con el nombre (para no devolver un sneaker distinto al pedido).
+        let queryIsSKU = looksLikeSKU(query)
+        if queryIsSKU, let s = stockxHit, !skuMatches(query, s.resolvedSKU) {
+            print("[KicksDB] StockX SKU mismatch: pidió \(query), devolvió \(s.resolvedSKU ?? "nil") · descartando hit")
+            stockxHit = nil
+        }
+        if queryIsSKU, let g = goatSearchHit, !skuMatches(query, g.resolvedSKU) {
+            print("[KicksDB] GOAT SKU mismatch: pidió \(query), devolvió \(g.resolvedSKU ?? "nil") · descartando hit")
+            goatSearchHit = nil
+        }
+
+        // Variantes de nombre para reintentar cuando el SKU falla o no produce match.
+        let fallbackVariants: [String] = {
+            var seed: [String] = []
+            if let f = fallbackQuery, !f.isEmpty { seed.append(f) }
+            if let t = stockxHit?.displayName { seed.append(t) }
+            // Si la query principal NO es un SKU, también la usamos como semilla — útil cuando
+            // el usuario pone el nombre directamente sin SKU (StockX puede haber dado otra colorway
+            // pero GOAT podría tener la genérica).
+            if !queryIsSKU { seed.append(query) }
+            return seed.flatMap { nameQueryVariants($0) }
+                .reduce(into: [String]()) { acc, x in
+                    if !acc.contains(where: { $0.lowercased() == x.lowercased() }) { acc.append(x) }
+                }
+        }()
+
+        // Query "canónica" para validar relevancia: si la query es un SKU usamos el
+        // fallback (nombre del modelo) que el usuario nos pasó; si no, la propia query.
+        let relevanceQuery = queryIsSKU
+            ? (fallbackQuery?.isEmpty == false ? fallbackQuery! : query)
+            : query
+
+        // StockX retry con variantes si no tenemos hit válido.
+        if stockxHit == nil && !fallbackVariants.isEmpty {
+            for alt in fallbackVariants where alt.lowercased() != query.lowercased() {
+                print("[KicksDB] StockX retry con: \(alt)")
+                if let retry = try? await search(platform: .stockx, query: alt) {
+                    if hitIsRelevant(retry, to: relevanceQuery) {
+                        print("[KicksDB] StockX retry hit OK: slug=\(retry.slug ?? "nil") sku=\(retry.resolvedSKU ?? "-") avg=\(retry.avg_price ?? -1)")
+                        stockxHit = retry
+                        break
+                    } else {
+                        print("[KicksDB] StockX retry irrelevante: slug=\(retry.slug ?? "nil") · descartado")
+                    }
+                }
+            }
+            if stockxHit == nil { print("[KicksDB] StockX retry: sin hit relevante") }
+        }
+
+        // GOAT retry con variantes si no tenemos hit válido.
+        if goatSearchHit == nil && !fallbackVariants.isEmpty {
+            for alt in fallbackVariants where alt.lowercased() != query.lowercased() {
+                print("[KicksDB] GOAT retry con: \(alt)")
+                do {
+                    if let retry = try await search(platform: .goat, query: alt) {
+                        if hitIsRelevant(retry, to: relevanceQuery) {
+                            print("[KicksDB] GOAT retry hit OK: slug=\(retry.slug ?? "nil") sku=\(retry.resolvedSKU ?? "-") avg=\(retry.avg_price ?? -1) lowestCents=\(retry.lowest_price_cents ?? -1) variants=\(retry.variants?.count ?? 0)")
+                            goatSearchHit = retry
+                            break
+                        } else {
+                            print("[KicksDB] GOAT retry irrelevante: slug=\(retry.slug ?? "nil") · descartado")
+                        }
+                    }
+                } catch {
+                    print("[KicksDB] GOAT retry ERROR para '\(alt)': \(error.localizedDescription)")
+                }
+            }
+            if goatSearchHit == nil { print("[KicksDB] GOAT retry: sin hit relevante") }
+        }
+
+        // Pedimos detail SIEMPRE cuando hay sizeQuery (para tener variants y filtrar por talla),
+        // y para GOAT también cuando el search no trae precio (caso normal: search nunca lleva variants).
+        let needSizeFilter = (sizeQuery?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+
+        var goatHit: ProductHit? = goatSearchHit
+        if let searchHit = goatSearchHit, (extractPrices(from: searchHit) == nil || needSizeFilter) {
+            let slugOrID = searchHit.slug ?? searchHit.id
+            if let key = slugOrID, !key.isEmpty {
+                do {
+                    if let detailHit = try await detail(platform: .goat, slugOrID: key) {
+                        let asks = (detailHit.variants ?? []).compactMap { $0.lowest_ask }.filter { $0 > 0 }
+                        print("[KicksDB] GOAT detail OK: variants=\(detailHit.variants?.count ?? 0) asksConPrecio=\(asks.count)")
+                        goatHit = detailHit
+                    }
+                } catch {
+                    print("[KicksDB] GOAT detail error: \(error.localizedDescription)")
+                }
+            }
+        }
+
+        // StockX detail con variants — solo lo pedimos si necesitamos filtrar por talla,
+        // porque el search ya nos da avg/min/max para el caso general.
+        var stockxDetail: ProductHit? = stockxHit
+        if needSizeFilter, let searchHit = stockxHit {
+            let slugOrID = searchHit.slug ?? searchHit.id
+            if let key = slugOrID, !key.isEmpty {
+                do {
+                    if let detailHit = try await detail(platform: .stockx, slugOrID: key) {
+                        let asks = (detailHit.variants ?? []).compactMap { $0.lowest_ask }.filter { $0 > 0 }
+                        print("[KicksDB] StockX detail OK: variants=\(detailHit.variants?.count ?? 0) asksConPrecio=\(asks.count)")
+                        stockxDetail = detailHit
+                    }
+                } catch {
+                    print("[KicksDB] StockX detail error: \(error.localizedDescription)")
+                }
+            }
+        }
 
         var platforms: [PlatformPrice] = []
         var allAvgs: [Double] = []
         var allMins: [Double] = []
         var allMaxs: [Double] = []
+        var sizeUsed: String? = nil
 
-        if let hit = stockxHit, let p = extractPrices(from: hit) {
+        // Helper: dado un hit con variants, devuelve el lowest_ask de la talla que coincide
+        // o nil si no se encuentra esa talla.
+        func sizeSpecificAsk(_ hit: ProductHit?, size: String) -> Double? {
+            guard let variants = hit?.variants else { return nil }
+            for v in variants {
+                if sizeMatches(size, v.size), let ask = v.lowest_ask, ask > 0 {
+                    return ask
+                }
+            }
+            return nil
+        }
+
+        // StockX
+        if needSizeFilter, let size = sizeQuery,
+           let sizedAsk = sizeSpecificAsk(stockxDetail, size: size) {
+            // Tenemos un precio específico de esa talla en StockX
+            allAvgs.append(sizedAsk); allMins.append(sizedAsk); allMaxs.append(sizedAsk)
+            platforms.append(PlatformPrice(
+                name: brandDisplayName(.stockx),
+                color: brandColor(.stockx),
+                avg: Int(sizedAsk.rounded()),
+                history: synthesizeHistory(avg: sizedAsk, min: sizedAsk * 0.92, max: sizedAsk * 1.10)
+            ))
+            sizeUsed = size
+            print("[KicksDB] StockX talla \(size) → $\(Int(sizedAsk.rounded()))")
+        } else if let hit = stockxHit, let p = extractPrices(from: hit) {
             allAvgs.append(p.avg); allMins.append(p.min); allMaxs.append(p.max)
             platforms.append(PlatformPrice(
                 name: brandDisplayName(.stockx),
@@ -3203,7 +3835,20 @@ enum KicksDBClient {
                 history: synthesizeHistory(avg: p.avg, min: p.min, max: p.max)
             ))
         }
-        if let hit = goatHit, let p = extractPrices(from: hit) {
+
+        // GOAT
+        if needSizeFilter, let size = sizeQuery,
+           let sizedAsk = sizeSpecificAsk(goatHit, size: size) {
+            allAvgs.append(sizedAsk); allMins.append(sizedAsk); allMaxs.append(sizedAsk)
+            platforms.append(PlatformPrice(
+                name: brandDisplayName(.goat),
+                color: brandColor(.goat),
+                avg: Int(sizedAsk.rounded()),
+                history: synthesizeHistory(avg: sizedAsk, min: sizedAsk * 0.92, max: sizedAsk * 1.10)
+            ))
+            sizeUsed = size
+            print("[KicksDB] GOAT talla \(size) → $\(Int(sizedAsk.rounded()))")
+        } else if let hit = goatHit, let p = extractPrices(from: hit) {
             allAvgs.append(p.avg); allMins.append(p.min); allMaxs.append(p.max)
             platforms.append(PlatformPrice(
                 name: brandDisplayName(.goat),
@@ -3219,12 +3864,27 @@ enum KicksDBClient {
         let minV = allMins.min() ?? avg
         let maxV = allMaxs.max() ?? avg
 
+        // Producto emparejado: preferimos el nombre de StockX (suelen ser más limpios),
+        // si no, el de GOAT. Si solo tenemos slug, lo "humanizamos" reemplazando guiones.
+        let matchedTitle: String? = {
+            if let t = stockxHit?.displayName { return t }
+            if let t = goatHit?.displayName { return t }
+            if let s = stockxHit?.slug ?? goatHit?.slug, !s.isEmpty {
+                return s.replacingOccurrences(of: "-", with: " ").capitalized
+            }
+            return nil
+        }()
+        let matchedSKU = stockxHit?.resolvedSKU ?? goatHit?.resolvedSKU
+
         return PieceMarketPrice(
             avg: Int(avg.rounded()),
             min: Int(minV.rounded()),
             max: Int(maxV.rounded()),
             history: synthesizeHistory(avg: avg, min: minV, max: maxV),
-            platforms: platforms
+            platforms: platforms,
+            matchedTitle: matchedTitle,
+            matchedSKU: matchedSKU,
+            sizeUsed: sizeUsed
         )
     }
 }
