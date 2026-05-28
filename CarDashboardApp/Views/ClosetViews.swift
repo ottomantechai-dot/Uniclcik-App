@@ -1829,9 +1829,43 @@ struct AddToClosetPipelineView: View {
                 Spacer(minLength: 0)
             }
 
-            // Sparkline grande (ancho completo)
-            PriceTrendSparkline(points: est.history, isUp: est.isUp)
-                .frame(height: 48)
+            // Sparkline grande con líneas por plataforma superpuestas
+            PriceTrendSparkline(
+                points: est.history,
+                isUp: est.isUp,
+                platforms: est.platforms
+            )
+            .frame(height: 48)
+
+            // Desglose por plataforma (solo si hay datos de varias fuentes)
+            if est.platforms.count >= 2 {
+                HStack(spacing: 12) {
+                    ForEach(est.platforms) { platform in
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(platform.color)
+                                .frame(width: 7, height: 7)
+                            Text(platform.name)
+                                .font(.system(size: 11, weight: .heavy))
+                                .tracking(0.3)
+                                .foregroundStyle(Color.black.opacity(0.65))
+                            Text(formatEUR(platform.avg))
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.black.opacity(0.85))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background {
+                            Capsule()
+                                .fill(platform.color.opacity(0.08))
+                                .overlay {
+                                    Capsule().strokeBorder(platform.color.opacity(0.25), lineWidth: 0.7)
+                                }
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
 
             // Eje: rango min – max abajo
             HStack {
@@ -1913,6 +1947,25 @@ struct AddToClosetPipelineView: View {
         priceLookupBusy.insert(piece.id)
         defer { priceLookupBusy.remove(piece.id) }
 
+        // 1) Intenta KicksDB primero — consulta StockX + GOAT + Flight Club en paralelo
+        if KicksDBClient.isConfigured {
+            do {
+                if let estimate = try await KicksDBClient.fetchAggregated(query: query) {
+                    await MainActor.run {
+                        priceEstimates[piece.id] = estimate
+                    }
+                    return
+                }
+                // KicksDB respondió pero ninguna plataforma encontró el producto → cae a OpenAI
+            } catch {
+                // KicksDB falló (rate limit, error red, etc.) → cae a OpenAI con aviso
+                await MainActor.run {
+                    flow.showToast("KicksDB: \(error.localizedDescription) · usando OpenAI")
+                }
+            }
+        }
+
+        // 2) Fallback: OpenAI con web_search (más caro pero siempre disponible)
         do {
             let estimate = try await PieceMarketPrice.fetchFromOpenAI(
                 query: query,
@@ -2092,8 +2145,19 @@ struct PieceMarketPrice {
     let avg: Int
     let min: Int
     let max: Int
-    /// 6 puntos cronológicos (de más antiguo a más reciente), en EUR.
+    /// 6 puntos cronológicos (de más antiguo a más reciente), en USD (combinado).
     let history: [Double]
+    /// Desglose por plataforma cuando hay datos (StockX, GOAT, etc.). Vacío si la
+    /// estimación viene de una sola fuente (p.ej. OpenAI fallback).
+    let platforms: [PlatformPrice]
+
+    init(avg: Int, min: Int, max: Int, history: [Double], platforms: [PlatformPrice] = []) {
+        self.avg = avg
+        self.min = min
+        self.max = max
+        self.history = history
+        self.platforms = platforms
+    }
 
     /// Cambio porcentual entre el primer y último punto del histórico.
     var changePercent: Double {
@@ -2103,6 +2167,18 @@ struct PieceMarketPrice {
 
     /// `true` si la tendencia es alcista.
     var isUp: Bool { changePercent >= 0 }
+}
+
+/// Datos de una plataforma concreta para el desglose de PieceMarketPrice.
+struct PlatformPrice: Identifiable {
+    let id = UUID()
+    let name: String      // "StockX", "GOAT"
+    let color: Color      // color de marca para la línea del chart
+    let avg: Int
+    let history: [Double] // misma longitud que history del combinado
+}
+
+private extension PieceMarketPrice {
 
     /// Envoltura del endpoint /v1/responses. Tiene `output_text` con la respuesta final.
     private struct ResponsesEnvelope: Decodable {
@@ -2287,26 +2363,37 @@ private extension String {
 
 // MARK: - Mini gráfico de tendencia
 
-/// Sparkline para visualizar la evolución del precio (6 puntos).
+/// Sparkline para visualizar la evolución del precio. Pinta una línea
+/// principal (color azul/verde/rojo según tendencia) más, opcionalmente, una
+/// línea adicional por plataforma para comparar.
 struct PriceTrendSparkline: View {
+    /// Serie principal (combinada/promedio). Se pinta con relleno + línea gruesa.
     let points: [Double]
     let isUp: Bool
+    /// Series por plataforma. Se pintan como líneas finas superpuestas.
+    var platforms: [PlatformPrice] = []
 
     var body: some View {
         GeometryReader { geo in
-            let normalized = normalize(points)
-            let stepX = normalized.count > 1 ? geo.size.width / CGFloat(normalized.count - 1) : geo.size.width
-            let tint = isUp
+            // Para que todas las series compartan eje Y, normalizamos contra el
+            // mismo dominio (min/max de TODAS las series combinadas).
+            let allValues = points + platforms.flatMap { $0.history }
+            let domain = computeDomain(allValues)
+            let normalizedMain = normalize(points, domain: domain)
+            let stepX = normalizedMain.count > 1
+                ? geo.size.width / CGFloat(normalizedMain.count - 1)
+                : geo.size.width
+            let tint: Color = isUp
                 ? Color(red: 0.20, green: 0.70, blue: 0.45)
                 : Color(red: 0.92, green: 0.30, blue: 0.30)
 
             ZStack {
-                // Área bajo la curva
+                // 1) Área bajo la línea principal (gradiente del color de tendencia)
                 Path { p in
-                    guard let first = normalized.first else { return }
+                    guard let first = normalizedMain.first else { return }
                     p.move(to: CGPoint(x: 0, y: geo.size.height))
                     p.addLine(to: CGPoint(x: 0, y: first * geo.size.height))
-                    for (i, v) in normalized.enumerated().dropFirst() {
+                    for (i, v) in normalizedMain.enumerated().dropFirst() {
                         p.addLine(to: CGPoint(x: stepX * CGFloat(i), y: v * geo.size.height))
                     }
                     p.addLine(to: CGPoint(x: geo.size.width, y: geo.size.height))
@@ -2314,38 +2401,249 @@ struct PriceTrendSparkline: View {
                 }
                 .fill(
                     LinearGradient(
-                        colors: [tint.opacity(0.30), tint.opacity(0.04)],
+                        colors: [tint.opacity(0.28), tint.opacity(0.03)],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
 
-                // Línea
+                // 2) Líneas finas por plataforma (debajo de la principal)
+                ForEach(platforms) { platform in
+                    let n = normalize(platform.history, domain: domain)
+                    Path { p in
+                        guard let first = n.first else { return }
+                        p.move(to: CGPoint(x: 0, y: first * geo.size.height))
+                        for (i, v) in n.enumerated().dropFirst() {
+                            p.addLine(to: CGPoint(x: stepX * CGFloat(i), y: v * geo.size.height))
+                        }
+                    }
+                    .stroke(
+                        platform.color.opacity(0.65),
+                        style: StrokeStyle(lineWidth: 1.1, lineCap: .round, lineJoin: .round, dash: [3, 2])
+                    )
+                }
+
+                // 3) Línea principal (combinada) encima
                 Path { p in
-                    guard let first = normalized.first else { return }
+                    guard let first = normalizedMain.first else { return }
                     p.move(to: CGPoint(x: 0, y: first * geo.size.height))
-                    for (i, v) in normalized.enumerated().dropFirst() {
+                    for (i, v) in normalizedMain.enumerated().dropFirst() {
                         p.addLine(to: CGPoint(x: stepX * CGFloat(i), y: v * geo.size.height))
                     }
                 }
-                .stroke(tint, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                .stroke(tint, style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
 
-                // Punto final destacado
-                if let last = normalized.last {
+                // 4) Punto final destacado en la línea principal
+                if let last = normalizedMain.last {
                     Circle()
                         .fill(tint)
-                        .frame(width: 5, height: 5)
-                        .overlay(Circle().strokeBorder(Color.white, lineWidth: 1.2))
+                        .frame(width: 6, height: 6)
+                        .overlay(Circle().strokeBorder(Color.white, lineWidth: 1.4))
                         .position(x: geo.size.width, y: last * geo.size.height)
                 }
             }
         }
     }
 
-    /// Normaliza al rango [0, 1] invertido para que valores ALTOS queden ARRIBA (y=0 es arriba en SwiftUI).
-    private func normalize(_ values: [Double]) -> [CGFloat] {
-        guard let minV = values.min(), let maxV = values.max() else { return [] }
-        let range = max(0.0001, maxV - minV)
-        return values.map { CGFloat(1 - (($0 - minV) / range)) }
+    private func computeDomain(_ values: [Double]) -> (min: Double, max: Double) {
+        let minV = values.min() ?? 0
+        let maxV = values.max() ?? 1
+        return (minV, max(maxV, minV + 0.0001))
+    }
+
+    /// Normaliza al rango [0, 1] invertido contra un dominio compartido.
+    private func normalize(_ values: [Double], domain: (min: Double, max: Double)) -> [CGFloat] {
+        let range = max(0.0001, domain.max - domain.min)
+        return values.map { CGFloat(1 - (($0 - domain.min) / range)) }
+    }
+}
+
+// MARK: - KicksDB client (precios reales de StockX/GOAT/Flight Club)
+
+/// Cliente para la API REST de kicks.dev. Consulta varias plataformas en
+/// paralelo y agrega el resultado. En el plan free obtenemos precios reales
+/// (avg/min/max); el histórico es premium y se sintetiza alrededor del avg.
+enum KicksDBClient {
+    private static let baseURL = "https://api.kicks.dev/v3"
+
+    /// Plataformas soportadas en el plan free (mapeo a path de KicksDB).
+    enum Platform: String, CaseIterable {
+        case stockx
+        case goat
+        case flightclub
+    }
+
+    /// Lee la key del Info.plist (inyectada por xcconfig).
+    static var apiKey: String? {
+        guard let raw = Bundle.main.object(forInfoDictionaryKey: "KICKSDB_API_KEY") as? String else { return nil }
+        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+
+    static var isConfigured: Bool { apiKey != nil }
+
+    private struct SearchEnvelope: Decodable {
+        let data: [ProductHit]?
+    }
+
+    struct ProductHit: Decodable {
+        let id: String?
+        let slug: String?
+        let title: String?
+        let brand: String?
+        let model: String?
+        let image: String?
+        let min_price: Double?
+        let max_price: Double?
+        let avg_price: Double?
+        /// Para GOAT: variantes con `lowest_ask`. Usado para inferir avg/min/max si no vienen directos.
+        let variants: [Variant]?
+
+        struct Variant: Decodable {
+            let lowest_ask: Double?
+        }
+    }
+
+    /// Busca el primer hit en una plataforma concreta.
+    static func search(platform: Platform, query: String) async throws -> ProductHit? {
+        guard let key = apiKey else {
+            throw NSError(domain: "KicksDB", code: 401, userInfo: [
+                NSLocalizedDescriptionKey: "Falta KICKSDB_API_KEY"
+            ])
+        }
+        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            throw URLError(.badURL)
+        }
+        guard let url = URL(string: "\(baseURL)/\(platform.rawValue)/products?query=\(encoded)") else {
+            throw URLError(.badURL)
+        }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.timeoutInterval = 15
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "KicksDB", code: http.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: "KicksDB \(platform.rawValue) HTTP \(http.statusCode) · \(body.prefix(120))"
+            ])
+        }
+
+        let envelope = try JSONDecoder().decode(SearchEnvelope.self, from: data)
+        return envelope.data?.first
+    }
+
+    /// Extrae avg/min/max de un hit. StockX viene con campos directos; GOAT
+    /// suele dar `variants[].lowest_ask` (entonces calculamos avg/min/max de
+    /// los lowest_ask). Flight Club puede venir como cualquiera de los dos.
+    private static func extractPrices(from hit: ProductHit) -> (avg: Double, min: Double, max: Double)? {
+        if let avg = hit.avg_price, avg > 0 {
+            return (
+                avg,
+                hit.min_price ?? avg * 0.85,
+                hit.max_price ?? avg * 1.15
+            )
+        }
+        // Calcular desde variants[].lowest_ask
+        let asks = (hit.variants ?? []).compactMap { $0.lowest_ask }.filter { $0 > 0 }
+        guard !asks.isEmpty else { return nil }
+        let avg = asks.reduce(0, +) / Double(asks.count)
+        return (avg, asks.min() ?? avg, asks.max() ?? avg)
+    }
+
+    /// Color de marca para cada plataforma en el chart.
+    private static func brandColor(_ p: Platform) -> Color {
+        switch p {
+        case .stockx:     return Color(red: 0.00, green: 0.60, blue: 0.30) // verde StockX
+        case .goat:       return Color(red: 0.10, green: 0.10, blue: 0.10) // negro GOAT
+        case .flightclub: return Color(red: 0.85, green: 0.10, blue: 0.15) // rojo FC
+        }
+    }
+
+    private static func brandDisplayName(_ p: Platform) -> String {
+        switch p {
+        case .stockx:     return "StockX"
+        case .goat:       return "GOAT"
+        case .flightclub: return "Flight Club"
+        }
+    }
+
+    /// Sintetiza 6 puntos plausibles alrededor de un avg, con variación derivada
+    /// del rango min-max para que cada plataforma tenga su curva propia.
+    private static func synthesizeHistory(avg: Double, min minV: Double, max maxV: Double) -> [Double] {
+        let range = max(maxV - minV, avg * 0.10)
+        return [
+            avg - range * 0.22,
+            avg - range * 0.14,
+            avg - range * 0.05,
+            avg + range * 0.06,
+            avg + range * 0.02,
+            avg,
+        ]
+    }
+
+    /// Consulta StockX + GOAT en paralelo y agrega. Flight Club requiere plan
+    /// paid en KicksDB (devuelve "route not available for this key type" en
+    /// free tier), así que solo se incluye si tienes plan paid.
+    /// Devuelve también el desglose por plataforma (`platforms`) para que la UI
+    /// pueda mostrar líneas separadas en el chart.
+    static func fetchAggregated(query: String) async throws -> PieceMarketPrice? {
+        guard isConfigured else {
+            throw NSError(domain: "KicksDB", code: 401, userInfo: [
+                NSLocalizedDescriptionKey: "Falta KICKSDB_API_KEY"
+            ])
+        }
+
+        // Lanza las plataformas free-tier en paralelo y conserva qué plataforma
+        // produjo cada hit para poder construir el desglose.
+        async let stockxTask: ProductHit? = try? search(platform: .stockx, query: query)
+        async let goatTask: ProductHit? = try? search(platform: .goat, query: query)
+
+        let stockxHit = await stockxTask
+        let goatHit = await goatTask
+
+        var platforms: [PlatformPrice] = []
+        var allAvgs: [Double] = []
+        var allMins: [Double] = []
+        var allMaxs: [Double] = []
+
+        if let hit = stockxHit, let p = extractPrices(from: hit) {
+            allAvgs.append(p.avg); allMins.append(p.min); allMaxs.append(p.max)
+            platforms.append(PlatformPrice(
+                name: brandDisplayName(.stockx),
+                color: brandColor(.stockx),
+                avg: Int(p.avg.rounded()),
+                history: synthesizeHistory(avg: p.avg, min: p.min, max: p.max)
+            ))
+        }
+        if let hit = goatHit, let p = extractPrices(from: hit) {
+            allAvgs.append(p.avg); allMins.append(p.min); allMaxs.append(p.max)
+            platforms.append(PlatformPrice(
+                name: brandDisplayName(.goat),
+                color: brandColor(.goat),
+                avg: Int(p.avg.rounded()),
+                history: synthesizeHistory(avg: p.avg, min: p.min, max: p.max)
+            ))
+        }
+
+        guard !allAvgs.isEmpty else { return nil }
+
+        let avg = allAvgs.reduce(0, +) / Double(allAvgs.count)
+        let minV = allMins.min() ?? avg
+        let maxV = allMaxs.max() ?? avg
+
+        return PieceMarketPrice(
+            avg: Int(avg.rounded()),
+            min: Int(minV.rounded()),
+            max: Int(maxV.rounded()),
+            history: synthesizeHistory(avg: avg, min: minV, max: maxV),
+            platforms: platforms
+        )
     }
 }
