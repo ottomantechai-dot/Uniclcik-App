@@ -40,6 +40,11 @@ final class UpsoledProductsViewModel: ObservableObject {
         }
     }
 
+    /// Si no es `nil`, filtra por `app_listing_section` (`user_stock`, `marketplace`, …).
+    var listingSectionFilter: String?
+    /// Límite de filas al listar (Tu stock usa el catálogo completo ~732 ítems).
+    var fetchLimit: Int = 250
+
     /// Refresca la lista desde Supabase.
     func reload() async {
         isLoading = true
@@ -48,7 +53,8 @@ final class UpsoledProductsViewModel: ObservableObject {
             let rows = try await UpsoledProductsService.list(
                 category: selectedCategory,
                 onlyInStock: onlyInStock,
-                limit: 250
+                listingSection: listingSectionFilter,
+                limit: fetchLimit
             )
             products = rows
             errorMessage = nil

@@ -118,6 +118,8 @@ struct ClosetView: View {
     @EnvironmentObject private var addFlow: AddToClosetFlowViewModel
     @EnvironmentObject private var goatVM: GoatAccountViewModel
     @Query(sort: \ClosetItem.createdAt, order: .reverse) private var closetItems: [ClosetItem]
+    /// Catálogo Supabase (`upsoled_products`): mismos productos que la pestaña Marketplace/Sold.
+    @StateObject private var catalogVM = UpsoledProductsViewModel()
 
     /// Active inventory only — sold items live under the Sold tab.
     private var activeClosetItems: [ClosetItem] {
@@ -189,6 +191,19 @@ struct ClosetView: View {
         return activeClosetItems.filter { itemMatchesStockSearch($0, query: stockSearchQuery) }
     }
 
+    private var filteredCatalogProducts: [UpsoledProduct] {
+        let base = catalogVM.products
+        guard !stockSearchQuery.isEmpty else { return base }
+        return base.filter { product in
+            product.name.lowercased().contains(stockSearchQuery)
+                || (product.brand ?? "").lowercased().contains(stockSearchQuery)
+                || (product.sku ?? "").lowercased().contains(stockSearchQuery)
+        }
+    }
+
+    private var hasCatalogStock: Bool { !catalogVM.products.isEmpty }
+    private var hasAnyStockContent: Bool { !activeClosetItems.isEmpty || hasCatalogStock }
+
     private var filteredClosetStockSections: [ClosetStockSection] {
         let grouped = Dictionary(grouping: filteredActiveClosetItems) { $0.category }
         return Self.stockCategoryPresentationOrder.compactMap { cat in
@@ -218,7 +233,7 @@ struct ClosetView: View {
     private static let closetStarterGarmentGoal: Int = 5
 
     private var showsClosetStarterProgress: Bool {
-        activeClosetItems.count < Self.closetStarterGarmentGoal
+        activeClosetItems.count < Self.closetStarterGarmentGoal && !hasCatalogStock
     }
 
     private func closetStarterProgressLabel() -> String {
@@ -240,7 +255,7 @@ struct ClosetView: View {
         var h: CGFloat
         if draftBannerCount > 0 {
             h = 148
-        } else if activeClosetItems.isEmpty {
+        } else if !hasAnyStockContent {
             h = 100
         } else {
             h = 72
@@ -256,7 +271,7 @@ struct ClosetView: View {
             Color.white.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                if !activeClosetItems.isEmpty {
+                if hasAnyStockContent {
                     StockBrowseSearchBar(
                         searchText: $stockSearchText,
                         layoutMode: stockLayoutModeBinding,
@@ -273,6 +288,9 @@ struct ClosetView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         productsTabContent
                     }
+                }
+                .refreshable {
+                    await catalogVM.reload()
                 }
             }
 
@@ -292,6 +310,8 @@ struct ClosetView: View {
         .task {
             ClosetInventoryRepair.normalizeSoldFlags(in: modelContext)
             ClosetInventoryRepair.backfillSKUFromNames(in: modelContext)
+            catalogVM.fetchLimit = 750
+            await catalogVM.reload()
         }
         .sheet(isPresented: $showAddMenuSheet) {
             addToClosetIntroSheet
@@ -769,13 +789,24 @@ struct ClosetView: View {
             closetStarterProgressStrip
         }
 
-        if !activeClosetItems.isEmpty, filteredActiveClosetItems.isEmpty {
+        if hasAnyStockContent, filteredActiveClosetItems.isEmpty, filteredCatalogProducts.isEmpty {
             Text(L10n.tr("closet.searchEmpty"))
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Color.black.opacity(0.45))
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 16)
                 .padding(.top, 24)
+        }
+
+        if catalogVM.isLoading, catalogVM.products.isEmpty, activeClosetItems.isEmpty {
+            ProgressView()
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 40)
+        }
+
+        if !filteredCatalogProducts.isEmpty {
+            catalogStockSection
         }
 
         if !filteredActiveClosetItems.isEmpty {
@@ -820,6 +851,46 @@ struct ClosetView: View {
             }
             .padding(.bottom, bottomInsetForClosetGrid)
         }
+    }
+
+    /// Rejilla del catálogo Supabase (misma tarjeta que Marketplace / pestaña Sold).
+    private var catalogStockSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Sneak Peek catalog")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Color.black)
+                Spacer(minLength: 8)
+                Text("\(filteredCatalogProducts.count)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.42))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule(style: .continuous)
+                            .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                    )
+            }
+            .padding(.horizontal, 16)
+
+            if stockLayoutModeBinding.wrappedValue == .grid {
+                LazyVGrid(columns: gridColumns, spacing: 12) {
+                    ForEach(filteredCatalogProducts) { product in
+                        UpsoledProductCard(product: product)
+                            .padding(.top, 10)
+                    }
+                }
+                .padding(.horizontal, 8)
+            } else {
+                LazyVStack(spacing: 10) {
+                    ForEach(filteredCatalogProducts) { product in
+                        UpsoledProductCard(product: product)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+        .padding(.bottom, filteredActiveClosetItems.isEmpty ? bottomInsetForClosetGrid : 0)
     }
 
     @MainActor

@@ -11,6 +11,7 @@ enum UpsoledProductsService {
         category: String? = nil,
         brand: String? = nil,
         onlyInStock: Bool = false,
+        listingSection: String? = nil,
         limit: Int = 100
     ) async throws -> [UpsoledProduct] {
         let client = SupabaseClientProvider.shared
@@ -25,6 +26,9 @@ enum UpsoledProductsService {
         }
         if onlyInStock {
             query = query.eq("in_stock", value: true)
+        }
+        if let listingSection = listingSection, !listingSection.isEmpty {
+            query = query.eq("app_listing_section", value: listingSection)
         }
 
         let response: [UpsoledProduct] = try await query
