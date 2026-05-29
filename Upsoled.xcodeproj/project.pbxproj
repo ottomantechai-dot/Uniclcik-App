@@ -106,6 +106,10 @@
 		AA000110 /* ClosetViewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000110 /* ClosetViewModels.swift */; };
 		AA000111 /* ClosetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000111 /* ClosetViews.swift */; };
 		AA000131 /* StockSearchScannerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000131 /* StockSearchScannerViews.swift */; };
+		AA000200 /* UpsoledProduct.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000200 /* UpsoledProduct.swift */; };
+		AA000201 /* UpsoledProductsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000201 /* UpsoledProductsService.swift */; };
+		AA000202 /* UpsoledProductsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000202 /* UpsoledProductsViewModel.swift */; };
+		AA000203 /* UpsoledProductsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000203 /* UpsoledProductsView.swift */; };
 		AA000112 /* GeminiService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000112 /* GeminiService.swift */; };
 		AA000113 /* ImageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000113 /* ImageStore.swift */; };
         AA000114 /* ClosetItemModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000114 /* ClosetItemModel.swift */; };
@@ -228,6 +232,10 @@
 		AB000110 /* ClosetViewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetViewModels.swift; sourceTree = "<group>"; };
 		AB000111 /* ClosetViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetViews.swift; sourceTree = "<group>"; };
 		AB000131 /* StockSearchScannerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockSearchScannerViews.swift; sourceTree = "<group>"; };
+		AB000200 /* UpsoledProduct.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpsoledProduct.swift; sourceTree = "<group>"; };
+		AB000201 /* UpsoledProductsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpsoledProductsService.swift; sourceTree = "<group>"; };
+		AB000202 /* UpsoledProductsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpsoledProductsViewModel.swift; sourceTree = "<group>"; };
+		AB000203 /* UpsoledProductsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpsoledProductsView.swift; sourceTree = "<group>"; };
 		AB000112 /* GeminiService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiService.swift; sourceTree = "<group>"; };
 		AB000113 /* ImageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageStore.swift; sourceTree = "<group>"; };
 		AB000114 /* ClosetItemModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetItemModel.swift; sourceTree = "<group>"; };
@@ -309,6 +317,7 @@
 				AB000099 /* LookModel.swift */,
 				AB000117 /* ColorPaletteExtractor.swift */,
 				AB000113 /* ImageStore.swift */,
+				AB000200 /* UpsoledProduct.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -325,6 +334,7 @@
 				AB000075 /* DashboardCommunityViewModel.swift */,
 				AB000110 /* ClosetViewModels.swift */,
 				AB000127 /* GoatAccountViewModel.swift */,
+				AB000202 /* UpsoledProductsViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -361,6 +371,7 @@
 				AB000121 /* Shoe360VideoFrameExtractor.swift */,
 				AB000118 /* ClosetPhotoExports.swift */,
 				AB000130 /* ClosetInventoryRepair.swift */,
+				AB000201 /* UpsoledProductsService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -393,6 +404,7 @@
 				AB000122 /* Shoe360ProViews.swift */,
 				AB000119 /* FaceSetupView.swift */,
 				AB000128 /* GoatConnectSheetView.swift */,
+				AB000203 /* UpsoledProductsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -646,6 +658,10 @@
 				AA000110 /* ClosetViewModels.swift in Sources */,
 				AA000111 /* ClosetViews.swift in Sources */,
 				AA000131 /* StockSearchScannerViews.swift in Sources */,
+				AA000200 /* UpsoledProduct.swift in Sources */,
+				AA000201 /* UpsoledProductsService.swift in Sources */,
+				AA000202 /* UpsoledProductsViewModel.swift in Sources */,
+				AA000203 /* UpsoledProductsView.swift in Sources */,
 				AA000119 /* FaceSetupView.swift in Sources */,
 				AA000118 /* ClosetPhotoExports.swift in Sources */,
 				AA000130 /* ClosetInventoryRepair.swift in Sources */,

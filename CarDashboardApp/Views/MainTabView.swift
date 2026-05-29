@@ -138,18 +138,17 @@ struct MainTabView: View {
                 }
             }
 
+            // Pestaña Marketplace: lista los productos `upsoled_products` de Supabase,
+            // compartidos con la web Sneak Peek Miami. El usuario puede crear nuevos
+            // productos desde aquí (botón `+` arriba a la derecha del view).
             if soledTabRequestBadgeCount > 0 {
-                Tab(L10n.tr("tab.soled"), systemImage: "shippingbox.fill", value: UpsoledMainTab.chat) {
-                    NavigationStack {
-                        SoldView()
-                    }
+                Tab(L10n.tr("tab.soled"), systemImage: "bag.fill", value: UpsoledMainTab.chat) {
+                    UpsoledProductsView()
                 }
                 .badge(soledTabRequestBadgeCount)
-        } else {
-                Tab(L10n.tr("tab.soled"), systemImage: "shippingbox.fill", value: UpsoledMainTab.chat) {
-                    NavigationStack {
-                        SoldView()
-                    }
+            } else {
+                Tab(L10n.tr("tab.soled"), systemImage: "bag.fill", value: UpsoledMainTab.chat) {
+                    UpsoledProductsView()
                 }
             }
 
