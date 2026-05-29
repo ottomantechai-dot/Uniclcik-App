@@ -192,7 +192,9 @@ struct ClosetGarmentDetailView: View {
     @State private var toast: String?
     @State private var marketPriceBusy = false
     @State private var showMarkSoldConfirm = false
+    @State private var showRemoveItemDialog = false
     @State private var detailSection: GarmentDetailSection = .itemInfo
+    @State private var savingChanges = false
 
     private var secondary: Color {
         Color.black.opacity(0.55)
@@ -216,7 +218,27 @@ struct ClosetGarmentDetailView: View {
                         garmentItemInfoSection
                     }
 
-                    if !item.isSold {
+                    Button {
+                        saveAllChangesTapped()
+                    } label: {
+                        HStack(spacing: 8) {
+                            if savingChanges {
+                                ProgressView().tint(.white).scaleEffect(0.9)
+                            } else {
+                                Image(systemName: "square.and.arrow.down")
+                            }
+                            Text(savingChanges ? "Saving…" : "Save changes")
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                        .foregroundStyle(Color.white)
+                        .frame(maxWidth: .infinity, minHeight: 56)
+                        .background(RoundedRectangle(cornerRadius: 28).fill(Color.black))
+                    }
+                    .disabled(savingChanges || prettifying)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 4)
+
+                    if item.isActiveInStock {
                         Button {
                             showMarkSoldConfirm = true
                         } label: {
@@ -225,6 +247,21 @@ struct ClosetGarmentDetailView: View {
                                 .foregroundStyle(Color.white)
                                 .frame(maxWidth: .infinity, minHeight: 56)
                                 .background(RoundedRectangle(cornerRadius: 28).fill(Color(red: 0.18, green: 0.62, blue: 0.40)))
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.top, 4)
+
+                        Button {
+                            showRemoveItemDialog = true
+                        } label: {
+                            Label(L10n.tr("closet.removeItem"), systemImage: "trash")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(Color(red: 0.92, green: 0.30, blue: 0.30))
+                                .frame(maxWidth: .infinity, minHeight: 56)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 28)
+                                        .stroke(Color(red: 0.92, green: 0.30, blue: 0.30), lineWidth: 1.5)
+                                )
                         }
                         .padding(.horizontal, 18)
                         .padding(.top, 4)
@@ -252,15 +289,26 @@ struct ClosetGarmentDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.tr("common.close")) { dismiss() }
-                        .foregroundStyle(Color.black)
+                    Button(L10n.tr("common.close")) {
+                        commitAllDraftsToItem()
+                        saveSilently()
+                        dismiss()
+                    }
+                    .foregroundStyle(Color.black)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        saveAllChangesTapped()
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(savingChanges || prettifying)
                 }
             }
         }
         .preferredColorScheme(.light)
         .onAppear {
-            priceDraft = item.priceText ?? ""
-            purchasePriceDraft = item.purchasePriceText ?? ""
+            priceDraft = ClosetItem.displayPriceDraft(from: item.priceText)
+            purchasePriceDraft = ClosetItem.displayPriceDraft(from: item.purchasePriceText)
             sizeDraft = item.sizeText ?? ""
             descriptionDraft = item.productDescription ?? ""
             nameDraft = item.catalogDisplayName
@@ -275,9 +323,7 @@ struct ClosetGarmentDetailView: View {
         }
         .onChange(of: priceFocused) { _, focused in
             if !focused {
-                let t = priceDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                item.priceText = t.isEmpty ? nil : t
-                saveSilently()
+                normalizeAndSaveAskingPrice(from: priceDraft)
             }
         }
         .sheet(isPresented: $showLookComposer) {
@@ -285,6 +331,9 @@ struct ClosetGarmentDetailView: View {
                 .presentationDragIndicator(.visible)
                 .presentationDetents([.large])
                 .preferredColorScheme(.light)
+        }
+        .onDisappear {
+            NotificationCenter.default.post(name: .closetInventoryDidChange, object: item.id)
         }
         .toastOverlay(message: $toast)
         .confirmationDialog(
@@ -298,6 +347,21 @@ struct ClosetGarmentDetailView: View {
             Button(L10n.tr("common.close"), role: .cancel) {}
         } message: {
             Text(L10n.tr("sold.markSoldConfirmMessage"))
+        }
+        .confirmationDialog(
+            L10n.tr("sold.removalDialogTitle"),
+            isPresented: $showRemoveItemDialog,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.tr("sold.removalSoldAction")) {
+                markItemAsSoldFromRemoval()
+            }
+            Button(L10n.tr("sold.removalDiscontinuedAction"), role: .destructive) {
+                archiveItemAsDiscontinued()
+            }
+            Button(L10n.tr("common.close"), role: .cancel) {}
+        } message: {
+            Text(L10n.tr("sold.removalDialogMessage"))
         }
         .sheet(isPresented: $showShoe360Capture) {
             NavigationStack {
@@ -530,16 +594,103 @@ struct ClosetGarmentDetailView: View {
     }
 
     private func saveSilently() {
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+            CatalogClosetBridge.syncClosetItemEditsToCatalog(item)
+            NotificationCenter.default.post(name: .closetInventoryDidChange, object: item.id)
+        } catch {
+            toast = "Could not save: \(error.localizedDescription)"
+        }
+    }
+
+    private func commitAllDraftsToItem() {
+        let name = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty {
+            item.name = name
+        }
+
+        let sku = skuDraft.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        item.skuText = sku.isEmpty ? nil : sku
+
+        let purchase = purchasePriceDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let formattedPurchase = ClosetItem.normalizedPriceText(from: purchase) {
+            item.purchasePriceText = formattedPurchase
+            purchasePriceDraft = formattedPurchase
+        } else {
+            item.purchasePriceText = nil
+        }
+
+        normalizeAndSaveAskingPrice(from: priceDraft, updateDraft: true)
+
+        let size = StockSizeDisplay.normalizedStorage(from: sizeDraft) ?? ""
+        item.sizeText = size.isEmpty ? nil : size
+        sizeDraft = size.isEmpty ? sizeDraft : StockSizeDisplay.cardLabel(from: size) ?? size
+
+        let desc = descriptionDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.productDescription = desc.isEmpty ? nil : desc
+    }
+
+    private func normalizeAndSaveAskingPrice(from raw: String, updateDraft: Bool = false) {
+        if let formatted = ClosetItem.normalizedPriceText(from: raw) {
+            item.priceText = formatted
+            if updateDraft { priceDraft = formatted }
+        } else {
+            item.priceText = nil
+        }
+        saveSilently()
+    }
+
+    /// Applies live market average to asking price; purchase cost is never modified.
+    private func applyMarketPriceToAsking(from estimate: PieceMarketPrice? = nil) {
+        guard let avg = (estimate ?? item.marketPrice)?.avg, avg > 0 else { return }
+        let formatted = PieceMarketPrice.formatUSD(avg)
+        priceDraft = formatted
+        item.priceText = formatted
+        saveSilently()
+        toast = "Asking price set to \(formatted)."
+    }
+
+    private func saveAllChangesTapped() {
+        guard !savingChanges else { return }
+        savingChanges = true
+        priceFocused = false
+        commitAllDraftsToItem()
+        saveSilently()
+        savingChanges = false
+        toast = "All changes saved."
+        NotificationCenter.default.post(name: .upsoledCatalogDidChange, object: nil)
     }
 
     private func markItemAsSold() {
         item.isSold = true
         item.soldAt = Date()
-        saveSilently()
-        toast = L10n.tr("sold.markedSoldToast")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-            dismiss()
+        item.deletedAt = nil
+        item.deletionReasonRaw = nil
+        Task {
+            await CatalogClosetBridge.deleteLinkedCatalogProduct(forClosetItem: item.id)
+            await MainActor.run {
+                saveSilently()
+                NotificationCenter.default.post(name: .closetInventoryDidChange, object: item.id)
+                NotificationCenter.default.post(name: .upsoledCatalogDidChange, object: nil)
+                toast = L10n.tr("sold.markedSoldToast")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { dismiss() }
+            }
+        }
+    }
+
+    private func markItemAsSoldFromRemoval() {
+        markItemAsSold()
+    }
+
+    private func archiveItemAsDiscontinued() {
+        let closetId = item.id
+        Task {
+            await CatalogClosetBridge.deleteLinkedCatalogProduct(forClosetItem: closetId)
+            await MainActor.run {
+                ClosetInventoryRepair.permanentlyDeleteClosetItem(item, in: modelContext)
+                toast = L10n.tr("sold.removedToast")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { dismiss() }
+            }
         }
     }
 
@@ -669,7 +820,13 @@ struct ClosetGarmentDetailView: View {
                     .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
                     .onChange(of: purchasePriceDraft) { _, new in
                         let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
-                        item.purchasePriceText = t.isEmpty ? nil : t
+                        if t.isEmpty {
+                            item.purchasePriceText = nil
+                        } else if let formatted = ClosetItem.normalizedPriceText(from: t) {
+                            item.purchasePriceText = formatted
+                        } else {
+                            item.purchasePriceText = t
+                        }
                         saveSilently()
                     }
 
@@ -683,15 +840,19 @@ struct ClosetGarmentDetailView: View {
                         .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
                         .onChange(of: priceDraft) { _, new in
                             let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
-                            item.priceText = t.isEmpty ? nil : t
+                            if t.isEmpty {
+                                item.priceText = nil
+                            } else if let formatted = ClosetItem.normalizedPriceText(from: t) {
+                                item.priceText = formatted
+                            } else {
+                                item.priceText = t
+                            }
                             saveSilently()
                         }
 
                     if let est = item.marketPrice, est.avg > 0 {
                         Button {
-                            priceDraft = PieceMarketPrice.formatUSD(est.avg)
-                            item.priceText = priceDraft
-                            saveSilently()
+                            applyMarketPriceToAsking(from: est)
                         } label: {
                             Text("Market")
                                 .font(.system(size: 12, weight: .bold))
@@ -710,15 +871,16 @@ struct ClosetGarmentDetailView: View {
 
                 fieldLabel("Size")
                 TextField(
-                    item.category == .shoes ? "e.g. EU 42 · US 9" : "e.g. M · L · 32",
+                    "🇺🇸U.S 11",
                     text: $sizeDraft
                 )
                 .padding(.horizontal, 14)
                 .padding(.vertical, 14)
                 .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
                 .onChange(of: sizeDraft) { _, new in
-                    let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let t = StockSizeDisplay.normalizedStorage(from: new) ?? ""
                     item.sizeText = t.isEmpty ? nil : t
+                    sizeDraft = t
                     saveSilently()
                 }
 
@@ -782,10 +944,14 @@ struct ClosetGarmentDetailView: View {
                     lastUpdated: item.marketPriceFetchedAt,
                     onRefresh: { Task { await refreshMarketPrice(force: true) } },
                     onApplySize: {
-                        let t = sizeDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let t = StockSizeDisplay.normalizedStorage(from: sizeDraft) ?? ""
                         item.sizeText = t.isEmpty ? nil : t
+                        sizeDraft = t
                         saveSilently()
                         Task { await refreshMarketPrice(force: true) }
+                    },
+                    onApplyMarketPrice: {
+                        applyMarketPriceToAsking(from: est)
                     }
                 )
             } else {
@@ -820,7 +986,7 @@ struct ClosetGarmentDetailView: View {
         let parts: [String] = [
             item.brand?.trimmingCharacters(in: .whitespacesAndNewlines),
             item.resolvedSKU,
-            item.sizeText?.trimmingCharacters(in: .whitespacesAndNewlines),
+            item.cardSizeLabel,
             item.colorLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
             item.category.displayName
         ].compactMap { raw in
@@ -917,6 +1083,7 @@ struct ClosetGarmentDetailView: View {
             if force {
                 toast = "Market price: \(PieceMarketPrice.formatUSD(est.avg))"
             }
+            // Refresh cards/totals; asking price updates only when user taps Market / Use market price.
         } catch {
             let message = (error as NSError).localizedDescription
             if message.contains("429") || message.localizedCaseInsensitiveContains("quota") {
@@ -954,6 +1121,7 @@ struct ClosetGarmentDetailView: View {
                 itemName: item.name
             )
             item.imageFilename = rel
+            item.galleryCoverRelativePath = rel
             if let ui = ImageStore.load(rel) {
                 let hexes = ColorPaletteExtractor.extract(from: ui, count: 5)
                 if let data = try? JSONEncoder().encode(hexes),
@@ -962,7 +1130,7 @@ struct ClosetGarmentDetailView: View {
                 }
             }
             saveSilently()
-            toast = "Foto actualizada."
+            toast = "Photo updated."
         } catch {
             toast = error.localizedDescription
         }
@@ -982,7 +1150,7 @@ struct CreateLookComposerView: View {
     private var closetItems: [ClosetItem]
 
     private var selectableClosetItems: [ClosetItem] {
-        closetItems.filter { !$0.isExplicitlySold }
+        closetItems.filter(\.isActiveInStock)
     }
 
     @State private var selectedIDs = Set<UUID>()
@@ -1963,7 +2131,7 @@ struct ShoeMultiAngleCaptureView: View {
 
                 ZStack {
                     RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(red: 240/255, green: 240/255, blue: 240/255))
+                        .fill(Color.white)
                     captureHeroContent
                 }
                 .frame(height: 280)
@@ -2240,9 +2408,11 @@ struct ShoeMultiAngleCaptureView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else {
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(.systemGray5))
+                    .fill(Color.white)
                     .frame(width: 46, height: 46)
                     .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(Color.black.opacity(0.08), lineWidth: 1)
                         Image(systemName: "shoeprints.fill")
                             .font(.system(size: 16))
                             .foregroundStyle(Color.gray.opacity(0.75))
@@ -2327,22 +2497,16 @@ struct ShoeMultiAngleCaptureView: View {
 
 private extension UIImage {
     func closetFlattenedForShoeCapture() -> UIImage {
-        closetFlattenedUpright()
+        ClosetPhotoExports.normalizedClosetProductImage(self)
     }
 
     func closetFlattenedForLookbookCapture() -> UIImage {
-        closetFlattenedUpright()
+        ClosetPhotoExports.normalizedClosetProductImage(self)
     }
 
-    /// Normaliza orientation a `.up` (reutilizada por zapato 360° y lookbook).
+    /// Normalizes orientation to `.up` (reused by shoe 360° and lookbook).
     func closetFlattenedUpright() -> UIImage {
-        guard imageOrientation != .up else { return self }
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = scale
-        let renderer = UIGraphicsImageRenderer(size: size, format: format)
-        return renderer.image { _ in
-            draw(in: CGRect(origin: .zero, size: size))
-        }
+        ClosetPhotoExports.normalizedClosetProductImage(self)
     }
 }
 
@@ -2358,9 +2522,13 @@ private struct ClosetDiskThumbnail: View {
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ProgressView().tint(.black)
+                ZStack {
+                    Color.white
+                    ProgressView().tint(.black)
+                }
             }
         }
+        .background(Color.white)
     }
 }
 
@@ -2572,6 +2740,7 @@ struct ProductCoverGalleryView<PhotoOverlay: View>: View {
                         width: style == .strip ? 72 : 76,
                         height: style == .strip ? 92 : 98
                     )
+                    .background(Color.white)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -2842,12 +3011,13 @@ struct GarmentLookbookCaptureView: View {
 
     private var heroBlock: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16).fill(Color(.systemGray6))
+            RoundedRectangle(cornerRadius: 16).fill(Color.white)
             if let img = captured[currentAngle] {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFit()
                     .padding(12)
+                    .background(Color.white)
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: currentAngle.icon)

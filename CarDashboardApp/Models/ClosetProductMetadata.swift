@@ -1,5 +1,68 @@
 import Foundation
 
+// MARK: - Size display (🇺🇸U.S + size)
+
+enum StockSizeDisplay {
+    private static let flag = "🇺🇸"
+    private static let usTag = "U.S"
+
+    /// Display label for cards and summaries: `🇺🇸U.S 11`
+    static func cardLabel(from raw: String?) -> String? {
+        guard let core = coreSize(from: raw) else { return nil }
+        return "\(flag)\(usTag) \(core)"
+    }
+
+    /// Stores only the size value (e.g. `11`, `M`, `10.5`) without the prefix.
+    static func normalizedStorage(from raw: String?) -> String? {
+        coreSize(from: raw)
+    }
+
+    private static func coreSize(from raw: String?) -> String? {
+        guard var t = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else {
+            return nil
+        }
+        t = t.replacingOccurrences(of: flag, with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let stripPrefixes = [
+            "U.S.", "U.S", "US.", "US",
+            "EU", "UK", "MX",
+        ]
+        var changed = true
+        while changed {
+            changed = false
+            for prefix in stripPrefixes {
+                let upper = t.uppercased()
+                let p = prefix.uppercased()
+                if upper.hasPrefix(p) {
+                    t = String(t.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    changed = true
+                    break
+                }
+            }
+        }
+
+        return t.isEmpty ? nil : t
+    }
+
+    /// Numeric sort key for size filters (lower = smaller).
+    static func sortValue(from raw: String?) -> Double {
+        guard let core = coreSize(from: raw) else { return 9999 }
+        let normalized = core.replacingOccurrences(of: ",", with: ".")
+        if let n = Double(normalized) { return n }
+        switch core.uppercased() {
+        case "XXS": return 0
+        case "XS": return 1
+        case "S": return 2
+        case "M": return 3
+        case "L": return 4
+        case "XL": return 5
+        case "XXL": return 6
+        case "XXXL": return 7
+        default: return 500 + Double(core.unicodeScalars.first?.value ?? 0)
+        }
+    }
+}
+
 /// Metadatos enriquecidos por Gemini al detectar / revisar una prenda.
 struct GarmentEnrichment: Codable, Equatable {
     var brand: String
@@ -135,10 +198,36 @@ extension ClosetItem {
     }
 }
 
+enum StockRemovalReason: String, CaseIterable {
+    case sold
+    case discontinued
+
+    var dialogLabel: String {
+        switch self {
+        case .sold: return "I sold it"
+        case .discontinued: return "Discontinuing — remove from stock"
+        }
+    }
+}
+
 extension ClosetItem {
     /// Only items explicitly marked sold (with a date) leave active stock.
     var isExplicitlySold: Bool {
-        isSold && soldAt != nil
+        isSold && soldAt != nil && !isArchivedRemoved
+    }
+
+    var isArchivedRemoved: Bool {
+        deletedAt != nil
+    }
+
+    /// Active inventory in Tu stock (not sold, not archived).
+    var isActiveInStock: Bool {
+        !isExplicitlySold && !isArchivedRemoved
+    }
+
+    var removalReason: StockRemovalReason? {
+        guard let raw = deletionReasonRaw else { return nil }
+        return StockRemovalReason(rawValue: raw)
     }
 
     var marketPrice: PieceMarketPrice? {
@@ -173,15 +262,18 @@ extension ClosetItem {
         }
     }
 
-    /// Asking / listing price shown on cards (falls back to market avg).
+    /// Card shows listing price when set; otherwise market avg, then cost.
     var cardPriceLabel: String? {
-        if let manual = priceText?.trimmingCharacters(in: .whitespacesAndNewlines), !manual.isEmpty {
-            return manual
+        let asking = ClosetItem.parsePriceUSD(from: priceText)
+        if asking > 0 {
+            return PieceMarketPrice.formatUSD(Int(asking.rounded()))
         }
-        if let avg = marketPrice?.avg, avg > 0 {
-            return PieceMarketPrice.formatUSD(avg)
+        if let mp = marketPrice, mp.avg > 0 {
+            return PieceMarketPrice.formatUSD(mp.avg)
         }
-        return nil
+        let cost = purchaseValueUSD
+        guard cost > 0 else { return nil }
+        return PieceMarketPrice.formatUSD(Int(cost.rounded()))
     }
 
     var purchaseValueUSD: Double {
@@ -231,15 +323,16 @@ extension ClosetItem {
         return String(format: "%+.0f%%", pct)
     }
 
-    /// Valor numérico para KPIs (USD): mercado > precio de venta manual.
+    /// KPI stock value (USD): market avg → asking → purchase cost.
     var stockValueUSD: Double {
         if let mp = marketPrice, mp.avg > 0 { return Double(mp.avg) }
-        return ClosetItem.parsePriceUSD(from: priceText)
+        let asking = ClosetItem.parsePriceUSD(from: priceText)
+        if asking > 0 { return asking }
+        return purchaseValueUSD
     }
 
     var cardSizeLabel: String? {
-        let t = sizeText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return t.isEmpty ? nil : t
+        StockSizeDisplay.cardLabel(from: sizeText)
     }
 
     var soldOnDate: Date { soldAt ?? createdAt }
@@ -265,6 +358,30 @@ extension ClosetItem {
             return String(format: L10n.tr("sold.monthsAgo"), String(max(1, daysAgo / 30)))
         }
     }
+
+    var removedOnDate: Date { deletedAt ?? createdAt }
+
+    var removedDaysAgo: Int {
+        Calendar.current.dateComponents([.day], from: removedOnDate, to: Date()).day ?? 0
+    }
+
+    func removedDateLabel() -> String {
+        let daysAgo = removedDaysAgo
+        switch daysAgo {
+        case 0:
+            return L10n.tr("sold.today")
+        case 1:
+            return L10n.tr("sold.yesterday")
+        case 2...6:
+            return String(format: L10n.tr("sold.daysAgo"), String(daysAgo))
+        case 7...13:
+            return L10n.tr("sold.oneWeekAgo")
+        case 14...29:
+            return String(format: L10n.tr("sold.weeksAgo"), String(daysAgo / 7))
+        default:
+            return String(format: L10n.tr("sold.monthsAgo"), String(max(1, daysAgo / 30)))
+        }
+    }
 }
 
 extension PieceMarketPrice {
@@ -275,18 +392,36 @@ extension PieceMarketPrice {
         f.maximumFractionDigits = 0
         return "$" + (f.string(from: NSNumber(value: amount)) ?? "\(amount)")
     }
+
+    static func formatUSD(_ amount: Double) -> String {
+        formatUSD(Int(amount.rounded()))
+    }
 }
 
 extension ClosetItem {
+    /// Parses user-entered or stored price text (`$1,234`, `1234`, etc.).
     static func parsePriceUSD(from text: String?) -> Double {
         guard let raw = text?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return 0 }
-        let digits = raw
-            .replacingOccurrences(of: "€", with: "")
+        let cleaned = raw
             .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: "€", with: "")
             .replacingOccurrences(of: "USD", with: "", options: .caseInsensitive)
             .replacingOccurrences(of: "EUR", with: "", options: .caseInsensitive)
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: ",", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return Double(digits.replacingOccurrences(of: ",", with: ".")) ?? 0
+        return Double(cleaned) ?? 0
+    }
+
+    /// Canonical display + storage format: `$1,234`.
+    static func normalizedPriceText(from text: String?) -> String? {
+        let value = parsePriceUSD(from: text)
+        guard value > 0 else { return nil }
+        return PieceMarketPrice.formatUSD(value)
+    }
+
+    static func displayPriceDraft(from text: String?) -> String {
+        normalizedPriceText(from: text) ?? (text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
     }
 }
 

@@ -163,107 +163,122 @@ struct UpsoledProductsView: View {
     }
 }
 
-/// Card individual usada en la rejilla.
+/// Card individual usada en la rejilla (Tu stock + Marketplace).
 struct UpsoledProductCard: View {
     let product: UpsoledProduct
+    var selectionMode: Bool = false
+    var isSelected: Bool = false
+    var onTap: (() -> Void)? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // Imagen: cuadrado con aspecto 3:4. La imagen está envuelta en un
-            // contenedor con tamaño fijo + clipped para que NUNCA se salga del card.
-            imageBlock
-                .aspectRatio(3.0 / 4.0, contentMode: .fit)
-                .frame(maxWidth: .infinity)
-                .background(Color(.systemGray6))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(alignment: .topTrailing) {
-                    if !product.inStock {
-                        Text("AGOTADO")
-                            .font(.system(size: 8, weight: .heavy))
-                            .tracking(0.6)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(Color.red, in: Capsule())
-                            .foregroundStyle(.white)
-                            .padding(8)
-                    }
-                }
-
-            if let brand = product.brand, !brand.isEmpty {
-                Text(brand.uppercased())
-                    .font(.system(size: 9, weight: .heavy))
-                    .tracking(0.6)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            Text(product.name)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, minHeight: 34, alignment: .topLeading)
-            Text("$\(Int(product.price.rounded()))")
-                .font(.system(size: 14, weight: .heavy, design: .rounded))
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        Button {
+            onTap?()
+        } label: {
+            cardContent
         }
+        .buttonStyle(.plain)
+        .disabled(onTap == nil && !selectionMode)
     }
 
-    @ViewBuilder
-    private var imageBlock: some View {
-        GeometryReader { proxy in
-            if let url = product.primaryImageURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        ZStack {
-                            Color(.systemGray6)
-                            ProgressView().controlSize(.small)
-                        }
-                    case let .success(image):
-                        // .fit dentro del frame fijo → la imagen siempre cabe
-                        // entera, centrada, con margen blanco si las proporciones difieren.
-                        ZStack {
-                            Color(.systemGray6)
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .padding(10)
-                        }
-                    case .failure:
-                        ZStack {
-                            Color(.systemGray6)
-                            placeholderContent
-                        }
-                    @unknown default:
-                        ZStack {
-                            Color(.systemGray6)
-                            placeholderContent
-                        }
-                    }
-                }
-            } else {
+    private var cardContent: some View {
+        VStack(spacing: 9) {
+            ZStack(alignment: .topTrailing) {
                 ZStack {
-                    Color(.systemGray6)
-                    placeholderContent
+                    Color.white
+
+                    StockCachedRemoteImage(url: product.primaryImageURL)
+                        .padding(4)
+
+                    VStack {
+                        Spacer()
+                        HStack(alignment: .bottom) {
+                            if let size = product.cardSizeLabel {
+                                Text(size)
+                                    .font(.system(size: 10, weight: .heavy))
+                                    .foregroundStyle(Color.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Capsule().fill(Color.black.opacity(0.78)))
+                            }
+                            Spacer(minLength: 4)
+                            if let price = product.cardPriceLabel {
+                                Text(price)
+                                    .font(.system(size: 10, weight: .heavy))
+                                    .foregroundStyle(Color.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Capsule().fill(Color.black.opacity(0.78)))
+                            }
+                        }
+                        .padding(8)
+                    }
+                    .allowsHitTesting(false)
+
+                    if selectionMode {
+                        Color.black.opacity(isSelected ? 0.12 : 0)
+                            .animation(.easeInOut(duration: 0.18), value: isSelected)
+                        VStack {
+                            HStack {
+                                Spacer()
+                                ZStack {
+                                    Circle()
+                                        .fill(isSelected ? Color.black : Color.white.opacity(0.95))
+                                        .frame(width: 28, height: 28)
+                                        .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 1)
+                                    if !isSelected {
+                                        Circle().stroke(Color.black.opacity(0.35), lineWidth: 1.5)
+                                            .frame(width: 28, height: 28)
+                                    } else {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundStyle(Color.white)
+                                    }
+                                }
+                                .padding(8)
+                            }
+                            Spacer()
+                        }
+                        .allowsHitTesting(false)
+                        .animation(.easeInOut(duration: 0.18), value: isSelected)
+                    }
+                }
+                .aspectRatio(1, contentMode: .fit)
+
+                if product.hasPricingForProfit, !selectionMode {
+                    StockProfitCornerBadge(
+                        usdLabel: product.cardProfitUSDLabel,
+                        pctLabel: product.cardProfitPercentLabel,
+                        isLoss: product.isProjectedLoss
+                    )
+                    .offset(x: 2, y: -10)
                 }
             }
+            .frame(maxWidth: .infinity)
+
+            let brandLine = product.brand?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            Text(brandLine.isEmpty ? "Unknown Brand" : brandLine.uppercased())
+                .font(.system(size: 10, weight: .heavy))
+                .tracking(0.4)
+                .foregroundStyle(Color.black.opacity(0.55))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+
+            if let sku = product.cardSKULabel {
+                Text(sku)
+                    .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(Color.black.opacity(0.72))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+            }
+
+            Text(product.name)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Color.black.opacity(0.88))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(minHeight: 36, alignment: .top)
         }
     }
-
-    private var placeholderContent: some View {
-        VStack(spacing: 4) {
-            Image(systemName: "photo")
-                .foregroundStyle(.tertiary)
-                .font(.system(size: 22))
-            Text("NO IMAGE")
-                .font(.system(size: 8, weight: .heavy))
-                .tracking(1)
-                .foregroundStyle(.tertiary)
-        }
-    }
-
 }
 
 /// Hoja modal para crear un producto. Inserta directamente en `upsoled_products`.

@@ -119,8 +119,69 @@ struct UpsoledProductInsert: Encodable {
 }
 
 extension UpsoledProduct {
-    /// Genera un slug URL-friendly a partir del nombre. Si quedan colisiones,
-    /// el caller debe añadir un sufijo (UUID corto) antes de insertar.
+    /// Cost basis stored in `compare_at_price` when set from the app.
+    var purchaseCostUSD: Double { compareAtPrice ?? 0 }
+
+    private var unitCount: Int { max(1, quantity ?? 1) }
+
+    var stockValueUSD: Double { price * Double(unitCount) }
+
+    var purchaseValueUSD: Double { purchaseCostUSD * Double(unitCount) }
+
+    var projectedProfitUSD: Double {
+        let cost = purchaseCostUSD
+        guard cost > 0, price > 0 else { return 0 }
+        return (price - cost) * Double(unitCount)
+    }
+
+    var effectiveSellValueUSD: Double { price }
+
+    var hasPricingForProfit: Bool {
+        purchaseCostUSD > 0 && price > 0
+    }
+
+    var projectedProfitPercent: Double? {
+        guard hasPricingForProfit else { return nil }
+        let cost = purchaseCostUSD
+        guard cost > 0 else { return nil }
+        return ((price - cost) / cost) * 100
+    }
+
+    var isProjectedLoss: Bool {
+        hasPricingForProfit && projectedProfitUSD < 0
+    }
+
+    var cardPriceLabel: String? {
+        let value = stockValueUSD
+        guard value > 0 else { return nil }
+        return PieceMarketPrice.formatUSD(Int(value.rounded()))
+    }
+
+    var cardProfitUSDLabel: String? {
+        guard hasPricingForProfit else { return nil }
+        let amount = Int(abs(projectedProfitUSD).rounded())
+        let formatted = PieceMarketPrice.formatUSD(amount)
+        return projectedProfitUSD >= 0 ? "+\(formatted)" : "−\(formatted)"
+    }
+
+    var cardProfitPercentLabel: String? {
+        guard let pct = projectedProfitPercent else { return nil }
+        return String(format: "%+.0f%%", pct)
+    }
+
+    var cardSizeLabel: String? {
+        if let first = sizes.first?.trimmingCharacters(in: .whitespacesAndNewlines), !first.isEmpty {
+            return StockSizeDisplay.cardLabel(from: first)
+        }
+        return nil
+    }
+
+    var cardSKULabel: String? {
+        let t = sku?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return t.isEmpty ? nil : t
+    }
+
+    /// URL-friendly slug from the product name.
     static func generateSlug(from name: String) -> String {
         let lowered = name.lowercased()
             .folding(options: .diacriticInsensitive, locale: .init(identifier: "en_US"))

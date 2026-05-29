@@ -7,6 +7,10 @@ import UIKit
 extension Notification.Name {
     /// Abre el mismo sheet de entrada que el botón + del stock (clóset).
     static let upsoledPresentAddToClosetMenu = Notification.Name("Upsoled.presentAddToClosetMenu")
+    /// Catálogo creado o editado — Inicio refresca totales.
+    static let upsoledCatalogDidChange = Notification.Name("Upsoled.catalogDidChange")
+    /// Prenda guardada, eliminada o precio cambiado — listas y KPIs refrescan.
+    static let closetInventoryDidChange = Notification.Name("Upsoled.closetInventoryDidChange")
 }
 
 enum UpsoledMainTab: Hashable {
@@ -31,6 +35,7 @@ final class ChatNavigationCoordinator: ObservableObject {
 // MARK: - Pestañas (TabView nativo iOS 26 + Liquid Glass del sistema)
 
 struct MainTabView: View {
+    @Environment(\.modelContext) private var modelContext
     @StateObject private var tabRouter = MainTabRouter()
     @StateObject private var invoiceHistory = InvoiceHistoryStore()
     @StateObject private var chatInbox = ChatInboxStore()
@@ -73,7 +78,8 @@ struct MainTabView: View {
             .accentColor(PremiumAccent.tabActive)
             .tint(PremiumAccent.tabActive)
         .onAppear {
-                MainTabBarAppearance.applyBlackInactiveBlueSelected()
+            ClosetInventoryRepair.restoreAllSoldToStock(in: modelContext)
+            MainTabBarAppearance.applyBlackInactiveBlueSelected()
             communityVM.attach(auth: auth)
             communityVM.startPeriodicRefresh()
             Task { await communityVM.refresh() }
@@ -214,17 +220,24 @@ private enum MainTabBarAppearance {
 
 struct SoldView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(
-        filter: #Predicate<ClosetItem> { $0.isSold == true && $0.soldAt != nil },
-        sort: \ClosetItem.soldAt,
-        order: .reverse
-    )
-    private var soldItems: [ClosetItem]
+    @Query(sort: \ClosetItem.soldAt, order: .reverse)
+    private var allClosetItems: [ClosetItem]
 
     @State private var searchText = ""
+    @State private var archiveSection: SoldArchiveSection = .sold
     @State private var filter: SoldFilter = .all
     @State private var didAppear = false
+    @State private var permanentDeleteItem: ClosetItem?
     @FocusState private var searchFocused: Bool
+
+    private var soldItems: [ClosetItem] {
+        allClosetItems.filter(\.isExplicitlySold)
+    }
+
+    private var removedItems: [ClosetItem] {
+        allClosetItems.filter(\.isArchivedRemoved)
+            .sorted { ($0.deletedAt ?? .distantPast) > ($1.deletedAt ?? .distantPast) }
+    }
 
     private var filteredSales: [ClosetItem] {
         let base = soldItems.filter { item in
@@ -234,9 +247,17 @@ struct SoldView: View {
             case .topProfit: return item.stockValueUSD >= 200
             }
         }
-        guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return base }
+        return filterItems(base)
+    }
+
+    private var filteredRemoved: [ClosetItem] {
+        filterItems(removedItems)
+    }
+
+    private func filterItems(_ items: [ClosetItem]) -> [ClosetItem] {
+        guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return items }
         let q = searchText.lowercased()
-        return base.filter { item in
+        return items.filter { item in
             let brand = item.brand ?? ""
             let color = item.colorLabel ?? ""
             return "\(brand) \(item.name) \(color)".lowercased().contains(q)
@@ -255,21 +276,43 @@ struct SoldView: View {
 
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(spacing: 18) {
-                            filterPicker
+                            archiveSectionPicker
                                 .padding(.horizontal, 16)
                                 .padding(.top, 8)
                                 .modifier(SoldEntranceAnimation(didAppear: didAppear, delay: 0.05))
 
-                            if filteredSales.isEmpty {
-                                soldEmptyIllustratedState
+                            if archiveSection == .sold {
+                                filterPicker
+                                    .padding(.horizontal, 16)
+                                    .modifier(SoldEntranceAnimation(didAppear: didAppear, delay: 0.08))
+
+                                if filteredSales.isEmpty {
+                                    soldEmptyIllustratedState
+                                        .modifier(SoldEntranceAnimation(didAppear: didAppear, delay: 0.15))
+                                        .frame(maxWidth: .infinity, minHeight: max(260, geo.size.height - 400))
+                                } else {
+                                    LazyVStack(spacing: 12) {
+                                        ForEach(filteredSales) { item in
+                                            SoldClosetItemRow(item: item) {
+                                                restoreItemToStock(item)
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .modifier(SoldEntranceAnimation(didAppear: didAppear, delay: 0.15))
+                                }
+                            } else if filteredRemoved.isEmpty {
+                                removedEmptyState
                                     .modifier(SoldEntranceAnimation(didAppear: didAppear, delay: 0.15))
                                     .frame(maxWidth: .infinity, minHeight: max(260, geo.size.height - 400))
                             } else {
                                 LazyVStack(spacing: 12) {
-                                    ForEach(filteredSales) { item in
-                                        SoldClosetItemRow(item: item) {
-                                            restoreItemToStock(item)
-                                        }
+                                    ForEach(filteredRemoved) { item in
+                                        RemovedArchiveItemRow(
+                                            item: item,
+                                            onRestore: { restoreArchivedItem(item) },
+                                            onDeletePermanently: { permanentDeleteItem = item }
+                                        )
                                     }
                                 }
                                 .padding(.horizontal, 16)
@@ -284,11 +327,78 @@ struct SoldView: View {
         .toolbar(.hidden, for: .navigationBar)
         .preferredColorScheme(.light)
         .environment(\.dashboardLightSurface, true)
+        .alert(
+            L10n.tr("sold.deletePermanently"),
+            isPresented: Binding(
+                get: { permanentDeleteItem != nil },
+                set: { if !$0 { permanentDeleteItem = nil } }
+            )
+        ) {
+            Button(L10n.tr("sold.deletePermanently"), role: .destructive) {
+                if let item = permanentDeleteItem {
+                    ClosetInventoryRepair.permanentlyDeleteClosetItem(item, in: modelContext)
+                }
+                permanentDeleteItem = nil
+            }
+            Button(L10n.tr("common.close"), role: .cancel) {
+                permanentDeleteItem = nil
+            }
+        } message: {
+            Text(L10n.tr("sold.deletePermanentlyConfirm"))
+        }
         .onAppear {
+            ClosetInventoryRepair.restoreAllSoldToStock(in: modelContext)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 didAppear = true
             }
         }
+    }
+
+    private var archiveSectionPicker: some View {
+        HStack(spacing: 0) {
+            ForEach(SoldArchiveSection.allCases, id: \.self) { section in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        archiveSection = section
+                    }
+                } label: {
+                    Text(section.label)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(archiveSection == section ? Color.white : Color.black.opacity(0.62))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background {
+                            if archiveSection == section {
+                                Capsule().fill(Color.black)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background {
+            Capsule().fill(Color(red: 0.95, green: 0.96, blue: 0.99))
+        }
+    }
+
+    private var removedEmptyState: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 8)
+            Image(systemName: "archivebox")
+                .font(.system(size: 52))
+                .foregroundStyle(Color.black.opacity(0.18))
+            Text(L10n.tr("sold.removedEmptyTitle"))
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(Color.black.opacity(0.92))
+            Text(L10n.tr("sold.removedEmptyDesc"))
+                .font(.system(size: 15))
+                .foregroundStyle(Color.black.opacity(0.52))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 12)
+            Spacer(minLength: 8)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     /// Ilustración de vacío (`caja`, mismo arte que App Icon) + copy localizada.
@@ -384,6 +494,22 @@ struct SoldView: View {
         item.isSold = false
         item.soldAt = nil
         try? modelContext.save()
+    }
+
+    private func restoreArchivedItem(_ item: ClosetItem) {
+        ClosetInventoryRepair.restoreArchivedItemToStock(item, in: modelContext)
+    }
+}
+
+private enum SoldArchiveSection: CaseIterable {
+    case sold
+    case removed
+
+    var label: String {
+        switch self {
+        case .sold: return L10n.tr("sold.sectionSold")
+        case .removed: return L10n.tr("sold.sectionRemoved")
+        }
     }
 }
 
@@ -504,6 +630,86 @@ struct SoldClosetItemRow: View {
                         .strokeBorder(Color.black.opacity(0.04), lineWidth: 0.6)
                 }
                 .shadow(color: Color.black.opacity(0.05), radius: 12, x: 0, y: 4)
+        }
+    }
+}
+
+struct RemovedArchiveItemRow: View {
+    let item: ClosetItem
+    var onRestore: () -> Void
+    var onDeletePermanently: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white)
+                    .frame(width: 92, height: 92)
+                if let ui = ImageStore.load(ImageStore.displayRelativePath(for: item)) {
+                    Image(uiImage: ui)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(8)
+                        .frame(width: 92, height: 92)
+                } else {
+                    Image(systemName: "photo")
+                        .font(.system(size: 24))
+                        .foregroundStyle(Color.black.opacity(0.25))
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text((item.brand ?? "Unknown Brand").uppercased())
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(0.8)
+                    .foregroundStyle(Color.black.opacity(0.55))
+
+                Text(item.catalogDisplayName)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.88))
+                    .lineLimit(2)
+
+                Text(L10n.tr("sold.removedReasonDiscontinued"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.45))
+
+                Text(item.removedDateLabel())
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.40))
+            }
+
+            Spacer(minLength: 0)
+
+            VStack(alignment: .trailing, spacing: 8) {
+                if let price = item.cardPriceLabel {
+                    Text(price)
+                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.88))
+                }
+
+                Button(action: onRestore) {
+                    Text(L10n.tr("sold.restoreToStock"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onDeletePermanently) {
+                    Text(L10n.tr("sold.deletePermanently"))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.92, green: 0.30, blue: 0.30))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .background {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color.white)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(Color.black.opacity(0.04), lineWidth: 0.6)
+                }
         }
     }
 }

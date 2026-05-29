@@ -73,6 +73,11 @@ final class ClosetItem {
     /// Timestamp when the user marked the item as sold.
     var soldAt: Date? = nil
 
+    /// Soft-delete: item left active stock but kept in «Previously removed» archive.
+    var deletedAt: Date? = nil
+    /// `StockRemovalReason.discontinued.rawValue` when archived after discontinuing.
+    var deletionReasonRaw: String? = nil
+
     @Relationship(inverse: \Look.items)
     var looks: [Look] = []
 

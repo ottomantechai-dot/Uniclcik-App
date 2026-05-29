@@ -114,8 +114,8 @@ enum ClosetPhotoExports {
         return UIImage(cgImage: out, scale: image.scale, orientation: image.imageOrientation)
     }
 
-    /// Normaliza orientation para dibujado predecible.
-    private static func horizontallyUpImage(_ image: UIImage) -> UIImage {
+    /// Normalizes orientation for predictable drawing.
+    static func horizontallyUpImage(_ image: UIImage) -> UIImage {
         guard image.imageOrientation != .up else { return image }
         let fmt = UIGraphicsImageRendererFormat()
         fmt.scale = image.scale
@@ -123,6 +123,11 @@ enum ClosetPhotoExports {
         return renderer.image { _ in
             image.draw(in: CGRect(origin: .zero, size: image.size))
         }
+    }
+
+    /// Upright + near-white backdrop cleanup for new closet product photos.
+    static func normalizedClosetProductImage(_ image: UIImage) -> UIImage {
+        flattenNearWhiteBackdrop(horizontallyUpImage(image))
     }
 
     @MainActor

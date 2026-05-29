@@ -45,17 +45,12 @@ private struct ClosetDiskThumbnail: View {
 
     var body: some View {
         Group {
-            if let ui = ImageStore.load(relativePath) {
+            if let ui = StockImageLoader.cachedLocalImage(relativePath: relativePath) {
                 Image(uiImage: ui)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ZStack {
-                    Color.white
-                    ProgressView()
-                        .tint(.black)
-                }
+                Color.white
             }
         }
         .background(Color.white)
@@ -100,14 +95,9 @@ struct ClosetUIImagePickerBridge: UIViewControllerRepresentable {
 }
 
 extension UIImage {
-    /// Evita miniaturas volteadas al capturar con cámara.
+    /// Upright orientation + white backdrop cleanup for closet uploads.
     fileprivate func closetFlattenedOrientation() -> UIImage {
-        guard imageOrientation != .up else { return self }
-        UIGraphicsBeginImageContextWithOptions(size, false, scale)
-        draw(in: CGRect(origin: .zero, size: size))
-        let out = UIGraphicsGetImageFromCurrentImageContext() ?? self
-        UIGraphicsEndImageContext()
-        return out
+        ClosetPhotoExports.normalizedClosetProductImage(self)
     }
 }
 
@@ -123,7 +113,7 @@ struct ClosetView: View {
 
     /// Active inventory only — sold items live under the Sold tab.
     private var activeClosetItems: [ClosetItem] {
-        closetItems.filter { !$0.isExplicitlySold }
+        closetItems.filter(\.isActiveInStock)
     }
 
     @State private var showAddMenuSheet = false
@@ -132,10 +122,22 @@ struct ClosetView: View {
     @State private var pickedGalleryItems: [PhotosPickerItem] = []
     @State private var cameraImage: UIImage?
     @State private var showPipeline = false
-    @State private var closetItemPendingDelete: ClosetItem?
+
+    private struct StockRemovalRequest: Identifiable {
+        let id = UUID()
+        let closetIDs: Set<UUID>
+        let catalogIDs: Set<UUID>
+
+        var totalCount: Int { closetIDs.count + catalogIDs.count }
+    }
+
     @State private var closetSelectionMode = false
     @State private var closetSelectedIDs = Set<UUID>()
-    @State private var confirmBulkDelete = false
+    @State private var catalogSelectedIDs = Set<UUID>()
+    @State private var showBulkCategorySheet = false
+    @State private var catalogDetailBusy = false
+    @State private var removalRequest: StockRemovalRequest?
+    @State private var permanentDeleteItem: ClosetItem?
 
     /// Ficha grande de una prenda (estudio).
     @State private var garmentDetailSheetItem: ClosetItem?
@@ -153,6 +155,8 @@ struct ClosetView: View {
     @State private var showPrivateGarmentLookbookFlow = false
     @State private var stockSearchText = ""
     @FocusState private var stockSearchFocused: Bool
+    @State private var stockFilters = StockBrowseFilters()
+    @State private var showStockFiltersSheet = false
     @AppStorage("stockLayoutMode") private var stockLayoutModeRaw = StockLayoutMode.grid.rawValue
     @State private var showBarcodeScanner = false
     @State private var scanLookupPayload: StockScanLookupPayload?
@@ -187,18 +191,25 @@ struct ClosetView: View {
     }
 
     private var filteredActiveClosetItems: [ClosetItem] {
-        guard !stockSearchQuery.isEmpty else { return activeClosetItems }
-        return activeClosetItems.filter { itemMatchesStockSearch($0, query: stockSearchQuery) }
+        var items = activeClosetItems
+        if !stockSearchQuery.isEmpty {
+            items = items.filter { itemMatchesStockSearch($0, query: stockSearchQuery) }
+        }
+        items = items.filter { StockFilterEngine.matches(stockFilters, closetItem: $0) }
+        return StockFilterEngine.sortClosetItems(items, by: stockFilters.sort)
     }
 
     private var filteredCatalogProducts: [UpsoledProduct] {
-        let base = catalogVM.products
-        guard !stockSearchQuery.isEmpty else { return base }
-        return base.filter { product in
-            product.name.lowercased().contains(stockSearchQuery)
-                || (product.brand ?? "").lowercased().contains(stockSearchQuery)
-                || (product.sku ?? "").lowercased().contains(stockSearchQuery)
+        var products = catalogVM.products
+        if !stockSearchQuery.isEmpty {
+            products = products.filter { product in
+                product.name.lowercased().contains(stockSearchQuery)
+                    || (product.brand ?? "").lowercased().contains(stockSearchQuery)
+                    || (product.sku ?? "").lowercased().contains(stockSearchQuery)
+            }
         }
+        products = products.filter { StockFilterEngine.matches(stockFilters, catalogProduct: $0) }
+        return StockFilterEngine.sortCatalogProducts(products, by: stockFilters.sort)
     }
 
     private var hasCatalogStock: Bool { !catalogVM.products.isEmpty }
@@ -208,7 +219,7 @@ struct ClosetView: View {
         let grouped = Dictionary(grouping: filteredActiveClosetItems) { $0.category }
         return Self.stockCategoryPresentationOrder.compactMap { cat in
             guard let arr = grouped[cat], !arr.isEmpty else { return nil }
-            let sorted = arr.sorted { $0.createdAt > $1.createdAt }
+            let sorted = StockFilterEngine.sortClosetItems(arr, by: stockFilters.sort)
             return ClosetStockSection(category: cat, items: sorted)
         }
     }
@@ -227,6 +238,130 @@ struct ClosetView: View {
         var id: String { category.rawValue }
         let category: ClothingCategory
         let items: [ClosetItem]
+
+        var totalValueUSD: Double {
+            items.reduce(0) { $0 + $1.stockValueUSD }
+        }
+    }
+
+    private struct StockCategoryBreakdown: Identifiable {
+        let id: String
+        let emoji: String
+        let title: String
+        let count: Int
+        let valueUSD: Double
+    }
+
+    private static let stockSummaryCategoryOrder: [String] = [
+        ClothingCategory.shoes.rawValue,
+        ClothingCategory.tops.rawValue,
+        ClothingCategory.dressesJumpsuits.rawValue,
+        ClothingCategory.pantsSkirts.rawValue,
+        ClothingCategory.coats.rawValue,
+        ClothingCategory.bags.rawValue,
+        ClothingCategory.accessories.rawValue,
+        ClothingCategory.underwear.rawValue,
+        "clothing", "vintage", "new-drops", "other",
+    ]
+
+    private var stockCategoryBreakdowns: [StockCategoryBreakdown] {
+        buildStockCategoryBreakdowns(
+            closetItems: filteredActiveClosetItems,
+            catalogProducts: filteredCatalogProducts
+        )
+    }
+
+    private var stockGrandTotalCount: Int {
+        let closet = filteredActiveClosetItems.count
+        let catalog = filteredCatalogProducts.reduce(0) { $0 + max(1, $1.quantity ?? 1) }
+        return closet + catalog
+    }
+
+    private var stockGrandTotalValueUSD: Double {
+        let closet = filteredActiveClosetItems.reduce(0.0) { $0 + $1.stockValueUSD }
+        let catalog = filteredCatalogProducts.reduce(0.0) { $0 + $1.stockValueUSD }
+        return closet + catalog
+    }
+
+    private var stockClosetInvestedUSD: Double {
+        filteredActiveClosetItems.reduce(0.0) { $0 + $1.purchaseValueUSD }
+    }
+
+    private var stockClosetProfitUSD: Double {
+        filteredActiveClosetItems.reduce(0.0) { $0 + $1.projectedProfitUSD }
+    }
+
+    private func buildStockCategoryBreakdowns(
+        closetItems: [ClosetItem],
+        catalogProducts: [UpsoledProduct]
+    ) -> [StockCategoryBreakdown] {
+        var buckets: [String: (emoji: String, title: String, count: Int, value: Double)] = [:]
+
+        func add(key: String, emoji: String, title: String, units: Int = 1, value: Double) {
+            var bucket = buckets[key] ?? (emoji, title, 0, 0)
+            bucket.count += units
+            bucket.value += value
+            buckets[key] = bucket
+        }
+
+        for item in closetItems {
+            let cat = item.category
+            add(key: cat.rawValue, emoji: cat.emoji, title: cat.displayName, value: item.stockValueUSD)
+        }
+
+        for product in catalogProducts {
+            let meta = catalogCategoryPresentation(product.category)
+            add(
+                key: meta.key,
+                emoji: meta.emoji,
+                title: meta.title,
+                units: max(1, product.quantity ?? 1),
+                value: product.stockValueUSD
+            )
+        }
+
+        let orderedKeys = Self.stockSummaryCategoryOrder.filter { buckets[$0] != nil }
+        let extraKeys = buckets.keys.filter { !Self.stockSummaryCategoryOrder.contains($0) }.sorted()
+        return (orderedKeys + extraKeys).compactMap { key in
+            guard let b = buckets[key] else { return nil }
+            return StockCategoryBreakdown(
+                id: key,
+                emoji: b.emoji,
+                title: b.title,
+                count: b.count,
+                valueUSD: b.value
+            )
+        }
+    }
+
+    private func catalogCategoryPresentation(_ raw: String?) -> (key: String, emoji: String, title: String) {
+        let key = (raw ?? "other").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch key {
+        case "shoes": return ("shoes", "👞", "Shoes")
+        case "clothing": return ("clothing", "👔", "Clothing")
+        case "accessories": return ("accessories", "⌚", "Accessories")
+        case "vintage": return ("vintage", "🕰️", "Vintage")
+        case "new-drops", "new_drops": return ("new-drops", "✨", "New drops")
+        case "tops": return (ClothingCategory.tops.rawValue, ClothingCategory.tops.emoji, ClothingCategory.tops.displayName)
+        case "bags": return (ClothingCategory.bags.rawValue, ClothingCategory.bags.emoji, ClothingCategory.bags.displayName)
+        default:
+            if let cat = ClothingCategory(rawValue: key) {
+                return (cat.rawValue, cat.emoji, cat.displayName)
+            }
+            let title = key.replacingOccurrences(of: "-", with: " ").capitalized
+            return (key.isEmpty ? "other" : key, "📦", title.isEmpty ? "Other" : title)
+        }
+    }
+
+    private var filteredCatalogStockSections: [(meta: (key: String, emoji: String, title: String), products: [UpsoledProduct])] {
+        let grouped = Dictionary(grouping: filteredCatalogProducts) { catalogCategoryPresentation($0.category).key }
+        let orderedKeys = Self.stockSummaryCategoryOrder.filter { grouped[$0] != nil }
+        let extraKeys = grouped.keys.filter { !Self.stockSummaryCategoryOrder.contains($0) }.sorted()
+        return (orderedKeys + extraKeys).compactMap { key in
+            guard let products = grouped[key], !products.isEmpty else { return nil }
+            let sorted = StockFilterEngine.sortCatalogProducts(products, by: stockFilters.sort)
+            return (catalogCategoryPresentation(key), sorted)
+        }
     }
 
     /// Meta de onboarding: barra de 5 segmentos hasta tener 5 prendas guardadas.
@@ -260,7 +395,7 @@ struct ClosetView: View {
         } else {
             h = 72
         }
-        if closetSelectionMode, !closetSelectedIDs.isEmpty {
+        if closetSelectionMode, !closetSelectedIDs.isEmpty || !catalogSelectedIDs.isEmpty {
             h += 88
         }
         return h
@@ -280,17 +415,51 @@ struct ClosetView: View {
                     )
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 4)
                     .background(Color.white)
-                }
 
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        productsTabContent
+                    stockSelectionToolbar
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 6)
+                        .background(Color.white)
+
+                    StockBrowseFilterStrip(filters: $stockFilters) {
+                        showStockFiltersSheet = true
+                    }
+                    .padding(.bottom, stockLayoutModeBinding.wrappedValue == .list ? 6 : 10)
+                    .background(Color.white)
+
+                    if stockLayoutModeBinding.wrappedValue == .list {
+                        StockBrowseFilterSortBar(filters: $stockFilters) {
+                            showStockFiltersSheet = true
+                        }
+                        .padding(.bottom, 10)
+                        .background(Color.white)
                     }
                 }
-                .refreshable {
-                    await catalogVM.reload()
+
+                ScrollViewReader { scrollProxy in
+                    ScrollView(showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Color.clear
+                                .frame(height: 1)
+                                .id("stockScrollTop")
+                            productsTabContent
+                        }
+                    }
+                    .refreshable {
+                        await catalogVM.reload()
+                    }
+                    .onChange(of: stockFilters.quickCategory) { _, _ in
+                        withAnimation(.easeOut(duration: 0.28)) {
+                            scrollProxy.scrollTo("stockScrollTop", anchor: .top)
+                        }
+                    }
+                    .onChange(of: stockFilters.categoryKeys) { _, _ in
+                        withAnimation(.easeOut(duration: 0.28)) {
+                            scrollProxy.scrollTo("stockScrollTop", anchor: .top)
+                        }
+                    }
                 }
             }
 
@@ -298,8 +467,8 @@ struct ClosetView: View {
                 draftResumeBanner
             }
 
-            if closetSelectionMode, !closetSelectedIDs.isEmpty {
-                closetBulkDeleteBar
+            if closetSelectionMode, !closetSelectedIDs.isEmpty || !catalogSelectedIDs.isEmpty {
+                stockBulkActionBar
             }
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -312,6 +481,12 @@ struct ClosetView: View {
             ClosetInventoryRepair.backfillSKUFromNames(in: modelContext)
             catalogVM.fetchLimit = 750
             await catalogVM.reload()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .closetInventoryDidChange)) { _ in
+            Task { await catalogVM.reload() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .upsoledCatalogDidChange)) { _ in
+            Task { await catalogVM.reload() }
         }
         .sheet(isPresented: $showAddMenuSheet) {
             addToClosetIntroSheet
@@ -425,6 +600,23 @@ struct ClosetView: View {
                 .presentationDetents([.large])
                 .preferredColorScheme(.light)
         }
+        .sheet(isPresented: $showBulkCategorySheet) {
+            BulkStockCategorySheet(
+                selectionCount: closetSelectedIDs.count + catalogSelectedIDs.count,
+                onApplyClothing: { applyBulkCategory($0) }
+            )
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showStockFiltersSheet) {
+            StockBrowseFiltersSheet(
+                filters: $stockFilters,
+                closetItems: activeClosetItems,
+                catalogProducts: catalogVM.products
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
         .fullScreenCover(isPresented: $showBarcodeScanner) {
             StockBarcodeScannerScreen(
                 onCode: { code in
@@ -450,53 +642,65 @@ struct ClosetView: View {
             .presentationDragIndicator(.visible)
         }
         .overlay {
-            if scanLookupBusy {
+            if scanLookupBusy || catalogDetailBusy {
                 ZStack {
                     Color.black.opacity(0.25).ignoresSafeArea()
-                    ProgressView(L10n.tr("price.searching"))
+                    ProgressView(catalogDetailBusy ? "Opening item…" : L10n.tr("price.searching"))
                         .padding(20)
                         .background(RoundedRectangle(cornerRadius: 16).fill(Color.white))
                 }
             }
         }
         .confirmationDialog(
-            "Delete this item from your closet?",
+            (removalRequest?.totalCount ?? 0) <= 1
+                ? L10n.tr("sold.removalDialogTitle")
+                : L10n.tr("sold.removalBulkTitle"),
             isPresented: Binding(
-                get: { closetItemPendingDelete != nil },
-                set: { if !$0 { closetItemPendingDelete = nil } }
+                get: { removalRequest != nil },
+                set: { if !$0 { removalRequest = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("Delete", role: .destructive) {
-                if let item = closetItemPendingDelete {
-                    deleteClosetItem(item)
+            Button(L10n.tr("sold.removalSoldAction")) {
+                if let request = removalRequest {
+                    Task { await applyStockRemoval(reason: .sold, request: request) }
                 }
-                closetItemPendingDelete = nil
+                removalRequest = nil
             }
-            Button("Cancel", role: .cancel) {
-                closetItemPendingDelete = nil
+            Button(L10n.tr("sold.removalDiscontinuedAction"), role: .destructive) {
+                if let request = removalRequest {
+                    Task { await applyStockRemoval(reason: .discontinued, request: request) }
+                }
+                removalRequest = nil
             }
-        } message: {
-            if let item = closetItemPendingDelete {
-                Text("“\(item.name)” and its files on this device will be deleted.")
+            Button(L10n.tr("common.close"), role: .cancel) {
+                removalRequest = nil
             }
-        }
-        .alert(
-            closetSelectedIDs.count <= 1
-                ? "Delete this item from your closet?"
-                : "Delete \(closetSelectedIDs.count) items?",
-            isPresented: $confirmBulkDelete
-        ) {
-            Button("Delete", role: .destructive) {
-                bulkDeleteSelectedClosetItems()
-            }
-            Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                closetSelectedIDs.count <= 1
-                    ? "Its files on this device will be deleted."
-                    : "Selected items and their local files will be deleted."
+                (removalRequest?.totalCount ?? 0) <= 1
+                    ? L10n.tr("sold.removalDialogMessage")
+                    : L10n.tr("sold.removalBulkMessage")
             )
+        }
+        .alert(
+            L10n.tr("sold.deletePermanently"),
+            isPresented: Binding(
+                get: { permanentDeleteItem != nil },
+                set: { if !$0 { permanentDeleteItem = nil } }
+            )
+        ) {
+            Button(L10n.tr("sold.deletePermanently"), role: .destructive) {
+                if let item = permanentDeleteItem {
+                    permanentlyDeleteClosetItem(item)
+                }
+                permanentDeleteItem = nil
+            }
+            Button(L10n.tr("common.close"), role: .cancel) {
+                permanentDeleteItem = nil
+            }
+        } message: {
+            Text(L10n.tr("sold.deletePermanentlyConfirm"))
         }
     }
 
@@ -670,116 +874,205 @@ struct ClosetView: View {
         .padding(.horizontal, 16)
     }
 
-    private var closetBulkDeleteBar: some View {
-        Button {
-            confirmBulkDelete = true
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "trash.fill")
-                Text("Delete (\(closetSelectedIDs.count))")
-                    .font(.system(size: 17, weight: .semibold))
+    private var stockSelectionToolbar: some View {
+        HStack(spacing: 12) {
+            Button {
+                if closetSelectionMode {
+                    closetSelectionMode = false
+                    closetSelectedIDs.removeAll()
+                    catalogSelectedIDs.removeAll()
+                } else {
+                    closetSelectionMode = true
+                }
+            } label: {
+                Text(closetSelectionMode ? "Done" : "Select")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.black)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(Color.black.opacity(0.06)))
             }
-            .foregroundStyle(Color.white)
-            .frame(maxWidth: .infinity, minHeight: 56)
-            .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(ClosetFlowPalette.destructive))
+            .buttonStyle(.plain)
+
+            if closetSelectionMode {
+                Text("\(closetSelectedIDs.count + catalogSelectedIDs.count) selected")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.45))
+            }
+
+            Spacer()
         }
-        .buttonStyle(.plain)
+    }
+
+    private var stockBulkActionBar: some View {
+        VStack(spacing: 10) {
+            Button {
+                showBulkCategorySheet = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "tag.fill")
+                    Text("Change category (\(closetSelectedIDs.count + catalogSelectedIDs.count))")
+                        .font(.system(size: 17, weight: .semibold))
+                }
+                .foregroundStyle(Color.white)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color.black))
+            }
+            .buttonStyle(.plain)
+
+            if !closetSelectedIDs.isEmpty || !catalogSelectedIDs.isEmpty {
+                Button {
+                    removalRequest = StockRemovalRequest(
+                        closetIDs: closetSelectedIDs,
+                        catalogIDs: catalogSelectedIDs
+                    )
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "trash.fill")
+                        Text("Remove (\(closetSelectedIDs.count + catalogSelectedIDs.count))")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.white)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(ClosetFlowPalette.destructive))
+                }
+                .buttonStyle(.plain)
+            }
+        }
         .padding(.horizontal, 20)
         .padding(.bottom, 94)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
-        .animation(.easeOut(duration: 0.2), value: closetSelectedIDs.count)
     }
 
-    /// Quita ficheros del sandbox y el registro en SwiftData.
-    private func deleteClosetItem(_ item: ClosetItem) {
-        ImageStore.deleteIfExists(item.imageFilename)
-        if let path = item.originalCropFilename {
-            ImageStore.deleteIfExists(path)
+    @MainActor
+    private func openCatalogDetail(_ product: UpsoledProduct) {
+        Task {
+            catalogDetailBusy = true
+            defer { catalogDetailBusy = false }
+            let item = await CatalogClosetBridge.ensureClosetItem(for: product, in: modelContext)
+            garmentDetailSheetItem = item
+            ClosetAnalytics.named("closet_item_detail_open")
         }
-        if let path = item.sourceOutfitFilename {
-            ImageStore.deleteIfExists(path)
-        }
-        for path in item.multiAngleFilenames {
-            ImageStore.deleteIfExists(path)
-        }
-        for path in item.lookbookStudio {
-            ImageStore.deleteIfExists(path)
-        }
-        for path in item.lookbookLifestyle {
-            ImageStore.deleteIfExists(path)
-        }
-        for path in item.spin360Filenames {
-            ImageStore.deleteIfExists(path)
-        }
-        modelContext.delete(item)
-        try? modelContext.save()
-        ClosetAnalytics.named("closet_item_deleted")
     }
 
-    private func bulkDeleteSelectedClosetItems() {
-        let toRemove = closetItems.filter { closetSelectedIDs.contains($0.id) }
-        guard !toRemove.isEmpty else {
-            confirmBulkDelete = false
-            return
-        }
-        for item in toRemove {
-            ImageStore.deleteIfExists(item.imageFilename)
-            if let path = item.originalCropFilename { ImageStore.deleteIfExists(path) }
-            if let path = item.sourceOutfitFilename { ImageStore.deleteIfExists(path) }
-            for path in item.multiAngleFilenames { ImageStore.deleteIfExists(path) }
-            for path in item.lookbookStudio { ImageStore.deleteIfExists(path) }
-            for path in item.lookbookLifestyle { ImageStore.deleteIfExists(path) }
-            for path in item.spin360Filenames { ImageStore.deleteIfExists(path) }
-            modelContext.delete(item)
+    @MainActor
+    private func applyBulkCategory(_ category: ClothingCategory) {
+        let closetItemsToUpdate = closetItems.filter { closetSelectedIDs.contains($0.id) }
+        for item in closetItemsToUpdate {
+            item.categoryRaw = category.rawValue
+            CatalogClosetBridge.syncClosetItemEditsToCatalog(item)
         }
         try? modelContext.save()
-        ClosetAnalytics.named("closet_items_deleted_bulk", params: "count:\(toRemove.count)")
+
+        let catalogIds = catalogSelectedIDs
+        for product in catalogVM.products where catalogIds.contains(product.id) {
+            var draft = ProductDraft.from(product)
+            draft.category = CatalogClosetBridge.catalogCategoryString(from: category)
+            catalogVM.persistEditLocally(product, draft: draft)
+        }
+
         closetSelectedIDs.removeAll()
+        catalogSelectedIDs.removeAll()
         closetSelectionMode = false
-        confirmBulkDelete = false
+        showBulkCategorySheet = false
+    }
+
+    /// Quita ficheros, SwiftData y fila vinculada en Supabase.
+    private func permanentlyDeleteClosetItem(_ item: ClosetItem) {
+        let id = item.id
+        Task {
+            await CatalogClosetBridge.deleteLinkedCatalogProduct(forClosetItem: id)
+            await MainActor.run {
+                ClosetInventoryRepair.permanentlyDeleteClosetItem(item, in: modelContext)
+                ClosetAnalytics.named("closet_item_deleted")
+            }
+        }
+    }
+
+    private func purgeClosetItemFiles(_ item: ClosetItem) {
+        ClosetInventoryRepair.purgeClosetItemFiles(item)
+    }
+
+    @MainActor
+    private func applyStockRemoval(reason: StockRemovalReason, request: StockRemovalRequest) async {
+        var processedCloset = Set<UUID>()
+
+        for id in request.closetIDs {
+            guard let item = closetItems.first(where: { $0.id == id }) else { continue }
+            if reason == .discontinued {
+                await CatalogClosetBridge.deleteLinkedCatalogProduct(forClosetItem: id)
+                ClosetInventoryRepair.permanentlyDeleteClosetItem(item, in: modelContext)
+            } else {
+                applyRemovalReason(reason, to: item)
+                await CatalogClosetBridge.deleteLinkedCatalogProduct(forClosetItem: id)
+            }
+            processedCloset.insert(id)
+        }
+
+        for productId in request.catalogIDs {
+            if reason == .discontinued {
+                if let linked = CatalogClosetBridge.closetItemId(forCatalogProduct: productId),
+                   let item = closetItems.first(where: { $0.id == linked }),
+                   !processedCloset.contains(linked) {
+                    await CatalogClosetBridge.deleteLinkedCatalogProduct(forClosetItem: linked)
+                    ClosetInventoryRepair.permanentlyDeleteClosetItem(item, in: modelContext)
+                    processedCloset.insert(linked)
+                }
+                await catalogVM.deleteProduct(id: productId)
+            } else if let linked = CatalogClosetBridge.closetItemId(forCatalogProduct: productId),
+               let item = closetItems.first(where: { $0.id == linked }),
+               !processedCloset.contains(linked) {
+                applyRemovalReason(reason, to: item)
+                processedCloset.insert(linked)
+            } else if let product = catalogVM.products.first(where: { $0.id == productId }) {
+                let item = await CatalogClosetBridge.ensureClosetItem(for: product, in: modelContext)
+                applyRemovalReason(reason, to: item)
+                processedCloset.insert(item.id)
+            }
+            if reason != .discontinued {
+                await catalogVM.deleteProduct(id: productId)
+            }
+        }
+
+        if reason != .discontinued {
+            try? modelContext.save()
+        }
+        await catalogVM.reload()
+        closetSelectedIDs.removeAll()
+        catalogSelectedIDs.removeAll()
+        closetSelectionMode = false
+
+        switch reason {
+        case .sold:
+            addFlow.showToast(L10n.tr("sold.removalSoldToast"))
+        case .discontinued:
+            addFlow.showToast(L10n.tr("sold.removedToast"))
+        }
+        ClosetAnalytics.named("closet_stock_removed", params: "reason:\(reason.rawValue)")
+    }
+
+    private func applyRemovalReason(_ reason: StockRemovalReason, to item: ClosetItem) {
+        switch reason {
+        case .sold:
+            item.isSold = true
+            item.soldAt = Date()
+            item.deletedAt = nil
+            item.deletionReasonRaw = nil
+        case .discontinued:
+            item.isSold = false
+            item.soldAt = nil
+            item.deletedAt = Date()
+            item.deletionReasonRaw = StockRemovalReason.discontinued.rawValue
+        }
     }
 
     /// Productos · stock por categorías.
     @ViewBuilder
     private var productsTabContent: some View {
-        if !activeClosetItems.isEmpty {
-            let totalValue = filteredActiveClosetItems.reduce(0.0) { $0 + $1.stockValueUSD }
-            let invested = filteredActiveClosetItems.reduce(0.0) { $0 + $1.purchaseValueUSD }
-            let profit = filteredActiveClosetItems.reduce(0.0) { $0 + $1.projectedProfitUSD }
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(filteredActiveClosetItems.count) items")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.black.opacity(0.72))
-                    Text(PieceMarketPrice.formatUSD(Int(totalValue.rounded())))
-                        .font(.system(size: 22, weight: .heavy))
-                        .foregroundStyle(Color.black)
-                    Text("Market value")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.black.opacity(0.45))
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 4) {
-                    if invested > 0 {
-                        Text(PieceMarketPrice.formatUSD(Int(invested.rounded())))
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color.black.opacity(0.55))
-                        Text("Invested")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color.black.opacity(0.45))
-                    }
-                    if profit != 0 || invested > 0 {
-                        Text(profit >= 0 ? "+\(PieceMarketPrice.formatUSD(Int(profit.rounded())))" : "−\(PieceMarketPrice.formatUSD(Int(abs(profit).rounded())))")
-                            .font(.system(size: 22, weight: .heavy))
-                            .foregroundStyle(profit >= 0 ? Color(red: 0.20, green: 0.70, blue: 0.45) : Color(red: 0.92, green: 0.30, blue: 0.30))
-                        Text("Potential profit")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color.black.opacity(0.45))
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 4)
+        if hasAnyStockContent, stockGrandTotalCount > 0 {
+            stockSummaryCard
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
         }
 
         if showsClosetStarterProgress, activeClosetItems.isEmpty {
@@ -790,7 +1083,9 @@ struct ClosetView: View {
         }
 
         if hasAnyStockContent, filteredActiveClosetItems.isEmpty, filteredCatalogProducts.isEmpty {
-            Text(L10n.tr("closet.searchEmpty"))
+            Text(stockFilters.isActive || !stockSearchQuery.isEmpty
+                ? "No items match your filters."
+                : L10n.tr("closet.searchEmpty"))
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Color.black.opacity(0.45))
                 .frame(maxWidth: .infinity)
@@ -806,91 +1101,224 @@ struct ClosetView: View {
         }
 
         if !filteredCatalogProducts.isEmpty {
-            catalogStockSection
+            if stockLayoutModeBinding.wrappedValue == .list {
+                flatCatalogListSection
+            } else {
+                catalogStockSection
+            }
         }
 
         if !filteredActiveClosetItems.isEmpty {
-            LazyVStack(alignment: .leading, spacing: 24) {
-                ForEach(filteredClosetStockSections) { section in
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text("\(section.category.emoji) \(section.category.displayName)")
-                                .font(.system(size: 17, weight: .bold))
-                                .foregroundStyle(Color.black)
-                            Spacer(minLength: 8)
-                            Text("\(section.items.count)")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Color.black.opacity(0.42))
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 4)
-                                .background(
-                                    Capsule(style: .continuous)
-                                        .stroke(Color.black.opacity(0.12), lineWidth: 1)
-                                )
-                        }
-                        .padding(.horizontal, 16)
-
-                        if stockLayoutModeBinding.wrappedValue == .grid {
-                            LazyVGrid(columns: gridColumns, spacing: 12) {
-                                ForEach(section.items) { item in
-                                    closetCell(item)
-                                        .padding(.top, 10)
-                                }
-                            }
-                            .padding(.horizontal, 8)
-                        } else {
-                            LazyVStack(spacing: 10) {
-                                ForEach(section.items) { item in
-                                    closetListRow(item)
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                        }
-                    }
-                }
+            if stockLayoutModeBinding.wrappedValue == .list {
+                flatClosetListSection
+            } else {
+                sectionedClosetStockContent
             }
-            .padding(.bottom, bottomInsetForClosetGrid)
         }
     }
 
-    /// Rejilla del catálogo Supabase (misma tarjeta que Marketplace / pestaña Sold).
-    private var catalogStockSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("Sneak Peek catalog")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(Color.black)
-                Spacer(minLength: 8)
-                Text("\(filteredCatalogProducts.count)")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.42))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule(style: .continuous)
-                            .stroke(Color.black.opacity(0.12), lineWidth: 1)
-                    )
-            }
-            .padding(.horizontal, 16)
+    private var sectionedClosetStockContent: some View {
+        LazyVStack(alignment: .leading, spacing: 24) {
+            ForEach(filteredClosetStockSections) { section in
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(section.category.emoji) \(section.category.displayName)")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(Color.black)
+                        Spacer(minLength: 8)
+                        Text(PieceMarketPrice.formatUSD(Int(section.totalValueUSD.rounded())))
+                            .font(.system(size: 13, weight: .heavy, design: .rounded))
+                            .foregroundStyle(Color.black.opacity(0.72))
+                        Text("\(section.items.count)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.black.opacity(0.42))
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                            )
+                    }
+                    .padding(.horizontal, 16)
 
-            if stockLayoutModeBinding.wrappedValue == .grid {
-                LazyVGrid(columns: gridColumns, spacing: 12) {
-                    ForEach(filteredCatalogProducts) { product in
-                        UpsoledProductCard(product: product)
-                            .padding(.top, 10)
+                    LazyVGrid(columns: gridColumns, spacing: 12) {
+                        ForEach(section.items) { item in
+                            closetCell(item)
+                                .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")")
+                                .padding(.top, 10)
+                        }
                     }
+                    .padding(.horizontal, 8)
                 }
-                .padding(.horizontal, 8)
-            } else {
-                LazyVStack(spacing: 10) {
-                    ForEach(filteredCatalogProducts) { product in
-                        UpsoledProductCard(product: product)
-                    }
+            }
+        }
+        .padding(.bottom, bottomInsetForClosetGrid)
+    }
+
+    private var flatClosetListSection: some View {
+        LazyVStack(spacing: 0) {
+            if !filteredCatalogProducts.isEmpty {
+                Divider()
+                    .overlay(Color.black.opacity(0.08))
+            }
+            ForEach(Array(filteredActiveClosetItems.enumerated()), id: \.element.id) { index, item in
+                closetListRow(item)
+                    .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")")
+                if index < filteredActiveClosetItems.count - 1 {
+                    StockMarketplaceListDivider()
                 }
-                .padding(.horizontal, 16)
+            }
+        }
+        .padding(.bottom, bottomInsetForClosetGrid)
+    }
+
+    private var flatCatalogListSection: some View {
+        LazyVStack(spacing: 0) {
+            ForEach(Array(filteredCatalogProducts.enumerated()), id: \.element.id) { index, product in
+                catalogListRow(product)
+                if index < filteredCatalogProducts.count - 1 {
+                    StockMarketplaceListDivider()
+                }
             }
         }
         .padding(.bottom, filteredActiveClosetItems.isEmpty ? bottomInsetForClosetGrid : 0)
+    }
+
+    /// Catálogo Supabase agrupado por categoría (misma tarjeta que Marketplace).
+    private var catalogStockSection: some View {
+        LazyVStack(alignment: .leading, spacing: 24) {
+            ForEach(filteredCatalogStockSections, id: \.meta.key) { section in
+                VStack(alignment: .leading, spacing: 10) {
+                    catalogSectionHeader(
+                        emoji: section.meta.emoji,
+                        title: section.meta.title,
+                        count: section.products.count,
+                        valueUSD: section.products.reduce(0) { $0 + $1.stockValueUSD }
+                    )
+
+                    LazyVGrid(columns: gridColumns, spacing: 12) {
+                        ForEach(section.products) { product in
+                            UpsoledProductCard(
+                                product: product,
+                                selectionMode: closetSelectionMode,
+                                isSelected: catalogSelectedIDs.contains(product.id)
+                            ) {
+                                if closetSelectionMode {
+                                    toggleCatalogSelection(product)
+                                } else {
+                                    openCatalogDetail(product)
+                                }
+                            }
+                            .padding(.top, 10)
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                }
+            }
+        }
+        .padding(.bottom, filteredActiveClosetItems.isEmpty ? bottomInsetForClosetGrid : 0)
+    }
+
+    private func catalogSectionHeader(emoji: String, title: String, count: Int, valueUSD: Double) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(emoji) \(title)")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(Color.black)
+            Spacer(minLength: 8)
+            Text(PieceMarketPrice.formatUSD(Int(valueUSD.rounded())))
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .foregroundStyle(Color.black.opacity(0.72))
+            Text("\(count)")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.42))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule(style: .continuous)
+                        .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                )
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private var stockSummaryCard: some View {
+        let invested = stockClosetInvestedUSD
+        let profit = stockClosetProfitUSD
+
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("TOTAL STOCK")
+                        .font(.system(size: 10, weight: .heavy))
+                        .tracking(0.8)
+                        .foregroundStyle(Color.black.opacity(0.45))
+                    Text(PieceMarketPrice.formatUSD(Int(stockGrandTotalValueUSD.rounded())))
+                        .font(.system(size: 28, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.black)
+                    Text("\(stockGrandTotalCount) items · all categories")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.48))
+                }
+                Spacer(minLength: 0)
+                if invested > 0 || profit != 0 {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        if invested > 0 {
+                            Text(PieceMarketPrice.formatUSD(Int(invested.rounded())))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color.black.opacity(0.55))
+                            Text("Invested")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Color.black.opacity(0.42))
+                        }
+                        if profit != 0 || invested > 0 {
+                            Text(profit >= 0 ? "+\(PieceMarketPrice.formatUSD(Int(profit.rounded())))" : "−\(PieceMarketPrice.formatUSD(Int(abs(profit).rounded())))")
+                                .font(.system(size: 16, weight: .heavy, design: .rounded))
+                                .foregroundStyle(profit >= 0 ? Color(red: 0.20, green: 0.70, blue: 0.45) : Color(red: 0.92, green: 0.30, blue: 0.30))
+                            Text("Potential profit")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Color.black.opacity(0.42))
+                        }
+                    }
+                }
+            }
+
+            if !stockCategoryBreakdowns.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(stockCategoryBreakdowns) { row in
+                        HStack(spacing: 10) {
+                            Text(row.emoji)
+                                .font(.system(size: 16))
+                            Text(row.title)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color.black.opacity(0.82))
+                            Spacer(minLength: 8)
+                            Text("\(row.count)")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.black.opacity(0.45))
+                                .frame(minWidth: 22, alignment: .trailing)
+                            Text(PieceMarketPrice.formatUSD(Int(row.valueUSD.rounded())))
+                                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                                .foregroundStyle(Color.black.opacity(0.88))
+                                .frame(minWidth: 56, alignment: .trailing)
+                        }
+                        .padding(.vertical, 9)
+                        if row.id != stockCategoryBreakdowns.last?.id {
+                            Divider().opacity(0.35)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                }
+                .shadow(color: Color.black.opacity(0.04), radius: 10, y: 4)
+        }
     }
 
     @MainActor
@@ -906,95 +1334,80 @@ struct ClosetView: View {
         )
     }
 
+    private func toggleClosetSelection(_ item: ClosetItem) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if closetSelectedIDs.contains(item.id) {
+                closetSelectedIDs.remove(item.id)
+            } else {
+                closetSelectedIDs.insert(item.id)
+            }
+        }
+    }
+
+    private func toggleCatalogSelection(_ product: UpsoledProduct) {
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if catalogSelectedIDs.contains(product.id) {
+                catalogSelectedIDs.remove(product.id)
+            } else {
+                catalogSelectedIDs.insert(product.id)
+            }
+        }
+    }
+
+    private func stockListBrandLine(_ brand: String?) -> String {
+        let trimmed = brand?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty, trimmed.lowercased() != "unknown brand" else {
+            return "Unknown Brand"
+        }
+        return trimmed
+    }
+
     private func closetListRow(_ item: ClosetItem) -> some View {
         let selected = closetSelectedIDs.contains(item.id)
-        return HStack(alignment: .center, spacing: 12) {
-            ZStack(alignment: .topTrailing) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.white)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
-                        }
-                    ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
-                        .padding(6)
-                        .scaledToFit()
-                }
-                .frame(width: 76, height: 76)
-
-                if item.hasPricingForProfit, !closetSelectionMode {
-                    closetProfitCornerBadge(item)
-                        .scaleEffect(0.82)
-                        .offset(x: 6, y: -8)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text((item.brand ?? "Unknown Brand").uppercased())
-                    .font(.system(size: 10, weight: .heavy))
-                    .tracking(0.6)
-                    .foregroundStyle(Color.black.opacity(0.55))
-                    .lineLimit(1)
-
-                Text(item.catalogDisplayName)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Color.black.opacity(0.88))
-                    .lineLimit(2)
-
-                if let sku = item.cardSKULabel {
-                    Text(sku)
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(Color.black.opacity(0.55))
-                }
-
-                HStack(spacing: 8) {
-                    if let size = item.cardSizeLabel {
-                        Text(size)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Color.black.opacity(0.45))
-                    }
-                    if let price = item.cardPriceLabel {
-                        Text(price)
-                            .font(.system(size: 11, weight: .heavy))
-                            .foregroundStyle(Color.black.opacity(0.72))
-                    }
-                }
-            }
-
-            Spacer(minLength: 0)
-
+        return StockMarketplaceListRow(
+            seriesLine: stockListBrandLine(item.brand),
+            nameLine: item.catalogDisplayName,
+            price: item.cardPriceLabel,
+            size: item.cardSizeLabel,
+            profitUSD: item.cardProfitUSDLabel,
+            profitPct: item.cardProfitPercentLabel,
+            isLoss: item.isProjectedLoss,
+            showProfitBadge: item.hasPricingForProfit,
+            selectionMode: closetSelectionMode,
+            isSelected: selected
+        ) {
             if closetSelectionMode {
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 22))
-                    .foregroundStyle(selected ? Color.black : Color.black.opacity(0.25))
-            } else {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.25))
-            }
-        }
-        .padding(12)
-        .background {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.white)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
-                }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if closetSelectionMode {
-                if selected {
-                    closetSelectedIDs.remove(item.id)
-                } else {
-                    closetSelectedIDs.insert(item.id)
-                }
+                toggleClosetSelection(item)
             } else {
                 garmentDetailSheetItem = item
                 ClosetAnalytics.named("closet_item_detail_open")
             }
+        } image: {
+            ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
+        }
+    }
+
+    private func catalogListRow(_ product: UpsoledProduct) -> some View {
+        let selected = catalogSelectedIDs.contains(product.id)
+        return StockMarketplaceListRow(
+            seriesLine: stockListBrandLine(product.brand),
+            nameLine: product.name,
+            price: product.cardPriceLabel,
+            size: product.cardSizeLabel,
+            profitUSD: product.cardProfitUSDLabel,
+            profitPct: product.cardProfitPercentLabel,
+            isLoss: product.isProjectedLoss,
+            showProfitBadge: product.hasPricingForProfit,
+            selectionMode: closetSelectionMode,
+            isSelected: selected
+        ) {
+            if closetSelectionMode {
+                toggleCatalogSelection(product)
+            } else {
+                openCatalogDetail(product)
+            }
+        } image: {
+            StockCachedRemoteImage(url: product.primaryImageURL)
         }
     }
 
@@ -1205,14 +1618,10 @@ struct ClosetView: View {
         return VStack(spacing: 9) {
             ZStack(alignment: .topTrailing) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(Color.white)
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                    Color.white
 
                     ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
                         .padding(4)
-                        .scaledToFit()
 
                     VStack {
                         Spacer()
@@ -1241,6 +1650,7 @@ struct ClosetView: View {
 
                     if closetSelectionMode {
                         Color.black.opacity(selected ? 0.12 : 0)
+                            .animation(.easeInOut(duration: 0.18), value: selected)
 
                         VStack {
                             HStack {
@@ -1264,9 +1674,7 @@ struct ClosetView: View {
                             Spacer()
                         }
                         .allowsHitTesting(false)
-
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(selected ? Color.black : Color.clear, lineWidth: 3)
+                        .animation(.easeInOut(duration: 0.18), value: selected)
                     }
                 }
                 .aspectRatio(1, contentMode: .fit)
@@ -1304,11 +1712,7 @@ struct ClosetView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             if closetSelectionMode {
-                if selected {
-                    closetSelectedIDs.remove(item.id)
-                } else {
-                    closetSelectedIDs.insert(item.id)
-                }
+                toggleClosetSelection(item)
             } else {
                 garmentDetailSheetItem = item
                 ClosetAnalytics.named("closet_item_detail_open")
@@ -1317,9 +1721,9 @@ struct ClosetView: View {
         .contextMenu {
             if !closetSelectionMode {
                 Button(role: .destructive) {
-                    closetItemPendingDelete = item
+                    removalRequest = StockRemovalRequest(closetIDs: [item.id], catalogIDs: [])
                 } label: {
-                    Label("Delete item", systemImage: "trash")
+                    Label(L10n.tr("closet.removeItem"), systemImage: "trash")
                 }
             }
         }
@@ -1327,30 +1731,11 @@ struct ClosetView: View {
 
     @ViewBuilder
     private func closetProfitCornerBadge(_ item: ClosetItem) -> some View {
-        let isLoss = item.isProjectedLoss
-        let tint = isLoss
-            ? Color(red: 0.92, green: 0.30, blue: 0.30)
-            : Color(red: 0.20, green: 0.70, blue: 0.45)
-
-        VStack(alignment: .trailing, spacing: 2) {
-            if let usd = item.cardProfitUSDLabel {
-                Text(usd)
-                    .font(.system(size: 11, weight: .heavy, design: .rounded))
-            }
-            if let pct = item.cardProfitPercentLabel {
-                Text(pct)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-            }
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(tint)
-                .shadow(color: tint.opacity(0.35), radius: 6, y: 2)
-        }
-        .allowsHitTesting(false)
+        StockProfitCornerBadge(
+            usdLabel: item.cardProfitUSDLabel,
+            pctLabel: item.cardProfitPercentLabel,
+            isLoss: item.isProjectedLoss
+        )
     }
 
     @MainActor
@@ -1950,7 +2335,7 @@ struct AddToClosetPipelineView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color(.systemGray6))
+                        .fill(Color.white)
                 }
             }
 
@@ -2073,7 +2458,7 @@ struct AddToClosetPipelineView: View {
         }
         .padding(12)
         .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(ClosetFlowPalette.mutedBackground)
+            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white)
         }
         .overlay(alignment: .topTrailing) {
             Button {
@@ -2295,7 +2680,12 @@ struct AddToClosetPipelineView: View {
             sizeText: sizeBinding,
             isBusy: isBusy,
             onRefresh: { Task { await runPriceLookup(for: piece) } },
-            onApplySize: { Task { await runPriceLookup(for: piece) } }
+            onApplySize: { Task { await runPriceLookup(for: piece) } },
+            onApplyMarketPrice: {
+                guard let idx = flow.pieces.firstIndex(where: { $0.id == piece.id }) else { return }
+                flow.pieces[idx].priceText = PieceMarketPrice.formatUSD(est.avg)
+                flow.persistPiecesForLater()
+            }
         )
     }
 
@@ -2414,6 +2804,7 @@ struct AddToClosetPipelineView: View {
                 ProgressView().tint(.black)
             }
         }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func categoryRow(_ piece: ClosetDraftPiece) -> some View {
@@ -2741,6 +3132,7 @@ struct ShoeMarketPriceCardView: View {
     var lastUpdated: Date? = nil
     var onRefresh: () -> Void
     var onApplySize: () -> Void
+    var onApplyMarketPrice: (() -> Void)? = nil
 
     private var tint: Color {
         estimate.isUp
@@ -2810,7 +3202,9 @@ struct ShoeMarketPriceCardView: View {
                             .foregroundStyle(Color.black.opacity(0.92))
                             .minimumScaleFactor(0.7)
                             .lineLimit(1)
-                        Text(estimate.sizeUsed != nil ? "size \(estimate.sizeUsed!)" : "average")
+                        Text(estimate.sizeUsed != nil
+                            ? (StockSizeDisplay.cardLabel(from: estimate.sizeUsed) ?? "size \(estimate.sizeUsed!)")
+                            : "average")
                             .font(.system(size: 10, weight: .heavy))
                             .tracking(0.6)
                             .foregroundStyle(Color.black.opacity(0.45))
@@ -2871,6 +3265,21 @@ struct ShoeMarketPriceCardView: View {
                     Spacer(minLength: 0)
                 }
             }
+
+            if let onApplyMarketPrice, estimate.avg > 0 {
+                Button(action: onApplyMarketPrice) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "tag.fill")
+                        Text("Use \(PieceMarketPrice.formatUSD(estimate.avg)) as asking price")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black))
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 14)
@@ -2905,15 +3314,11 @@ struct ShoeMarketPriceCardView: View {
     }
 
     private var marketSizeField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "ruler")
+        HStack(spacing: 6) {
+            Text("🇺🇸U.S")
                 .font(.system(size: 11, weight: .heavy))
-                .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.85))
-            Text("SIZE")
-                .font(.system(size: 9, weight: .heavy))
-                .tracking(0.6)
-                .foregroundStyle(Color.black.opacity(0.45))
-            TextField("US 10 · EU 44 · 10.5", text: $sizeText)
+                .foregroundStyle(Color.black.opacity(0.72))
+            TextField("11", text: $sizeText)
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.black.opacity(0.85))
                 .textInputAutocapitalization(.never)
@@ -4069,5 +4474,48 @@ enum KicksDBClient {
             matchedSKU: matchedSKU,
             sizeUsed: sizeUsed
         )
+    }
+}
+
+// MARK: - Bulk category picker
+
+private struct BulkStockCategorySheet: View {
+    let selectionCount: Int
+    let onApplyClothing: (ClothingCategory) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("Apply category to \(selectionCount) items")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                }
+
+                Section("Category") {
+                    ForEach(ClothingCategory.allCases, id: \.rawValue) { cat in
+                        Button {
+                            onApplyClothing(cat)
+                            dismiss()
+                        } label: {
+                            HStack {
+                                Text("\(cat.emoji) \(cat.displayName)")
+                                    .foregroundStyle(Color.black)
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Change category")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .preferredColorScheme(.light)
     }
 }

@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import Combine
 
 struct DashboardView: View {
     @EnvironmentObject private var auth: AuthViewModel
@@ -8,27 +9,73 @@ struct DashboardView: View {
     @EnvironmentObject private var tabRouter: MainTabRouter
     @Query(sort: \ClosetItem.createdAt, order: .reverse) private var closetItems: [ClosetItem]
     @StateObject private var vm = DealershipStatsViewModel()
+    @StateObject private var homeCatalogVM = UpsoledProductsViewModel()
     @EnvironmentObject private var communityVM: DashboardCommunityViewModel
     @EnvironmentObject private var chatInbox: ChatInboxStore
     @EnvironmentObject private var chatNav: ChatNavigationCoordinator
     @StateObject private var locationHub = DashboardLocationHub()
     @State private var didAppear = false
 
-    var body: some View {
-        ZStack {
-            Color.white
-                .ignoresSafeArea()
+    private var closetInventoryFingerprint: String {
+        closetItems.map { item in
+            "\(item.id.uuidString):\(item.isSold):\(Int(item.stockValueUSD)):\(item.priceText ?? ""):\(item.marketPriceJSON ?? "")"
+        }.joined(separator: "|")
+    }
 
+    var body: some View {
+        dashboardContent
+            .onAppear(perform: handleDashboardAppear)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .environment(\.dashboardLightSurface, true)
+            .preferredColorScheme(.light)
+            .navigationTitle(L10n.tr("tab.dashboard"))
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar { dashboardToolbar }
+            .task(id: auth.session?.user.id) {
+                if let uid = auth.session?.user.id {
+                    await chatInbox.refreshCoordinatorTasksFromServer(currentUserId: uid)
+                }
+            }
+            .onAppear {
+                locationHub.onLocationForUpload = { coord in
+                    Task { await communityVM.uploadMyCoordinate(coord) }
+                }
+                locationHub.requestWhenInUseAndStart()
+            }
+            .onDisappear { locationHub.stopUpdates() }
+            .task(id: carsVM.cars.count) { await refreshHomeStats() }
+            .onChange(of: carsVM.cars) { _, _ in Task { await refreshHomeStats() } }
+            .onChange(of: closetItems.count) { _, _ in Task { await refreshHomeStats() } }
+            .onChange(of: closetInventoryFingerprint) { _, _ in Task { await refreshHomeStats() } }
+            .onChange(of: homeCatalogVM.products.count) { _, _ in
+                vm.refreshFromInventory(
+                    cars: carsVM.cars,
+                    closetItems: closetItems,
+                    catalogProducts: homeCatalogVM.products
+                )
+            }
+            .onReceive(inventoryRefreshPublisher) { _ in
+                Task { await refreshHomeStats() }
+            }
+    }
+
+    private var inventoryRefreshPublisher: AnyPublisher<Notification, Never> {
+        NotificationCenter.default.publisher(for: .upsoledCatalogDidChange)
+            .merge(with: NotificationCenter.default.publisher(for: .closetInventoryDidChange))
+            .eraseToAnyPublisher()
+    }
+
+    private var dashboardContent: some View {
+        ZStack {
+            Color.white.ignoresSafeArea()
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     DashboardHeroBannerCard(onExplore: { tabRouter.selected = .closet })
                         .padding(.top, 12)
                         .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.05))
-
                     DashboardStatsOverview(stats: vm)
                         .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.15))
-
-                    DashboardLatestSaleSection(cars: carsVM.cars)
+                    DashboardLatestSaleSection(closetItems: closetItems, cars: carsVM.cars)
                         .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.22))
                 }
                 .padding(.horizontal, 16)
@@ -36,60 +83,42 @@ struct DashboardView: View {
                 .frame(minWidth: 0, maxWidth: .infinity)
             }
         }
-        .onAppear {
-            // Pequeño delay para asegurar que la transición se vea
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                didAppear = true
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .environment(\.dashboardLightSurface, true)
-        .preferredColorScheme(.light)
-        .navigationTitle(L10n.tr("tab.dashboard"))
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    ClosetAnalytics.named("add_to_closet_opened")
-                    tabRouter.selected = .closet
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        NotificationCenter.default.post(name: .upsoledPresentAddToClosetMenu, object: nil)
-                    }
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 22, weight: .semibold))
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(Color.white, Color.black)
+    }
+
+    @ToolbarContentBuilder
+    private var dashboardToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                ClosetAnalytics.named("add_to_closet_opened")
+                tabRouter.selected = .closet
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    NotificationCenter.default.post(name: .upsoledPresentAddToClosetMenu, object: nil)
                 }
-                .accessibilityLabel(L10n.tr("dashboard.quickAdd"))
+            } label: {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(Color.white, Color.black)
             }
+            .accessibilityLabel(L10n.tr("dashboard.quickAdd"))
         }
-        .task(id: auth.session?.user.id) {
-            if let uid = auth.session?.user.id {
-                await chatInbox.refreshCoordinatorTasksFromServer(currentUserId: uid)
-            }
+    }
+
+    private func handleDashboardAppear() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            didAppear = true
         }
-        .onAppear {
-            locationHub.onLocationForUpload = { coord in
-                Task { await communityVM.uploadMyCoordinate(coord) }
-            }
-            locationHub.requestWhenInUseAndStart()
-        }
-        .onDisappear {
-            locationHub.stopUpdates()
-        }
-        .task(id: carsVM.cars.count) {
-            vm.refreshFromInventory(cars: carsVM.cars, closetItems: closetItems)
-        }
-        .onChange(of: carsVM.cars) { _, newCars in
-            vm.refreshFromInventory(cars: newCars, closetItems: closetItems)
-        }
-        .onChange(of: closetItems.count) { _, _ in
-            vm.refreshFromInventory(cars: carsVM.cars, closetItems: closetItems)
-        }
-        .onChange(of: closetItems.map { "\($0.id.uuidString):\($0.isExplicitlySold)" }.joined(separator: "|")) { _, _ in
-            vm.refreshFromInventory(cars: carsVM.cars, closetItems: closetItems)
-        }
+    }
+
+    @MainActor
+    private func refreshHomeStats() async {
+        homeCatalogVM.fetchLimit = 750
+        await homeCatalogVM.reload()
+        vm.refreshFromInventory(
+            cars: carsVM.cars,
+            closetItems: closetItems,
+            catalogProducts: homeCatalogVM.products
+        )
     }
 }
 
@@ -133,88 +162,246 @@ struct DashboardHomeLightBackdrop: View {
 
 // MARK: - Stats Overview (KPIs principales)
 
-/// Tarjeta grande con valor total + 2 metric pills (vehículos / operaciones del mes).
 private struct DashboardStatsOverview: View {
     @ObservedObject var stats: DealershipStatsViewModel
 
+    private let columns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12),
+    ]
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // Card principal valor total
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-                    Text(L10n.tr("dashboard.totalStock"))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.black.opacity(0.55))
-                }
+        VStack(alignment: .leading, spacing: 16) {
+            dashboardPeriodHeader
 
-                Text(stats.totalStockValue)
-                    .font(.system(size: 34, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.92))
-                    .minimumScaleFactor(0.7)
-                    .lineLimit(1)
+            VStack(spacing: 12) {
+                heroKPICard(
+                    title: L10n.tr("dashboard.totalStock"),
+                    value: stats.totalStockValue,
+                    subtitle: stats.totalStockBadge.isEmpty
+                        ? nil
+                        : "\(stats.totalStockBadge) · \(stats.marketCoverageLabel)",
+                    changePercent: stats.stockValueChangePercent,
+                    isUp: stats.stockValueIsUp,
+                    history: stats.stockValueHistory,
+                    icon: "chart.line.uptrend.xyaxis"
+                )
 
-                HStack(spacing: 6) {
-                    Image(systemName: "minus")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Color.black.opacity(0.35))
-                    Text("0%")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color.black.opacity(0.45))
-                    Text("· \(stats.periodDisplayLabel)")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.black.opacity(0.42))
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .background {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.white)
-                    .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
+                heroKPICard(
+                    title: "Total invested",
+                    value: stats.totalInvested,
+                    subtitle: "Unrealized \(stats.unrealizedGainLabel)",
+                    changePercent: stats.investedChangePercent,
+                    isUp: stats.investedIsUp,
+                    history: stats.stockValueHistory,
+                    icon: "creditcard.fill"
+                )
             }
 
-            // Dos KPIs en fila (sneakers + vendidos)
-            HStack(spacing: 12) {
-                miniKPI(
-                    icon: "shoeprints.fill",
-                    iconColor: Color(red: 0.20, green: 0.45, blue: 0.85),
-                    title: L10n.tr("dashboard.sneakersInStock"),
-                    value: "\(stats.vehiclesInStock)"
-                )
-                miniKPI(
-                    icon: "checkmark.seal.fill",
-                    iconColor: Color(red: 0.20, green: 0.70, blue: 0.45),
-                    title: L10n.tr("dashboard.sold"),
-                    value: "\(stats.carsSold)"
-                )
+            if !stats.categorySnapshots.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("By category")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.85))
+
+                    HStack(spacing: 10) {
+                        ForEach(stats.categorySnapshots) { row in
+                            categoryMiniCard(row)
+                        }
+                    }
+                }
+            }
+
+            if !stats.metricTiles.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Performance")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.85))
+
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(stats.metricTiles) { tile in
+                            metricTileCard(tile)
+                        }
+                    }
+                }
             }
         }
     }
 
-    private func miniKPI(icon: String, iconColor: Color, title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private var dashboardPeriodHeader: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Today")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.88))
+                Text("vs \(stats.comparisonDateLabel)")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.45))
+            }
+            Spacer(minLength: 0)
+            Text(stats.periodDisplayLabel)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.55))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(Color.black.opacity(0.06)))
+        }
+    }
+
+    private func heroKPICard(
+        title: String,
+        value: String,
+        subtitle: String?,
+        changePercent: Double,
+        isUp: Bool,
+        history: [Double],
+        icon: String
+    ) -> some View {
+        let tint = isUp
+            ? Color(red: 0.20, green: 0.70, blue: 0.45)
+            : Color(red: 0.92, green: 0.30, blue: 0.30)
+
+        return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(iconColor)
+                    .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
                 Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.50))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.55))
+                Spacer(minLength: 0)
+                trendBadge(changePercent: changePercent, isUp: isUp)
             }
+
             Text(value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(size: 30, weight: .heavy, design: .rounded))
                 .foregroundStyle(Color.black.opacity(0.92))
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+
+            if let subtitle {
+                Text(subtitle)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.48))
+            }
+
+            if history.count >= 2 {
+                PriceTrendSparkline(points: history, isUp: isUp)
+                    .frame(height: 44)
+            } else {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(tint.opacity(0.08))
+                    .frame(height: 44)
+                    .overlay {
+                        Text("Add market prices to see trends")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.black.opacity(0.38))
+                    }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.white)
+                .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
+        }
+    }
+
+    private func categoryMiniCard(_ row: DashboardCategorySnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: row.segment.icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
+
+            Text(row.segment.title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.50))
+                .lineLimit(1)
+
+            Text(row.valueLabel)
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.black.opacity(0.90))
+                .minimumScaleFactor(0.75)
+                .lineLimit(1)
+
+            if let change = row.changePercent {
+                trendBadge(changePercent: change, isUp: row.isUp, compact: true)
+            } else {
+                Text("\(row.itemCount) items")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.40))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white)
+                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 3)
+        }
+    }
+
+    private func metricTileCard(_ tile: DashboardMetricTile) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                Image(systemName: tile.icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
+                    .frame(width: 28, height: 28)
+                    .background {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.10))
+                    }
+                Spacer(minLength: 0)
+                if let change = tile.changePercent {
+                    trendBadge(changePercent: change, isUp: tile.isUp, compact: true)
+                }
+            }
+
+            Text(tile.title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.50))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(tile.value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.black.opacity(0.92))
+                .minimumScaleFactor(0.75)
+                .lineLimit(2)
+
+            if let subtitle = tile.subtitle {
+                Text(subtitle)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.42))
+                    .lineLimit(2)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 118, alignment: .leading)
+        .padding(12)
         .background {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color.white)
                 .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 3)
         }
+    }
+
+    private func trendBadge(changePercent: Double, isUp: Bool, compact: Bool = false) -> some View {
+        let tint = isUp
+            ? Color(red: 0.20, green: 0.70, blue: 0.45)
+            : Color(red: 0.92, green: 0.30, blue: 0.30)
+
+        return HStack(spacing: 3) {
+            Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
+                .font(.system(size: compact ? 8 : 9, weight: .heavy))
+            Text(DealershipStatsViewModel.formatChangePercent(changePercent))
+                .font(.system(size: compact ? 9 : 11, weight: .heavy, design: .rounded))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, compact ? 6 : 8)
+        .padding(.vertical, compact ? 3 : 4)
+        .background(Capsule().fill(tint.opacity(0.12)))
     }
 }
 
@@ -334,28 +521,25 @@ private struct DashboardHeroBannerCard: View {
     }
 }
 
-// MARK: - Última venta (estilo UPSOLED)
+// MARK: - Última venta
 
-/// Tarjeta con el último/mejor vehículo del inventario y su precio.
 private struct DashboardLatestSaleSection: View {
+    let closetItems: [ClosetItem]
     let cars: [Car]
 
-    private var featured: Car? {
+    private var latestSold: ClosetItem? {
+        closetItems
+            .filter(\.isExplicitlySold)
+            .sorted { ($0.soldAt ?? $0.createdAt) > ($1.soldAt ?? $1.createdAt) }
+            .first
+    }
+
+    private var featuredCar: Car? {
         cars
             .filter { ($0.listPriceUSD ?? 0) > 0 }
             .sorted { ($0.listPriceUSD ?? 0) > ($1.listPriceUSD ?? 0) }
             .first
             ?? cars.first
-    }
-
-    private var priceFmt: NumberFormatter {
-        let f = NumberFormatter()
-        f.numberStyle = .currency
-        f.currencyCode = "USD"
-        f.currencySymbol = "$"
-        f.maximumFractionDigits = 0
-        f.locale = Locale(identifier: "en_US")
-        return f
     }
 
     var body: some View {
@@ -365,83 +549,155 @@ private struct DashboardLatestSaleSection: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(Color.black.opacity(0.85))
                 Spacer()
-                Button {} label: {
-                    Text(L10n.tr("dashboard.viewAll"))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-                }
-                .buttonStyle(.plain)
             }
 
-            HStack(alignment: .center, spacing: 16) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.92, green: 0.96, blue: 1.0),
-                                    Color(red: 0.82, green: 0.90, blue: 1.0),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 110, height: 110)
-                    Image("AuthSneakerHero")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 100, height: 100)
-                        .rotationEffect(.degrees(-18))
-                        .shadow(color: Color(red: 0.18, green: 0.40, blue: 0.85).opacity(0.35), radius: 12, y: 6)
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(featuredTitle)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.black.opacity(0.88))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-
-                    Text(featuredPriceText)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.black.opacity(0.55))
-
-                    HStack(spacing: 6) {
-                        Image(systemName: "minus.circle")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color.black.opacity(0.38))
-                        Text("0%")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color.black.opacity(0.45))
-                    }
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding(14)
-            .background {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color.white)
-                    .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 4)
+            if let sold = latestSold {
+                soldItemRow(sold)
+            } else if let car = featuredCar {
+                carRow(car)
+            } else {
+                emptyRow
             }
         }
     }
 
-    private var featuredTitle: String {
-        guard let car = featured else {
-            return L10n.tr("dashboard.noItems")
+    private func soldItemRow(_ item: ClosetItem) -> some View {
+        let profit = item.projectedProfitUSD
+        let isUp = profit >= 0
+
+        return HStack(alignment: .center, spacing: 16) {
+            itemThumbnail
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(item.catalogDisplayName)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.88))
+                    .lineLimit(2)
+
+                Text(item.cardPriceLabel ?? "—")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.55))
+
+                if item.hasPricingForProfit {
+                    HStack(spacing: 6) {
+                        Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(isUp
+                                ? Color(red: 0.20, green: 0.70, blue: 0.45)
+                                : Color(red: 0.92, green: 0.30, blue: 0.30))
+                        Text(item.cardProfitUSDLabel ?? "")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(isUp
+                                ? Color(red: 0.20, green: 0.70, blue: 0.45)
+                                : Color(red: 0.92, green: 0.30, blue: 0.30))
+                        Text("· \(item.soldDateLabel())")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.black.opacity(0.42))
+                    }
+                } else {
+                    Text(item.soldDateLabel())
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.42))
+                }
+            }
+
+            Spacer(minLength: 0)
         }
+        .padding(14)
+        .background(cardBackground)
+    }
+
+    private func carRow(_ car: Car) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.92, green: 0.96, blue: 1.0),
+                                Color(red: 0.82, green: 0.90, blue: 1.0),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 72, height: 72)
+                Image("AuthSneakerHero")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 64, height: 64)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(featuredCarTitle(car))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.88))
+                    .lineLimit(2)
+                Text(featuredCarPrice(car))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.55))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(cardBackground)
+    }
+
+    private var emptyRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "tag.slash")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.25))
+            Text(L10n.tr("dashboard.noItems"))
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.black.opacity(0.45))
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(cardBackground)
+    }
+
+    private var itemThumbnail: some View {
+        Group {
+            if let path = itemImagePath(for: latestSold),
+               let uiImage = ImageStore.load(path) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image("AuthSneakerHero")
+                    .resizable()
+                    .scaledToFit()
+                    .padding(8)
+            }
+        }
+        .frame(width: 72, height: 72)
+        .background(Color(red: 0.94, green: 0.96, blue: 0.99))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .fill(Color.white)
+            .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 4)
+    }
+
+    private func itemImagePath(for item: ClosetItem?) -> String? {
+        guard let item else { return nil }
+        if let cover = item.galleryCoverRelativePath, !cover.isEmpty { return cover }
+        return item.imageFilename
+    }
+
+    private func featuredCarTitle(_ car: Car) -> String {
         let brand = car.brandName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let nm = car.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let combined = "\(brand) \(nm)".trimmingCharacters(in: .whitespacesAndNewlines)
         return combined.isEmpty ? L10n.tr("dashboard.item") : combined
     }
 
-    private var featuredPriceText: String {
-        guard let car = featured, let p = car.listPriceUSD, p > 0 else {
-            return priceFmt.string(from: NSNumber(value: 0)) ?? "$0"
-        }
-        return priceFmt.string(from: NSNumber(value: Int(p.rounded()))) ?? "$\(Int(p.rounded()))"
+    private func featuredCarPrice(_ car: Car) -> String {
+        guard let p = car.listPriceUSD, p > 0 else { return DealershipStatsViewModel.formatUSD(0) }
+        return DealershipStatsViewModel.formatUSD(p)
     }
 }
 
