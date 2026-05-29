@@ -2211,171 +2211,21 @@ struct AddToClosetPipelineView: View {
     }
 
     private func priceResultCard(_ est: PieceMarketPrice, piece: ClosetDraftPiece, isBusy: Bool) -> some View {
-        let tint: Color = est.isUp
-            ? Color(red: 0.20, green: 0.70, blue: 0.45)
-            : Color(red: 0.92, green: 0.30, blue: 0.30)
-
-        return VStack(spacing: 14) {
-            // Header: label + refresh
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 10, weight: .heavy))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Color(red: 0.30, green: 0.55, blue: 0.95), Color(red: 0.14, green: 0.36, blue: 0.85)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                Text("MARKET PRICE")
-                    .font(.system(size: 10, weight: .heavy))
-                    .tracking(1.0)
-                    .foregroundStyle(Color.black.opacity(0.55))
-                Spacer(minLength: 0)
-                Button {
-                    Task { await runPriceLookup(for: piece) }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-                        .frame(width: 26, height: 26)
-                        .background(Circle().fill(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.10)))
-                }
-                .buttonStyle(.plain)
-                .disabled(isBusy)
-            }
-
-            // Producto realmente emparejado (para que el usuario sepa qué colorway/modelo se encontró)
-            if let matched = est.matchedTitle, !matched.isEmpty {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.75))
-                    Text(matched)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.black.opacity(0.55))
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-                    if let sku = est.matchedSKU, !sku.isEmpty {
-                        Text("· \(sku)")
-                            .font(.system(size: 10, weight: .heavy))
-                            .tracking(0.4)
-                            .foregroundStyle(Color.black.opacity(0.40))
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.top, -2)
-            }
-
-            // Precio principal: si hay talla concreta, mostramos esa; si no, AVG combinada.
-            // Pill de cambio % a la derecha.
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(formatEUR(est.avg))
-                            .font(.system(size: 32, weight: .heavy, design: .rounded))
-                            .foregroundStyle(Color.black.opacity(0.92))
-                            .minimumScaleFactor(0.7)
-                            .lineLimit(1)
-                        Text(est.sizeUsed != nil ? "talla \(est.sizeUsed!)" : "media")
-                            .font(.system(size: 10, weight: .heavy))
-                            .tracking(0.6)
-                            .foregroundStyle(Color.black.opacity(0.45))
-                            .padding(.bottom, 4)
-                    }
-                    // Sub-fila: precio mínimo y máximo (lo que ve el usuario en StockX/GOAT)
-                    HStack(spacing: 10) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "arrow.down.circle.fill")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(Color(red: 0.18, green: 0.65, blue: 0.40))
-                            Text("Desde \(formatEUR(est.min))")
-                                .font(.system(size: 12, weight: .heavy, design: .rounded))
-                                .foregroundStyle(Color.black.opacity(0.70))
-                        }
-                        HStack(spacing: 3) {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(Color.black.opacity(0.35))
-                            Text("Hasta \(formatEUR(est.max))")
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .foregroundStyle(Color.black.opacity(0.45))
-                        }
-                    }
-                }
-
-                Spacer(minLength: 0)
-
-                HStack(spacing: 3) {
-                    Image(systemName: est.isUp ? "arrow.up.right" : "arrow.down.right")
-                        .font(.system(size: 10, weight: .heavy))
-                    Text(String(format: "%@%.1f%%",
-                                est.isUp ? "+" : "",
-                                est.changePercent))
-                        .font(.system(size: 12, weight: .heavy, design: .rounded))
-                }
-                .foregroundStyle(tint)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background {
-                    Capsule().fill(tint.opacity(0.14))
+        let sizeBinding = Binding<String>(
+            get: { piece.sizeText },
+            set: { newValue in
+                if let idx = flow.pieces.firstIndex(where: { $0.id == piece.id }) {
+                    flow.pieces[idx].sizeText = newValue
                 }
             }
-
-            // Selector de talla: si el usuario rellena su talla, el lookup la usa
-            // para mostrar el precio de ESA talla en concreto en vez del promedio.
-            sizeFilterField(piece: piece, isBusy: isBusy)
-
-            // Sparkline (sólo la línea principal, sin lineas por plataforma)
-            PriceTrendSparkline(
-                points: est.history,
-                isUp: est.isUp,
-                platforms: []
-            )
-            .frame(height: 48)
-
-            // Desglose por plataforma. Siempre se muestra si llega al menos un dato,
-            // para que el usuario vea de qué fuente viene el precio.
-            if !est.platforms.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(est.platforms) { platform in
-                        PlatformPriceTag(platform: platform, formatted: formatEUR(platform.avg))
-                    }
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 14)
-        .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white)
-                // Tinte del color de tendencia muy sutil en la esquina superior
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [tint.opacity(0.08), .clear],
-                            startPoint: .topTrailing,
-                            endPoint: .bottomLeading
-                        )
-                    )
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                tint.opacity(0.35),
-                                Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.15),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.2
-                    )
-            }
-            .shadow(color: tint.opacity(0.12), radius: 14, y: 5)
-            .shadow(color: Color.black.opacity(0.04), radius: 2, y: 1)
-        }
+        )
+        return ShoeMarketPriceCardView(
+            estimate: est,
+            sizeText: sizeBinding,
+            isBusy: isBusy,
+            onRefresh: { Task { await runPriceLookup(for: piece) } },
+            onApplySize: { Task { await runPriceLookup(for: piece) } }
+        )
     }
 
     private func runPriceLookup(for piece: ClosetDraftPiece) async {
@@ -2646,6 +2496,7 @@ struct PieceMarketPrice: Codable {
 
     private enum CodingKeys: String, CodingKey {
         case avg, min, max, history
+        case platforms, matchedTitle, matchedSKU, sizeUsed
     }
 
     init(avg: Int, min: Int, max: Int, history: [Double], platforms: [PlatformPrice] = [], matchedTitle: String? = nil, matchedSKU: String? = nil, sizeUsed: String? = nil) {
@@ -2665,10 +2516,10 @@ struct PieceMarketPrice: Codable {
         min = try container.decode(Int.self, forKey: .min)
         max = try container.decode(Int.self, forKey: .max)
         history = try container.decode([Double].self, forKey: .history)
-        platforms = []
-        matchedTitle = nil
-        matchedSKU = nil
-        sizeUsed = nil
+        platforms = try container.decodeIfPresent([PlatformPrice].self, forKey: .platforms) ?? []
+        matchedTitle = try container.decodeIfPresent(String.self, forKey: .matchedTitle)
+        matchedSKU = try container.decodeIfPresent(String.self, forKey: .matchedSKU)
+        sizeUsed = try container.decodeIfPresent(String.self, forKey: .sizeUsed)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -2677,6 +2528,12 @@ struct PieceMarketPrice: Codable {
         try container.encode(min, forKey: .min)
         try container.encode(max, forKey: .max)
         try container.encode(history, forKey: .history)
+        if !platforms.isEmpty {
+            try container.encode(platforms, forKey: .platforms)
+        }
+        try container.encodeIfPresent(matchedTitle, forKey: .matchedTitle)
+        try container.encodeIfPresent(matchedSKU, forKey: .matchedSKU)
+        try container.encodeIfPresent(sizeUsed, forKey: .sizeUsed)
     }
 
     /// Cambio porcentual entre el primer y último punto del histórico.
@@ -2690,12 +2547,30 @@ struct PieceMarketPrice: Codable {
 }
 
 /// Datos de una plataforma concreta para el desglose de PieceMarketPrice.
-struct PlatformPrice: Identifiable {
-    let id = UUID()
+struct PlatformPrice: Identifiable, Codable, Equatable {
+    var id: String { name }
     let name: String      // "StockX", "GOAT"
-    let color: Color      // color de marca para la línea del chart
     let avg: Int
     let history: [Double] // misma longitud que history del combinado
+
+    var color: Color {
+        Self.brandColor(for: name)
+    }
+
+    init(name: String, color: Color = .gray, avg: Int, history: [Double]) {
+        self.name = name
+        self.avg = avg
+        self.history = history
+    }
+
+    static func brandColor(for name: String) -> Color {
+        switch name.uppercased() {
+        case "STOCKX":      return Color(red: 0.00, green: 0.60, blue: 0.30)
+        case "GOAT":        return Color(red: 0.10, green: 0.10, blue: 0.10)
+        case "FLIGHT CLUB": return Color(red: 0.85, green: 0.10, blue: 0.15)
+        default:            return Color.gray
+        }
+    }
 }
 
 // MARK: - Platform breakdown UI
@@ -2787,6 +2662,222 @@ struct PlatformPriceTag: View {
     }
 }
 
+/// Rich market price card shared by draft review and garment detail.
+struct ShoeMarketPriceCardView: View {
+    let estimate: PieceMarketPrice
+    @Binding var sizeText: String
+    var isBusy: Bool = false
+    var lastUpdated: Date? = nil
+    var onRefresh: () -> Void
+    var onApplySize: () -> Void
+
+    private var tint: Color {
+        estimate.isUp
+            ? Color(red: 0.20, green: 0.70, blue: 0.45)
+            : Color(red: 0.92, green: 0.30, blue: 0.30)
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(red: 0.30, green: 0.55, blue: 0.95), Color(red: 0.14, green: 0.36, blue: 0.85)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Text("MARKET PRICE")
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(1.0)
+                    .foregroundStyle(Color.black.opacity(0.55))
+                Spacer(minLength: 0)
+                if let lastUpdated {
+                    Text(lastUpdated, format: .relative(presentation: .named))
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.38))
+                }
+                Button(action: onRefresh) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
+                        .frame(width: 26, height: 26)
+                        .background(Circle().fill(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.10)))
+                }
+                .buttonStyle(.plain)
+                .disabled(isBusy)
+            }
+
+            if let matched = estimate.matchedTitle, !matched.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.75))
+                    Text(matched)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                    if let sku = estimate.matchedSKU, !sku.isEmpty {
+                        Text("· \(sku)")
+                            .font(.system(size: 10, weight: .heavy))
+                            .tracking(0.4)
+                            .foregroundStyle(Color.black.opacity(0.40))
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, -2)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(PieceMarketPrice.formatUSD(estimate.avg))
+                            .font(.system(size: 32, weight: .heavy, design: .rounded))
+                            .foregroundStyle(Color.black.opacity(0.92))
+                            .minimumScaleFactor(0.7)
+                            .lineLimit(1)
+                        Text(estimate.sizeUsed != nil ? "size \(estimate.sizeUsed!)" : "average")
+                            .font(.system(size: 10, weight: .heavy))
+                            .tracking(0.6)
+                            .foregroundStyle(Color.black.opacity(0.45))
+                            .padding(.bottom, 4)
+                    }
+                    HStack(spacing: 10) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(Color(red: 0.18, green: 0.65, blue: 0.40))
+                            Text("From \(PieceMarketPrice.formatUSD(estimate.min))")
+                                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                                .foregroundStyle(Color.black.opacity(0.70))
+                        }
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(Color.black.opacity(0.35))
+                            Text("Up to \(PieceMarketPrice.formatUSD(estimate.max))")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Color.black.opacity(0.45))
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                HStack(spacing: 3) {
+                    Image(systemName: estimate.isUp ? "arrow.up.right" : "arrow.down.right")
+                        .font(.system(size: 10, weight: .heavy))
+                    Text(String(format: "%@%.1f%%",
+                                estimate.isUp ? "+" : "",
+                                estimate.changePercent))
+                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                }
+                .foregroundStyle(tint)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background {
+                    Capsule().fill(tint.opacity(0.14))
+                }
+            }
+
+            marketSizeField
+
+            PriceTrendSparkline(
+                points: estimate.history,
+                isUp: estimate.isUp,
+                platforms: []
+            )
+            .frame(height: 48)
+
+            if !estimate.platforms.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(estimate.platforms) { platform in
+                        PlatformPriceTag(platform: platform, formatted: PieceMarketPrice.formatUSD(platform.avg))
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [tint.opacity(0.08), .clear],
+                            startPoint: .topTrailing,
+                            endPoint: .bottomLeading
+                        )
+                    )
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                tint.opacity(0.35),
+                                Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.15),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.2
+                    )
+            }
+            .shadow(color: tint.opacity(0.12), radius: 14, y: 5)
+            .shadow(color: Color.black.opacity(0.04), radius: 2, y: 1)
+        }
+    }
+
+    private var marketSizeField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "ruler")
+                .font(.system(size: 11, weight: .heavy))
+                .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.85))
+            Text("SIZE")
+                .font(.system(size: 9, weight: .heavy))
+                .tracking(0.6)
+                .foregroundStyle(Color.black.opacity(0.45))
+            TextField("US 10 · EU 44 · 10.5", text: $sizeText)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.black.opacity(0.85))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .submitLabel(.search)
+                .onSubmit(onApplySize)
+            if !sizeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button(action: onApplySize) {
+                    Text("Apply")
+                        .font(.system(size: 10, weight: .heavy))
+                        .tracking(0.4)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background {
+                            Capsule().fill(Color(red: 0.20, green: 0.45, blue: 0.85))
+                        }
+                }
+                .buttonStyle(.plain)
+                .disabled(isBusy)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.06))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.18), lineWidth: 1)
+                }
+        }
+    }
+}
+
 extension PieceMarketPrice {
 
     /// Envoltura del endpoint /v1/responses. Tiene `output_text` con la respuesta final.
@@ -2843,7 +2934,7 @@ extension PieceMarketPrice {
     /// Live web lookups work more reliably on gpt-4o than mini.
     private static var webSearchModel: String { "gpt-4o" }
 
-    /// Tries GOAT (if configured) then OpenAI web search by Style/SKU.
+    /// Tries KicksDB (StockX + GOAT), then GOAT account, then OpenAI web search.
     @MainActor
     static func lookupForItem(
         _ item: ClosetItem,
@@ -2857,12 +2948,33 @@ extension PieceMarketPrice {
             ])
         }
 
+        let primaryQuery = queries[0]
+        let fallbackQuery: String? = queries.count > 1 ? queries[1] : nil
+        let sizeQuery = item.sizeText?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sizeFilter = (sizeQuery?.isEmpty == false) ? sizeQuery : nil
+
+        if KicksDBClient.isConfigured {
+            if let estimate = try await KicksDBClient.fetchAggregated(
+                query: primaryQuery,
+                fallbackQuery: fallbackQuery,
+                sizeQuery: sizeFilter
+            ) {
+                return estimate
+            }
+        }
+
         if goatVM.hasProviderToken {
             for query in queries {
                 if let est = await goatVM.fetchMarketPriceEstimate(query: query) {
                     return est
                 }
             }
+        }
+
+        guard useWebSearch else {
+            throw NSError(domain: "PieceMarketPrice", code: 404, userInfo: [
+                NSLocalizedDescriptionKey: "No market price found. Add KICKSDB_API_KEY in DeveloperSettings.local.xcconfig."
+            ])
         }
 
         let style = item.resolvedSKU ?? queries[0]

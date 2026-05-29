@@ -120,6 +120,19 @@ extension ClosetItem {
     var hasStyleForMarketLookup: Bool {
         !(resolvedSKU ?? "").isEmpty || !marketLookupQuery.isEmpty
     }
+
+    /// True when cached market price is missing or older than 24 hours.
+    var marketPriceNeedsRefresh: Bool {
+        guard hasStyleForMarketLookup else { return false }
+        guard marketPrice != nil else { return true }
+        guard let fetched = marketPriceFetchedAt else { return true }
+        return Date().timeIntervalSince(fetched) >= 86_400
+    }
+
+    func applyMarketPrice(_ estimate: PieceMarketPrice, fetchedAt: Date = .now) {
+        marketPrice = estimate
+        marketPriceFetchedAt = fetchedAt
+    }
 }
 
 extension ClosetItem {

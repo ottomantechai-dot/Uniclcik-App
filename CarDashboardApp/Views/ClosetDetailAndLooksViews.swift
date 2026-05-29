@@ -144,68 +144,27 @@ private struct LookAvatarGarmentsToggle: View {
 
 struct GarmentMarketPriceCard: View {
     let estimate: PieceMarketPrice
+    var lastUpdated: Date? = nil
     var onRefresh: () -> Void
 
-    private var tint: Color {
-        estimate.isUp
-            ? Color(red: 0.20, green: 0.70, blue: 0.45)
-            : Color(red: 0.92, green: 0.30, blue: 0.30)
-    }
+    @State private var sizeText = ""
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Text("MARKET PRICE")
-                    .font(.system(size: 10, weight: .heavy))
-                    .tracking(0.8)
-                    .foregroundStyle(Color.black.opacity(0.55))
-                Spacer()
-                Button(action: onRefresh) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-                }
-                .buttonStyle(.plain)
-            }
-
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(PieceMarketPrice.formatUSD(estimate.avg))
-                    .font(.system(size: 28, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.black.opacity(0.92))
-                Text(String(format: "%@%.1f%%", estimate.isUp ? "+" : "", estimate.changePercent))
-                    .font(.system(size: 12, weight: .heavy))
-                    .foregroundStyle(tint)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(tint.opacity(0.14)))
-                Spacer(minLength: 0)
-            }
-
-            PriceTrendSparkline(points: estimate.history, isUp: estimate.isUp)
-                .frame(height: 44)
-
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("MIN").font(.system(size: 9, weight: .heavy)).foregroundStyle(Color.black.opacity(0.4))
-                    Text(PieceMarketPrice.formatUSD(estimate.min)).font(.system(size: 13, weight: .bold))
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("MAX").font(.system(size: 9, weight: .heavy)).foregroundStyle(Color.black.opacity(0.4))
-                    Text(PieceMarketPrice.formatUSD(estimate.max)).font(.system(size: 13, weight: .bold))
-                }
-            }
-        }
-        .padding(14)
-        .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
-                }
-        }
+        ShoeMarketPriceCardView(
+            estimate: estimate,
+            sizeText: $sizeText,
+            lastUpdated: lastUpdated,
+            onRefresh: onRefresh,
+            onApplySize: onRefresh
+        )
     }
+}
+
+private enum GarmentDetailSection: String, CaseIterable, Identifiable {
+    case itemInfo = "Item details"
+    case marketPrice = "Market price"
+
+    var id: String { rawValue }
 }
 
 // MARK: - Detalle de prenda (estudio grande + datos)
@@ -233,6 +192,7 @@ struct ClosetGarmentDetailView: View {
     @State private var toast: String?
     @State private var marketPriceBusy = false
     @State private var showMarkSoldConfirm = false
+    @State private var detailSection: GarmentDetailSection = .itemInfo
 
     private var secondary: Color {
         Color.black.opacity(0.55)
@@ -246,189 +206,15 @@ struct ClosetGarmentDetailView: View {
                 VStack(spacing: 22) {
                     studioHero
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        fieldLabel("Name")
-                        HStack(spacing: 8) {
-                            TextField("Product name", text: $nameDraft)
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(Color.black)
-                                .onChange(of: nameDraft) { _, new in
-                                    let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    item.name = t.isEmpty ? item.name : t
-                                    saveSilently()
-                                }
-                            Image(systemName: "pencil.line")
-                                .font(.system(size: 16))
-                                .foregroundStyle(secondary)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 14)
-                        .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                    detailSectionPicker
+                        .padding(.horizontal, 18)
 
-                        fieldLabel("SKU")
-                        TextField("e.g. DD1391-101", text: $skuDraft)
-                            .font(.system(size: 16, weight: .semibold, design: .monospaced))
-                            .textInputAutocapitalization(.characters)
-                            .autocorrectionDisabled()
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 14)
-                            .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
-                            .onChange(of: skuDraft) { _, new in
-                                let t = new.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-                                item.skuText = t.isEmpty ? nil : t
-                                saveSilently()
-                            }
+                    if detailSection == .marketPrice {
+                        garmentMarketPriceHeroSection
+                            .padding(.horizontal, 18)
+                    } else {
+                        garmentItemInfoSection
                     }
-                    .padding(.horizontal, 18)
-
-                    localPaletteSection
-                    dressAndSeasonSection
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        fieldLabel("Category")
-                        Menu {
-                            ForEach(ClothingCategory.allCases, id: \.rawValue) { cat in
-                                Button {
-                                    item.categoryRaw = cat.rawValue
-                                    saveSilently()
-                                } label: {
-                                    HStack {
-                                        Text(cat.displayName)
-                                        if cat.rawValue == item.categoryRaw {
-                                            Image(systemName: "checkmark")
-                                        }
-                                    }
-                                }
-                            }
-                        } label: {
-                            HStack {
-                                Text("\(item.category.emoji) \(item.category.displayName)")
-                                Spacer()
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(secondary)
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 14)
-                            .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
-                        }
-                        .foregroundStyle(Color.black)
-
-                        fieldLabel("Marca")
-                        TextField(
-                            item.brand == "Unknown Brand" ? "Agregar marca" : (item.brand ?? ""),
-                            text: Binding(
-                                get: { item.brand == "Unknown Brand" ? "" : (item.brand ?? "") },
-                                set: {
-                                    item.brand = $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                        ? nil
-                                        : $0
-                                    saveSilently()
-                                }
-                            ))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 14)
-                            .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
-
-                        fieldLabel("Pricing")
-
-                        fieldLabel("Purchase price")
-                        TextField("What you paid", text: $purchasePriceDraft)
-                            .keyboardType(.decimalPad)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 14)
-                            .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
-                            .onChange(of: purchasePriceDraft) { _, new in
-                                let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
-                                item.purchasePriceText = t.isEmpty ? nil : t
-                                saveSilently()
-                            }
-
-                        fieldLabel("Asking price")
-                        HStack(spacing: 8) {
-                            TextField("Your listing price", text: $priceDraft)
-                                .focused($priceFocused)
-                                .keyboardType(.decimalPad)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 14)
-                                .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
-                                .onChange(of: priceDraft) { _, new in
-                                    let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    item.priceText = t.isEmpty ? nil : t
-                                    saveSilently()
-                                }
-
-                            if let est = item.marketPrice, est.avg > 0 {
-                                Button {
-                                    priceDraft = PieceMarketPrice.formatUSD(est.avg)
-                                    item.priceText = priceDraft
-                                    saveSilently()
-                                } label: {
-                                    Text("Market")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundStyle(Color.white)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 14)
-                                        .background(RoundedRectangle(cornerRadius: 14).fill(Color.black))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-
-                        if item.hasPricingForProfit {
-                            garmentProfitSummaryCard
-                        }
-
-                        garmentMarketPriceSection
-
-                        fieldLabel("Size")
-                        TextField(
-                            item.category == .shoes ? "Ej. EU 42 · US 9" : "Ej. M · L · 32",
-                            text: $sizeDraft
-                        )
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 14)
-                        .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
-                        .onChange(of: sizeDraft) { _, new in
-                            let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
-                            item.sizeText = t.isEmpty ? nil : t
-                            saveSilently()
-                        }
-
-                        if let color = item.colorLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !color.isEmpty {
-                            fieldLabel("Color")
-                            Text(color)
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundStyle(Color.black.opacity(0.82))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 14)
-                                .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
-                        }
-
-                        if !item.listingPlatforms.isEmpty {
-                            fieldLabel("Platforms")
-                            Text(item.listingPlatforms.joined(separator: " · "))
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(Color.black.opacity(0.72))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 14)
-                                .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
-                        }
-
-                        fieldLabel("Description")
-                        TextEditor(text: $descriptionDraft)
-                            .frame(minHeight: 88)
-                            .padding(8)
-                            .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
-                            .onChange(of: descriptionDraft) { _, new in
-                                let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
-                                item.productDescription = t.isEmpty ? nil : t
-                                saveSilently()
-                            }
-                    }
-                    .padding(.horizontal, 18)
 
                     if !item.isSold {
                         Button {
@@ -480,7 +266,10 @@ struct ClosetGarmentDetailView: View {
             nameDraft = item.catalogDisplayName
             skuDraft = item.resolvedSKU ?? ""
             ensureLocalPalette()
-            if item.marketPrice == nil, item.hasStyleForMarketLookup, !marketPriceBusy {
+            if item.category == .shoes {
+                detailSection = .marketPrice
+            }
+            if item.marketPriceNeedsRefresh, item.hasStyleForMarketLookup, !marketPriceBusy {
                 Task { await refreshMarketPrice() }
             }
         }
@@ -754,6 +543,305 @@ struct ClosetGarmentDetailView: View {
         }
     }
 
+    private var detailSectionPicker: some View {
+        HStack(spacing: 0) {
+            ForEach(GarmentDetailSection.allCases) { section in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        detailSection = section
+                    }
+                } label: {
+                    Text(section.rawValue)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(detailSection == section ? Color.white : Color.black.opacity(0.55))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .background {
+                            if detailSection == section {
+                                Capsule().fill(Color.black)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background {
+            Capsule()
+                .fill(Color(.secondarySystemBackground))
+        }
+    }
+
+    @ViewBuilder
+    private var garmentItemInfoSection: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 10) {
+                fieldLabel("Name")
+                HStack(spacing: 8) {
+                    TextField("Product name", text: $nameDraft)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color.black)
+                        .onChange(of: nameDraft) { _, new in
+                            let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
+                            item.name = t.isEmpty ? item.name : t
+                            saveSilently()
+                        }
+                    Image(systemName: "pencil.line")
+                        .font(.system(size: 16))
+                        .foregroundStyle(secondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 14)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+
+                fieldLabel("SKU")
+                TextField("e.g. DD1391-101", text: $skuDraft)
+                    .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                    .onChange(of: skuDraft) { _, new in
+                        let t = new.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                        item.skuText = t.isEmpty ? nil : t
+                        saveSilently()
+                    }
+            }
+            .padding(.horizontal, 18)
+
+            localPaletteSection
+            dressAndSeasonSection
+
+            VStack(alignment: .leading, spacing: 10) {
+                fieldLabel("Category")
+                Menu {
+                    ForEach(ClothingCategory.allCases, id: \.rawValue) { cat in
+                        Button {
+                            item.categoryRaw = cat.rawValue
+                            saveSilently()
+                        } label: {
+                            HStack {
+                                Text(cat.displayName)
+                                if cat.rawValue == item.categoryRaw {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text("\(item.category.emoji) \(item.category.displayName)")
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 13))
+                            .foregroundStyle(secondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                }
+                .foregroundStyle(Color.black)
+
+                fieldLabel("Brand")
+                TextField(
+                    item.brand == "Unknown Brand" ? "Add brand" : (item.brand ?? ""),
+                    text: Binding(
+                        get: { item.brand == "Unknown Brand" ? "" : (item.brand ?? "") },
+                        set: {
+                            item.brand = $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                ? nil
+                                : $0
+                            saveSilently()
+                        }
+                    ))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+
+                fieldLabel("Pricing")
+
+                fieldLabel("Purchase price")
+                TextField("What you paid", text: $purchasePriceDraft)
+                    .keyboardType(.decimalPad)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                    .onChange(of: purchasePriceDraft) { _, new in
+                        let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
+                        item.purchasePriceText = t.isEmpty ? nil : t
+                        saveSilently()
+                    }
+
+                fieldLabel("Asking price")
+                HStack(spacing: 8) {
+                    TextField("Your listing price", text: $priceDraft)
+                        .focused($priceFocused)
+                        .keyboardType(.decimalPad)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 14)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                        .onChange(of: priceDraft) { _, new in
+                            let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
+                            item.priceText = t.isEmpty ? nil : t
+                            saveSilently()
+                        }
+
+                    if let est = item.marketPrice, est.avg > 0 {
+                        Button {
+                            priceDraft = PieceMarketPrice.formatUSD(est.avg)
+                            item.priceText = priceDraft
+                            saveSilently()
+                        } label: {
+                            Text("Market")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Color.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 14)
+                                .background(RoundedRectangle(cornerRadius: 14).fill(Color.black))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                if item.hasPricingForProfit {
+                    garmentProfitSummaryCard
+                }
+
+                fieldLabel("Size")
+                TextField(
+                    item.category == .shoes ? "e.g. EU 42 · US 9" : "e.g. M · L · 32",
+                    text: $sizeDraft
+                )
+                .padding(.horizontal, 14)
+                .padding(.vertical, 14)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                .onChange(of: sizeDraft) { _, new in
+                    let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
+                    item.sizeText = t.isEmpty ? nil : t
+                    saveSilently()
+                }
+
+                if let color = item.colorLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !color.isEmpty {
+                    fieldLabel("Color")
+                    Text(color)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.82))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 14)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                }
+
+                if !item.listingPlatforms.isEmpty {
+                    fieldLabel("Platforms")
+                    Text(item.listingPlatforms.joined(separator: " · "))
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.72))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 14)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                }
+
+                fieldLabel("Description")
+                TextEditor(text: $descriptionDraft)
+                    .frame(minHeight: 88)
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+                    .onChange(of: descriptionDraft) { _, new in
+                        let t = new.trimmingCharacters(in: .whitespacesAndNewlines)
+                        item.productDescription = t.isEmpty ? nil : t
+                        saveSilently()
+                    }
+            }
+            .padding(.horizontal, 18)
+        }
+    }
+
+    @ViewBuilder
+    private var garmentMarketPriceHeroSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            marketCharacteristicsSummary
+
+            if marketPriceBusy {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Fetching live prices from StockX & GOAT…")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
+            } else if let est = item.marketPrice {
+                ShoeMarketPriceCardView(
+                    estimate: est,
+                    sizeText: $sizeDraft,
+                    isBusy: marketPriceBusy,
+                    lastUpdated: item.marketPriceFetchedAt,
+                    onRefresh: { Task { await refreshMarketPrice(force: true) } },
+                    onApplySize: {
+                        let t = sizeDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                        item.sizeText = t.isEmpty ? nil : t
+                        saveSilently()
+                        Task { await refreshMarketPrice(force: true) }
+                    }
+                )
+            } else {
+                Button {
+                    Task { await refreshMarketPrice(force: true) }
+                } label: {
+                    Label("Look up market price", systemImage: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.white)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(Color.black))
+                }
+                .buttonStyle(.plain)
+                .disabled(!item.hasStyleForMarketLookup)
+                .opacity(item.hasStyleForMarketLookup ? 1 : 0.45)
+
+                if !item.hasStyleForMarketLookup {
+                    Text("Add a name or Style / SKU (e.g. DD1391-101) to fetch real market prices.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.orange.opacity(0.85))
+                } else if !KicksDBClient.isConfigured {
+                    Text("Add KICKSDB_API_KEY in DeveloperSettings.local.xcconfig for StockX & GOAT prices.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.orange.opacity(0.85))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var marketCharacteristicsSummary: some View {
+        let parts: [String] = [
+            item.brand?.trimmingCharacters(in: .whitespacesAndNewlines),
+            item.resolvedSKU,
+            item.sizeText?.trimmingCharacters(in: .whitespacesAndNewlines),
+            item.colorLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
+            item.category.displayName
+        ].compactMap { raw in
+            guard let raw, !raw.isEmpty else { return nil }
+            return raw
+        }
+
+        if !parts.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("ITEM DETAILS")
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(0.8)
+                    .foregroundStyle(Color.black.opacity(0.45))
+                Text(parts.joined(separator: " · "))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.72))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     @ViewBuilder
     private var garmentProfitSummaryCard: some View {
         let profit = item.projectedProfitUSD
@@ -806,71 +894,34 @@ struct ClosetGarmentDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private var garmentMarketPriceSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            fieldLabel("Market price")
-
-            if let style = item.resolvedSKU {
-                Text("Style \(style)")
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(secondary)
-            } else {
-                Text("Add a Style / SKU to search StockX & GOAT on the web.")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.orange.opacity(0.85))
-            }
-
-            if marketPriceBusy {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text("Searching market price for Style…")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14)
-                .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
-            } else if let est = item.marketPrice {
-                GarmentMarketPriceCard(estimate: est) {
-                    Task { await refreshMarketPrice() }
-                }
-            } else {
-                Button {
-                    Task { await refreshMarketPrice() }
-                } label: {
-                    Label("Look up market price by Style", systemImage: "chart.line.uptrend.xyaxis")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.white)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(RoundedRectangle(cornerRadius: 14).fill(Color.black))
-                }
-                .buttonStyle(.plain)
-                .disabled(!item.hasStyleForMarketLookup)
-                .opacity(item.hasStyleForMarketLookup ? 1 : 0.45)
-            }
-        }
-    }
-
     @MainActor
-    private func refreshMarketPrice() async {
+    private func refreshMarketPrice(force: Bool = false) async {
         guard item.hasStyleForMarketLookup else {
             toast = "Add a Style / SKU code first (e.g. DD1391-101)."
             return
         }
+        if !force, !item.marketPriceNeedsRefresh { return }
+
         marketPriceBusy = true
         defer { marketPriceBusy = false }
 
+        let preferKicksDB = KicksDBClient.isConfigured
         do {
-            let est = try await PieceMarketPrice.lookupForItem(item, goatVM: goatVM, useWebSearch: true)
-            item.marketPrice = est
+            let est = try await PieceMarketPrice.lookupForItem(
+                item,
+                goatVM: goatVM,
+                useWebSearch: !preferKicksDB
+            )
+            item.applyMarketPrice(est)
             saveSilently()
-            toast = "Market price: \(PieceMarketPrice.formatUSD(est.avg))"
+            if force {
+                toast = "Market price: \(PieceMarketPrice.formatUSD(est.avg))"
+            }
         } catch {
             let message = (error as NSError).localizedDescription
             if message.contains("429") || message.localizedCaseInsensitiveContains("quota") {
-                toast = "OpenAI quota exceeded. Check billing or try again later."
-            } else {
+                toast = "OpenAI quota exceeded. Add KICKSDB_API_KEY for StockX & GOAT prices."
+            } else if item.marketPrice == nil {
                 toast = message
             }
         }

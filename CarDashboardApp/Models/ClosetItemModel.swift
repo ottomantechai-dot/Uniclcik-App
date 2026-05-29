@@ -28,6 +28,9 @@ final class ClosetItem {
     /// JSON `PieceMarketPrice` (precio medio, min, max, histórico).
     var marketPriceJSON: String?
 
+    /// Last time market price was fetched from StockX / GOAT (KicksDB).
+    var marketPriceFetchedAt: Date? = nil
+
     /// CSV de plataformas sugeridas (StockX, GOAT, …).
     var listingPlatformsRaw: String?
 
@@ -84,6 +87,7 @@ final class ClosetItem {
         colorLabel: String? = nil,
         productDescription: String? = nil,
         marketPriceJSON: String? = nil,
+        marketPriceFetchedAt: Date? = nil,
         listingPlatformsRaw: String? = nil,
         colorPaletteJSON: String? = nil,
         dressCodesRaw: String? = nil,
@@ -114,6 +118,7 @@ final class ClosetItem {
         self.colorLabel = colorLabel
         self.productDescription = productDescription
         self.marketPriceJSON = marketPriceJSON
+        self.marketPriceFetchedAt = marketPriceFetchedAt
         self.listingPlatformsRaw = listingPlatformsRaw
         self.colorPaletteJSON = colorPaletteJSON
         self.dressCodesRaw = dressCodesRaw
