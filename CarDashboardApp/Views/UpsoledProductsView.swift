@@ -169,30 +169,25 @@ struct UpsoledProductCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ZStack {
-                Color(.systemGray6)
-                if let url = product.primaryImageURL {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView().controlSize(.small)
-                        case let .success(image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        case .failure:
-                            placeholder
-                        @unknown default:
-                            placeholder
-                        }
+            // Imagen: cuadrado con aspecto 3:4. La imagen está envuelta en un
+            // contenedor con tamaño fijo + clipped para que NUNCA se salga del card.
+            imageBlock
+                .aspectRatio(3.0 / 4.0, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(alignment: .topTrailing) {
+                    if !product.inStock {
+                        Text("AGOTADO")
+                            .font(.system(size: 8, weight: .heavy))
+                            .tracking(0.6)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.red, in: Capsule())
+                            .foregroundStyle(.white)
+                            .padding(8)
                     }
-                } else {
-                    placeholder
                 }
-            }
-            .aspectRatio(3.0 / 4.0, contentMode: .fit)
-            .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             if let brand = product.brand, !brand.isEmpty {
                 Text(brand.uppercased())
@@ -200,30 +195,64 @@ struct UpsoledProductCard: View {
                     .tracking(0.6)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             Text(product.name)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
-                .frame(minHeight: 32, alignment: .topLeading)
-            HStack(spacing: 6) {
-                Text("$\(Int(product.price.rounded()))")
-                    .font(.system(size: 14, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.primary)
-                if !product.inStock {
-                    Text("Agotado")
-                        .font(.system(size: 9, weight: .bold))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.red.opacity(0.12), in: Capsule())
-                        .foregroundStyle(Color.red)
+                .frame(maxWidth: .infinity, minHeight: 34, alignment: .topLeading)
+            Text("$\(Int(product.price.rounded()))")
+                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var imageBlock: some View {
+        GeometryReader { proxy in
+            if let url = product.primaryImageURL {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        ZStack {
+                            Color(.systemGray6)
+                            ProgressView().controlSize(.small)
+                        }
+                    case let .success(image):
+                        // .fit dentro del frame fijo → la imagen siempre cabe
+                        // entera, centrada, con margen blanco si las proporciones difieren.
+                        ZStack {
+                            Color(.systemGray6)
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .padding(10)
+                        }
+                    case .failure:
+                        ZStack {
+                            Color(.systemGray6)
+                            placeholderContent
+                        }
+                    @unknown default:
+                        ZStack {
+                            Color(.systemGray6)
+                            placeholderContent
+                        }
+                    }
+                }
+            } else {
+                ZStack {
+                    Color(.systemGray6)
+                    placeholderContent
                 }
             }
         }
     }
 
-    private var placeholder: some View {
+    private var placeholderContent: some View {
         VStack(spacing: 4) {
             Image(systemName: "photo")
                 .foregroundStyle(.tertiary)
@@ -234,6 +263,7 @@ struct UpsoledProductCard: View {
                 .foregroundStyle(.tertiary)
         }
     }
+
 }
 
 /// Hoja modal para crear un producto. Inserta directamente en `upsoled_products`.
