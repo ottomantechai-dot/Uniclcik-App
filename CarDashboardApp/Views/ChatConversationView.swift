@@ -1378,9 +1378,7 @@ struct ChatConversationView: View {
 
     private static func formatChatTime(iso: String) -> String {
         guard let d = TeamDirectMessagesService.parseCreatedAt(iso) else { return String(iso.prefix(8)) }
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return f.string(from: d)
+        return timeFormatter.string(from: d)
     }
 
     private func dismissComposerKeyboard() {
@@ -1420,10 +1418,14 @@ struct ChatConversationView: View {
 
     // MARK: - Helpers
 
-    private static func currentTimeString() -> String {
+    private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
-        return f.string(from: Date())
+        return f
+    }()
+
+    private static func currentTimeString() -> String {
+        timeFormatter.string(from: Date())
     }
 
     private static let coordinatorTaskDeadlineFormatter: DateFormatter = {

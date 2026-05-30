@@ -660,7 +660,7 @@ private struct DashboardLatestSaleSection: View {
     private var itemThumbnail: some View {
         Group {
             if let path = itemImagePath(for: latestSold),
-               let uiImage = ImageStore.load(path) {
+               let uiImage = StockImageLoader.cachedLocalImage(relativePath: path) {
                 Image(uiImage: uiImage)
                     .resizable()
                     .scaledToFill()

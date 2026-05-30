@@ -460,7 +460,7 @@ actor GeminiService {
         faceReferenceRelativePath: String?
     ) async throws -> String {
         let faceTrim = faceReferenceRelativePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let hasFace = !faceTrim.isEmpty && ImageStore.load(faceTrim) != nil
+        let hasFace = !faceTrim.isEmpty && ImageStore.exists(faceTrim)
         let prompt = Self.lookbookLifestylePrompt(for: variant, itemName: itemName, hasFace: hasFace)
         let temperature = hasFace ? 0.38 : 0.52
         return try await executeLookbookFlashImageGeneration(

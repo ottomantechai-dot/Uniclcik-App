@@ -28,6 +28,8 @@ struct DashboardHomeBackdropImage: View {
 
 private struct LoopingMutedVideoFillView: UIViewRepresentable {
     let url: URL
+    /// Pausa la decodificación del vídeo cuando la app no está activa (ahorra GPU/CPU/batería).
+    @Environment(\.scenePhase) private var scenePhase
 
     func makeUIView(context: Context) -> VideoFillUIView {
         let v = VideoFillUIView()
@@ -35,7 +37,13 @@ private struct LoopingMutedVideoFillView: UIViewRepresentable {
         return v
     }
 
-    func updateUIView(_ uiView: VideoFillUIView, context: Context) {}
+    func updateUIView(_ uiView: VideoFillUIView, context: Context) {
+        if scenePhase == .active {
+            uiView.resume()
+        } else {
+            uiView.pausePlayback()
+        }
+    }
 
     static func dismantleUIView(_ uiView: VideoFillUIView, coordinator: Void) {
         uiView.stop()
@@ -68,5 +76,17 @@ private final class VideoFillUIView: UIView {
         looper = nil
         queuePlayer = nil
         playerLayer.player = nil
+    }
+
+    /// Pausa sin desmontar el reproductor (para reanudar al volver a primer plano).
+    func pausePlayback() {
+        queuePlayer?.pause()
+    }
+
+    func resume() {
+        guard let queuePlayer else { return }
+        if queuePlayer.timeControlStatus != .playing {
+            queuePlayer.play()
+        }
     }
 }

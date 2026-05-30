@@ -597,14 +597,18 @@ struct SneakerMock {
         catalog[index % catalog.count]
     }
 
-    var priceText: String {
+    private static let priceFormatter: NumberFormatter = {
         let f = NumberFormatter()
         f.numberStyle = .currency
         f.currencyCode = "USD"
         f.currencySymbol = "$"
         f.maximumFractionDigits = 0
         f.locale = Locale(identifier: "en_US")
-        return f.string(from: NSNumber(value: priceUSD)) ?? "$\(priceUSD)"
+        return f
+    }()
+
+    var priceText: String {
+        Self.priceFormatter.string(from: NSNumber(value: priceUSD)) ?? "$\(priceUSD)"
     }
 }
 

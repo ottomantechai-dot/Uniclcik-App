@@ -52,6 +52,12 @@ enum ImageStore {
         return UIImage(contentsOfFile: path)
     }
 
+    /// Comprueba si existe el fichero **sin decodificar la imagen** (mucho más barato que `load`).
+    static func exists(_ relativePath: String) -> Bool {
+        guard !relativePath.isEmpty else { return false }
+        return FileManager.default.fileExists(atPath: url(forRelativePath: relativePath).path)
+    }
+
     /// Borra un fichero del almacén local del clóset (ignora si no existe).
     static func deleteIfExists(_ relativePath: String) {
         let u = url(forRelativePath: relativePath)
@@ -70,16 +76,16 @@ extension ImageStore {
     /// Miniatura horizontal de looks: portada del look, avatar, o primera prenda con imagen válida.
     static func lookRibbonThumbnailRelativePath(look: Look) -> String? {
         let custom = look.ribbonCoverRelativePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !custom.isEmpty, load(custom) != nil {
+        if !custom.isEmpty, exists(custom) {
             return custom
         }
         if let av = look.avatarRelativePath?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !av.isEmpty, load(av) != nil {
+           !av.isEmpty, exists(av) {
             return av
         }
         for piece in look.resolvedItemsOrdered {
             let p = displayRelativePath(for: piece)
-            if load(p) != nil { return p }
+            if exists(p) { return p }
         }
         return nil
     }

@@ -21,9 +21,42 @@ enum StockImageLoader {
         guard !relativePath.isEmpty else { return nil }
         let key = localCacheKey(relativePath)
         if let mem = ImageCacheService.shared.image(forKey: key) { return mem }
-        guard let ui = ImageStore.load(relativePath) else { return nil }
+        // Decodifica directamente a tamaño de miniatura desde disco (sin cargar el bitmap
+        // completo en memoria). Evita guardar fotos a resolución completa en la caché y
+        // elimina los tirones por evicción/re-decodificación durante el scroll.
+        guard let ui = downsampledLocalImage(relativePath: relativePath, maxSide: 400)
+            ?? ImageStore.load(relativePath) else { return nil }
         ImageCacheService.shared.store(ui, forKey: key)
         return ui
+    }
+
+    /// Carga + downsample desde disco usando `CGImageSource` (no decodifica la imagen completa).
+    static func downsampledLocalImage(relativePath: String, maxSide: CGFloat) -> UIImage? {
+        let url = ImageStore.url(forRelativePath: relativePath)
+        let options: [CFString: Any] = [
+            kCGImageSourceShouldCache: false,
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: Int(maxSide * 3),
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else { return nil }
+        return UIImage(cgImage: cg)
+    }
+
+    /// Versión asíncrona: hace el decode/downsample fuera del hilo principal.
+    static func cachedLocalImageAsync(relativePath: String) async -> UIImage? {
+        guard !relativePath.isEmpty else { return nil }
+        let key = localCacheKey(relativePath)
+        if let mem = ImageCacheService.shared.image(forKey: key) { return mem }
+        let image = await Task.detached(priority: .utility) { () -> UIImage? in
+            downsampledLocalImage(relativePath: relativePath, maxSide: 400)
+                ?? ImageStore.load(relativePath)
+        }.value
+        if let image { ImageCacheService.shared.store(image, forKey: key) }
+        return image
     }
 
     static func memoryCachedURLImage(for url: URL) -> UIImage? {

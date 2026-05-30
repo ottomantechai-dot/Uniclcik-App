@@ -43,9 +43,18 @@ private struct Shoe360DraftSheetPieceID: Identifiable, Hashable {
 private struct ClosetDiskThumbnail: View {
     let relativePath: String
 
+    @State private var image: UIImage?
+
+    init(relativePath: String) {
+        self.relativePath = relativePath
+        // Hit de caché en memoria: si ya está, se muestra de inmediato (sin parpadeo).
+        let key = StockImageLoader.localCacheKey(relativePath)
+        _image = State(initialValue: ImageCacheService.shared.image(forKey: key))
+    }
+
     var body: some View {
         Group {
-            if let ui = StockImageLoader.cachedLocalImage(relativePath: relativePath) {
+            if let ui = image {
                 Image(uiImage: ui)
                     .resizable()
                     .scaledToFit()
@@ -54,6 +63,13 @@ private struct ClosetDiskThumbnail: View {
             }
         }
         .background(Color.white)
+        // En cache-miss, el decode/downsample ocurre fuera del hilo principal: no bloquea el scroll.
+        .task(id: relativePath) {
+            guard image == nil else { return }
+            if let loaded = await StockImageLoader.cachedLocalImageAsync(relativePath: relativePath) {
+                image = loaded
+            }
+        }
     }
 }
 
@@ -2791,7 +2807,7 @@ struct AddToClosetPipelineView: View {
         let busy = prettifyBusy.contains(piece.id) || flow.generatingPieceIDs.contains(piece.id)
         return ZStack {
             Color.white
-            if let ui = ImageStore.load(path) {
+            if let ui = StockImageLoader.cachedLocalImage(relativePath: path) {
                 Image(uiImage: ui)
                     .resizable()
                     .scaledToFit()
@@ -3448,8 +3464,9 @@ extension PieceMarketPrice {
         }
 
         guard useWebSearch else {
+            let skuHint = item.resolvedSKU.map { " (\($0))" } ?? ""
             throw NSError(domain: "PieceMarketPrice", code: 404, userInfo: [
-                NSLocalizedDescriptionKey: "No market price found. Add KICKSDB_API_KEY in DeveloperSettings.local.xcconfig."
+                NSLocalizedDescriptionKey: "No market price found\(skuHint). Use the real Style / SKU (e.g. AO4567-001), not an internal code."
             ])
         }
 

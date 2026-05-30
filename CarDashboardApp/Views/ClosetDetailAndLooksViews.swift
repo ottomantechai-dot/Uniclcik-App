@@ -1531,7 +1531,7 @@ struct ClosetLookDetailSheet: View {
             lookDetailToast = "Esta foto es la miniatura del look."
         } label: {
             VStack(spacing: 6) {
-                if let ui = ImageStore.load(path) {
+                if let ui = StockImageLoader.cachedLocalImage(relativePath: path) {
                     Image(uiImage: ui)
                         .resizable()
                         .scaledToFill()
@@ -1565,7 +1565,7 @@ struct ClosetLookDetailSheet: View {
         var seen = Set<String>()
         func push(_ label: String, _ rawPath: String?) {
             guard let trimmed = rawPath?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty,
-                  ImageStore.load(trimmed) != nil else { return }
+                  ImageStore.exists(trimmed) else { return }
             if seen.insert(trimmed).inserted { out.append((label, trimmed)) }
         }
 
@@ -1642,7 +1642,7 @@ struct LookAvatarGeneratorSheet: View {
     }
 
     private var hasAvatarPreview: Bool {
-        guard let p = avatarDisplayPath, ImageStore.load(p) != nil else { return false }
+        guard let p = avatarDisplayPath, ImageStore.exists(p) else { return false }
         return true
     }
 
@@ -2514,9 +2514,17 @@ private extension UIImage {
 private struct ClosetDiskThumbnail: View {
     let relativePath: String
 
+    @State private var image: UIImage?
+
+    init(relativePath: String) {
+        self.relativePath = relativePath
+        let key = StockImageLoader.localCacheKey(relativePath)
+        _image = State(initialValue: ImageCacheService.shared.image(forKey: key))
+    }
+
     var body: some View {
         Group {
-            if let ui = ImageStore.load(relativePath) {
+            if let ui = image {
                 Image(uiImage: ui)
                     .resizable()
                     .scaledToFit()
@@ -2529,6 +2537,12 @@ private struct ClosetDiskThumbnail: View {
             }
         }
         .background(Color.white)
+        .task(id: relativePath) {
+            guard image == nil else { return }
+            if let loaded = await StockImageLoader.cachedLocalImageAsync(relativePath: relativePath) {
+                image = loaded
+            }
+        }
     }
 }
 

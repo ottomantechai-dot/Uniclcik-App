@@ -436,7 +436,7 @@ extension ClosetItem {
                 return
             }
             guard !seen.contains(trimmed) else { return }
-            guard ImageStore.load(trimmed) != nil else { return }
+            guard ImageStore.exists(trimmed) else { return }
             seen.insert(trimmed)
             ordered.append(trimmed)
         }

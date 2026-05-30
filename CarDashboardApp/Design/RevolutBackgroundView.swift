@@ -4,6 +4,8 @@ import SwiftUI
 /// No usa múltiples blobs difusos; el brillo queda concentrado en una zona (~≤30 % perceptiva).
 struct RevolutBackgroundView: View {
     private let startDate = Date()
+    /// Detiene la animación a 30 fps cuando la app no está en primer plano (ahorra batería/CPU).
+    @Environment(\.scenePhase) private var scenePhase
 
     private static let voidBlack = Color(red: 5 / 255, green: 5 / 255, blue: 9 / 255) // más profundo que antes
     /// #B8D4E8 — reflejo blanquecino-azulado
@@ -15,7 +17,7 @@ struct RevolutBackgroundView: View {
         ZStack {
             Color.black
 
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: scenePhase != .active)) { timeline in
                 let t = Float(timeline.date.timeIntervalSince(startDate))
                 // Movimiento muy lento (equivalente a speed ~0.15–0.2 del prompt)
                 let u = t * 0.16

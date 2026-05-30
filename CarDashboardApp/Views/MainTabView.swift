@@ -47,6 +47,9 @@ struct MainTabView: View {
     @EnvironmentObject var auth: AuthViewModel
     @EnvironmentObject var carsVM: CarsViewModel
 
+    /// Pausa el refresco periódico de comunidad cuando la app pasa a segundo plano.
+    @Environment(\.scenePhase) private var scenePhase
+
     /// Solo tareas coordinator pendientes; sin esto habría badge por mensajes de chat (incorrecto para la pestaña Soled).
     private var soledTabRequestBadgeCount: Int {
         guard let uid = auth.session?.user.id else { return 0 }
@@ -94,6 +97,17 @@ struct MainTabView: View {
         .onChange(of: tabRouter.selected) { _, new in
             if new == .add {
                 presentAddToClosetFlowFromTabBar()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active:
+                communityVM.startPeriodicRefresh()
+                Task { await communityVM.refresh() }
+            case .background, .inactive:
+                communityVM.stopPeriodicRefresh()
+            @unknown default:
+                break
             }
         }
         .toolbarBackground(PremiumAccent.tabBarDockBackgroundGradient, for: .tabBar)
@@ -540,7 +554,7 @@ struct SoldClosetItemRow: View {
                             .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
                     }
 
-                if let ui = ImageStore.load(ImageStore.displayRelativePath(for: item)) {
+                if let ui = StockImageLoader.cachedLocalImage(relativePath: ImageStore.displayRelativePath(for: item)) {
                     Image(uiImage: ui)
                         .resizable()
                         .scaledToFit()
@@ -645,7 +659,7 @@ struct RemovedArchiveItemRow: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Color.white)
                     .frame(width: 92, height: 92)
-                if let ui = ImageStore.load(ImageStore.displayRelativePath(for: item)) {
+                if let ui = StockImageLoader.cachedLocalImage(relativePath: ImageStore.displayRelativePath(for: item)) {
                     Image(uiImage: ui)
                         .resizable()
                         .scaledToFit()
