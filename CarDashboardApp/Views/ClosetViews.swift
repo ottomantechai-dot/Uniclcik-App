@@ -5,7 +5,7 @@ import UIKit
 
 // MARK: - Paleta modo claro
 
-private enum ClosetFlowPalette {
+enum ClosetFlowPalette {
     static let secondaryText = Color.black.opacity(0.55)
     static let mutedBackground = Color(.secondarySystemBackground)
     static let darkerPillFill = Color(white: 0.22)
@@ -112,7 +112,7 @@ struct ClosetUIImagePickerBridge: UIViewControllerRepresentable {
 
 extension UIImage {
     /// Upright orientation + white backdrop cleanup for closet uploads.
-    fileprivate func closetFlattenedOrientation() -> UIImage {
+    func closetFlattenedOrientation() -> UIImage {
         ClosetPhotoExports.normalizedClosetProductImage(self)
     }
 }
@@ -122,6 +122,7 @@ extension UIImage {
 struct ClosetView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var addFlow: AddToClosetFlowViewModel
+    @EnvironmentObject private var tabRouter: MainTabRouter
     @EnvironmentObject private var goatVM: GoatAccountViewModel
     @Query(sort: \ClosetItem.createdAt, order: .reverse) private var closetItems: [ClosetItem]
     /// Catálogo Supabase (`upsoled_products`): mismos productos que la pestaña Marketplace/Sold.
@@ -132,12 +133,7 @@ struct ClosetView: View {
         closetItems.filter(\.isActiveInStock)
     }
 
-    @State private var showAddMenuSheet = false
-    @State private var showCamera = false
-    @State private var showGalleryPickSheet = false
-    @State private var pickedGalleryItems: [PhotosPickerItem] = []
-    @State private var cameraImage: UIImage?
-    @State private var showPipeline = false
+    @State private var closetSelectionMode = false
 
     private struct StockRemovalRequest: Identifiable {
         let id = UUID()
@@ -147,34 +143,23 @@ struct ClosetView: View {
         var totalCount: Int { closetIDs.count + catalogIDs.count }
     }
 
-    @State private var closetSelectionMode = false
     @State private var closetSelectedIDs = Set<UUID>()
     @State private var catalogSelectedIDs = Set<UUID>()
     @State private var showBulkCategorySheet = false
     @State private var catalogDetailBusy = false
     @State private var removalRequest: StockRemovalRequest?
     @State private var permanentDeleteItem: ClosetItem?
+    @State private var marketPrefetchBusy = false
 
     /// Ficha grande de una prenda (estudio).
     @State private var garmentDetailSheetItem: ClosetItem?
     @State private var showCreateLookSheet = false
 
-    /// Tras elegir exactamente 4 fotos: elegir «outfit» o «zapatos 360°».
-    @State private var stagingFiveGalleryImages: [UIImage] = []
-    @State private var showFivePhotosUseModeSheet = false
-    /// Fullscreen vista 360° cuando el usuario elige usar 4 fotos como zapatos (galería).
-    @State private var showShoe360FiveGalleryFlow = false
-    @State private var shoe360FiveGalleryImagesPrepared: [UIImage] = []
-    /// Zapatos foto a foto desde el FAB (sin obligar al flujo de outfit / galería).
-    @State private var showPrivateShoe360Flow = false
-    /// Ropa lookbook foto a foto: camisetas, pantalones, cintos, calcetines, etc. (no zapatos).
-    @State private var showPrivateGarmentLookbookFlow = false
     @State private var stockSearchText = ""
     @FocusState private var stockSearchFocused: Bool
     @State private var stockFilters = StockBrowseFilters()
     @State private var showStockFiltersSheet = false
     @AppStorage("stockLayoutMode") private var stockLayoutModeRaw = StockLayoutMode.grid.rawValue
-    @State private var showBarcodeScanner = false
     @State private var scanLookupPayload: StockScanLookupPayload?
     @State private var scanLookupBusy = false
 
@@ -299,6 +284,19 @@ struct ClosetView: View {
         return closet + catalog
     }
 
+    private var stockMarketSnapshot: DashboardMarketSnapshot? {
+        let history = DealershipStatsViewModel.aggregatePortfolioHistory(
+            closetItems: filteredActiveClosetItems,
+            catalogBaseline: filteredCatalogProducts.reduce(0.0) { $0 + $1.stockValueUSD },
+            baselineValue: stockGrandTotalValueUSD
+        )
+        return DealershipStatsViewModel.buildMarketSnapshot(
+            activeStock: filteredActiveClosetItems,
+            totalValue: stockGrandTotalValueUSD,
+            portfolioHistory: history
+        )
+    }
+
     private var stockClosetInvestedUSD: Double {
         filteredActiveClosetItems.reduce(0.0) { $0 + $1.purchaseValueUSD }
     }
@@ -402,6 +400,14 @@ struct ClosetView: View {
     private var draftBannerCount: Int { ClosetLocalDraftStore.pendingCount }
 
     /// Espacio bajo la rejilla para banner de borradores y barra de eliminar en bloque.
+    private var marketPrefetchKey: String {
+        filteredActiveClosetItems
+            .filter { $0.marketPriceNeedsRefresh && $0.hasStyleForMarketLookup }
+            .prefix(24)
+            .map(\.id.uuidString)
+            .joined(separator: "|")
+    }
+
     private var bottomInsetForClosetGrid: CGFloat {
         var h: CGFloat
         if draftBannerCount > 0 {
@@ -425,8 +431,6 @@ struct ClosetView: View {
                 if hasAnyStockContent {
                     StockBrowseSearchBar(
                         searchText: $stockSearchText,
-                        layoutMode: stockLayoutModeBinding,
-                        onScan: { showBarcodeScanner = true },
                         searchFocused: $stockSearchFocused
                     )
                     .padding(.horizontal, 16)
@@ -434,24 +438,10 @@ struct ClosetView: View {
                     .padding(.bottom, 4)
                     .background(Color.white)
 
-                    stockSelectionToolbar
+                    stockFilterSortToolbar
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 6)
-                        .background(Color.white)
-
-                    StockBrowseFilterStrip(filters: $stockFilters) {
-                        showStockFiltersSheet = true
-                    }
-                    .padding(.bottom, stockLayoutModeBinding.wrappedValue == .list ? 6 : 10)
-                    .background(Color.white)
-
-                    if stockLayoutModeBinding.wrappedValue == .list {
-                        StockBrowseFilterSortBar(filters: $stockFilters) {
-                            showStockFiltersSheet = true
-                        }
                         .padding(.bottom, 10)
                         .background(Color.white)
-                    }
                 }
 
                 ScrollViewReader { scrollProxy in
@@ -489,115 +479,20 @@ struct ClosetView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .preferredColorScheme(.light)
-        .onReceive(NotificationCenter.default.publisher(for: .upsoledPresentAddToClosetMenu)) { _ in
-            showAddMenuSheet = true
-        }
         .task {
             ClosetInventoryRepair.normalizeSoldFlags(in: modelContext)
             ClosetInventoryRepair.backfillSKUFromNames(in: modelContext)
             catalogVM.fetchLimit = 750
             await catalogVM.reload()
         }
+        .task(id: marketPrefetchKey) {
+            await prefetchStockMarketPrices()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .closetInventoryDidChange)) { _ in
             Task { await catalogVM.reload() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .upsoledCatalogDidChange)) { _ in
             Task { await catalogVM.reload() }
-        }
-        .sheet(isPresented: $showAddMenuSheet) {
-            addToClosetIntroSheet
-                .presentationDragIndicator(.visible)
-                .presentationDetents([.height(720)])
-        }
-        .fullScreenCover(isPresented: $showCamera, onDismiss: consumeCameraPickIfNeeded) {
-            ClosetUIImagePickerBridge(image: $cameraImage)
-                .background(Color.black)
-                .ignoresSafeArea()
-        }
-        .sheet(isPresented: $showGalleryPickSheet) {
-            NavigationStack {
-                VStack(spacing: 22) {
-                    Text(
-                        "Choose up to 5 photos. With exactly 4 you can pick a 360° shoe view (front, right, back, left, in order) or analyze an outfit with the photos you choose."
-                    )
-                    .font(.system(size: 14))
-                    .foregroundStyle(ClosetFlowPalette.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .padding(.top, 8)
-
-                    PhotosPicker(
-                        selection: $pickedGalleryItems,
-                        maxSelectionCount: 5,
-                        matching: .images,
-                        photoLibrary: .shared()
-                    ) {
-                        Label("Open photos", systemImage: "photo.on.rectangle.angled")
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(maxWidth: .infinity, minHeight: 52)
-                            .foregroundStyle(Color.white)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.black)
-
-                    Button {
-                        Task { await ingestPhotoPickerItems(pickedGalleryItems) }
-                    } label: {
-                        Label("Continue", systemImage: "arrow.forward.circle.fill")
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(maxWidth: .infinity, minHeight: 52)
-                            .foregroundStyle(Color.white)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color.black.opacity(0.82))
-                    .disabled(pickedGalleryItems.isEmpty)
-
-                    Text("Select photos and tap Continue (pick 4 in order for 360° shoes or another amount for an outfit).")
-                        .font(.system(size: 11))
-                        .foregroundStyle(Color.black.opacity(0.42))
-                        .multilineTextAlignment(.center)
-
-                    Spacer()
-                }
-                .padding(.horizontal, 20)
-                .navigationTitle("Gallery")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(L10n.tr("common.close")) {
-                            pickedGalleryItems.removeAll()
-                            showGalleryPickSheet = false
-                        }
-                    }
-                }
-            }
-            .presentationDragIndicator(.visible)
-        }
-        .fullScreenCover(isPresented: $showPipeline) {
-            AddToClosetPipelineView(isPresented: $showPipeline)
-                .environmentObject(addFlow)
-                .preferredColorScheme(.light)
-        }
-        .fullScreenCover(isPresented: $showShoe360FiveGalleryFlow, onDismiss: {
-            shoe360FiveGalleryImagesPrepared = []
-        }) {
-            if shoe360FiveGalleryImagesPrepared.count == ShoeAngle.allCases.count {
-                ClosetShoe360FlowView(prefilledCapturedInCanonicalOrder: shoe360FiveGalleryImagesPrepared)
-                    .preferredColorScheme(.light)
-            }
-        }
-        .fullScreenCover(isPresented: $showPrivateShoe360Flow) {
-            ClosetShoe360FlowView()
-                .preferredColorScheme(.light)
-        }
-        .fullScreenCover(isPresented: $showPrivateGarmentLookbookFlow) {
-            ClosetGarmentLookbookStandaloneFlowView()
-                .preferredColorScheme(.light)
-        }
-        .sheet(isPresented: $showFivePhotosUseModeSheet) {
-            fivePhotosUseModeSheet
-                .presentationDragIndicator(.visible)
-                .presentationDetents([.height(380)])
-                .presentationBackground(Color.white)
-                .preferredColorScheme(.light)
         }
         .toastOverlay(
             message: Binding(
@@ -627,21 +522,12 @@ struct ClosetView: View {
         .sheet(isPresented: $showStockFiltersSheet) {
             StockBrowseFiltersSheet(
                 filters: $stockFilters,
+                layoutMode: stockLayoutModeBinding,
                 closetItems: activeClosetItems,
                 catalogProducts: catalogVM.products
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
-        }
-        .fullScreenCover(isPresented: $showBarcodeScanner) {
-            StockBarcodeScannerScreen(
-                onCode: { code in
-                    showBarcodeScanner = false
-                    stockSearchText = code
-                    Task { await handleScannedCode(code) }
-                },
-                onCancel: { showBarcodeScanner = false }
-            )
         }
         .sheet(item: $scanLookupPayload) { payload in
             StockScanResultSheet(
@@ -720,92 +606,6 @@ struct ClosetView: View {
         }
     }
 
-    private var fivePhotosUseModeSheet: some View {
-        NavigationStack {
-            VStack(spacing: 18) {
-                Text("4 photos selected")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(Color.black)
-
-                Text(
-                    "Shoes? Photos 1→4 map to: front, right side, back, and left side. "
-                        + "You can correct any angle afterward."
-                )
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.black.opacity(0.52))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 8)
-
-                VStack(spacing: 11) {
-                    Button {
-                        let snap = stagingFiveGalleryImages
-                        stagingFiveGalleryImages = []
-                        showFivePhotosUseModeSheet = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
-                            shoe360FiveGalleryImagesPrepared = snap
-                            showShoe360FiveGalleryFlow = true
-                        }
-                    } label: {
-                        VStack(spacing: 5) {
-                            Text("👞 Shoes — 360° view")
-                                .font(.system(size: 17, weight: .semibold))
-                            Text("4 photos = smooth drag rotation (seamless transition between views)")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Color.black.opacity(0.45))
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 54)
-                        .foregroundStyle(Color.black)
-                        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color.white))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                                .stroke(Color.black.opacity(0.1), lineWidth: 1)
-                        }
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        let snap = stagingFiveGalleryImages
-                        stagingFiveGalleryImages = []
-                        showFivePhotosUseModeSheet = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
-                            showPipeline = true
-                            addFlow.beginProcessing(images: snap)
-                        }
-                    } label: {
-                        Text("Detect garments in outfit")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Color.white)
-                            .frame(maxWidth: .infinity, minHeight: 52)
-                            .background(RoundedRectangle(cornerRadius: 26).fill(ClosetFlowPalette.darkerPillFill))
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Button("Cancel", role: .cancel) {
-                    stagingFiveGalleryImages = []
-                    showFivePhotosUseModeSheet = false
-                }
-                .font(.system(size: 15))
-
-                Spacer(minLength: 8)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 18)
-            .navigationTitle("Use your 4 photos")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.tr("common.close")) {
-                        stagingFiveGalleryImages = []
-                        showFivePhotosUseModeSheet = false
-                    }
-                    .foregroundStyle(Color.black)
-                }
-            }
-        }
-    }
-
     /// Estado vacío: layout tipo banner (referencia onboarding) — vídeo 16:9 visible completo (`resizeAspectFit`).
     @ViewBuilder
     private var closetEmptyOnboardingDesign: some View {
@@ -843,7 +643,7 @@ struct ClosetView: View {
 
             Button {
                 ClosetAnalytics.named("add_to_closet_opened")
-                showAddMenuSheet = true
+                tabRouter.selected = .add
             } label: {
                 Text(L10n.tr("closet.addWide"))
                     .font(.system(size: 17, weight: .bold))
@@ -871,7 +671,7 @@ struct ClosetView: View {
             )
             Button {
                 ClosetAnalytics.named("add_to_closet_opened")
-                showAddMenuSheet = true
+                tabRouter.selected = .add
             } label: {
                 Text(L10n.tr("closet.addWide"))
                     .font(.system(size: 17, weight: .bold))
@@ -890,33 +690,74 @@ struct ClosetView: View {
         .padding(.horizontal, 16)
     }
 
-    private var stockSelectionToolbar: some View {
-        HStack(spacing: 12) {
+    private var stockFilterSortToolbar: some View {
+        HStack(spacing: 10) {
             Button {
-                if closetSelectionMode {
-                    closetSelectionMode = false
-                    closetSelectedIDs.removeAll()
-                    catalogSelectedIDs.removeAll()
-                } else {
-                    closetSelectionMode = true
-                }
+                showStockFiltersSheet = true
             } label: {
-                Text(closetSelectionMode ? "Done" : "Select")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.black)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Capsule().fill(Color.black.opacity(0.06)))
+                HStack(spacing: 6) {
+                    Text("Filter by")
+                        .font(.system(size: 14, weight: .semibold))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                    if stockFilters.isActive {
+                        Circle()
+                            .fill(Color(red: 0.20, green: 0.45, blue: 0.85))
+                            .frame(width: 6, height: 6)
+                    }
+                }
+                .foregroundStyle(Color.black)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(Color.black.opacity(0.06)))
             }
             .buttonStyle(.plain)
 
             if closetSelectionMode {
+                Button {
+                    closetSelectionMode = false
+                    closetSelectedIDs.removeAll()
+                    catalogSelectedIDs.removeAll()
+                } label: {
+                    Text("Done")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.72))
+                }
+                .buttonStyle(.plain)
+
                 Text("\(closetSelectedIDs.count + catalogSelectedIDs.count) selected")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.45))
             }
 
-            Spacer()
+            Spacer(minLength: 0)
+
+            Menu {
+                ForEach(StockSortOrder.allCases) { order in
+                    Button {
+                        stockFilters.sort = order
+                    } label: {
+                        if stockFilters.sort == order {
+                            Label(order.menuLabel, systemImage: "checkmark")
+                        } else {
+                            Text(order.menuLabel)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Sort by: \(stockFilters.sort.menuLabel)")
+                        .font(.system(size: 14, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .foregroundStyle(Color.black.opacity(0.82))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(Color.black.opacity(0.06)))
+            }
         }
     }
 
@@ -1172,29 +1013,26 @@ struct ClosetView: View {
     }
 
     private var flatClosetListSection: some View {
-        LazyVStack(spacing: 0) {
+        LazyVStack(spacing: 10) {
             if !filteredCatalogProducts.isEmpty {
                 Divider()
                     .overlay(Color.black.opacity(0.08))
+                    .padding(.horizontal, 16)
             }
-            ForEach(Array(filteredActiveClosetItems.enumerated()), id: \.element.id) { index, item in
+            ForEach(filteredActiveClosetItems) { item in
                 closetListRow(item)
-                    .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")")
-                if index < filteredActiveClosetItems.count - 1 {
-                    StockMarketplaceListDivider()
-                }
+                    .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")-\(item.marketPriceJSON ?? "")")
+                    .padding(.horizontal, 16)
             }
         }
         .padding(.bottom, bottomInsetForClosetGrid)
     }
 
     private var flatCatalogListSection: some View {
-        LazyVStack(spacing: 0) {
-            ForEach(Array(filteredCatalogProducts.enumerated()), id: \.element.id) { index, product in
+        LazyVStack(spacing: 10) {
+            ForEach(filteredCatalogProducts) { product in
                 catalogListRow(product)
-                if index < filteredCatalogProducts.count - 1 {
-                    StockMarketplaceListDivider()
-                }
+                    .padding(.horizontal, 16)
             }
         }
         .padding(.bottom, filteredActiveClosetItems.isEmpty ? bottomInsetForClosetGrid : 0)
@@ -1298,6 +1136,10 @@ struct ClosetView: View {
                 }
             }
 
+            if let snapshot = stockMarketSnapshot {
+                StockMarketOverviewStrip(snapshot: snapshot)
+            }
+
             if !stockCategoryBreakdowns.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(stockCategoryBreakdowns) { row in
@@ -1381,10 +1223,15 @@ struct ClosetView: View {
     private func closetListRow(_ item: ClosetItem) -> some View {
         let selected = closetSelectedIDs.contains(item.id)
         return StockMarketplaceListRow(
-            seriesLine: stockListBrandLine(item.brand),
+            brandLine: stockListBrandLine(item.brand),
             nameLine: item.catalogDisplayName,
-            price: item.cardPriceLabel,
-            size: item.cardSizeLabel,
+            sizeLabel: item.cardSizeLabel,
+            fallbackPrice: item.cardPriceLabel,
+            marketPrice: item.marketPrice,
+            preferredPlatform: stockFilters.preferredMarketplacePlatform,
+            stockValueUSD: item.stockValueUSD,
+            purchaseUSD: item.purchaseValueUSD,
+            askingUSD: ClosetItem.parsePriceUSD(from: item.priceText),
             profitUSD: item.cardProfitUSDLabel,
             profitPct: item.cardProfitPercentLabel,
             isLoss: item.isProjectedLoss,
@@ -1406,10 +1253,15 @@ struct ClosetView: View {
     private func catalogListRow(_ product: UpsoledProduct) -> some View {
         let selected = catalogSelectedIDs.contains(product.id)
         return StockMarketplaceListRow(
-            seriesLine: stockListBrandLine(product.brand),
+            brandLine: stockListBrandLine(product.brand),
             nameLine: product.name,
-            price: product.cardPriceLabel,
-            size: product.cardSizeLabel,
+            sizeLabel: product.cardSizeLabel,
+            fallbackPrice: product.cardPriceLabel,
+            marketPrice: nil,
+            preferredPlatform: stockFilters.preferredMarketplacePlatform,
+            stockValueUSD: product.stockValueUSD,
+            purchaseUSD: product.purchaseCostUSD,
+            askingUSD: product.price,
             profitUSD: product.cardProfitUSDLabel,
             profitPct: product.cardProfitPercentLabel,
             isLoss: product.isProjectedLoss,
@@ -1431,7 +1283,8 @@ struct ClosetView: View {
         Button {
             let decoded = ClosetLocalDraftStore.decoded()
             addFlow.resumePersistedDrafts(decoded: decoded)
-            showPipeline = true
+            tabRouter.addTabOpenPipeline = true
+            tabRouter.selected = .add
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -1460,173 +1313,6 @@ struct ClosetView: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
         .padding(.bottom, 36)
-    }
-
-    private var addToClosetIntroSheet: some View {
-        VStack(spacing: 14) {
-            Text(L10n.tr("closet.addSheetTitle"))
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(Color.black)
-                .frame(maxWidth: .infinity)
-
-            Text(L10n.tr("closet.addSheetPhotoHint"))
-                .font(.system(size: 13, weight: .heavy))
-                .foregroundStyle(Color.black.opacity(0.72))
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, alignment: .center)
-
-            VStack(spacing: 11) {
-                HStack(spacing: 11) {
-                    Button {
-                        showAddMenuSheet = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
-                            showGalleryPickSheet = true
-                        }
-                    } label: {
-                        VStack(spacing: 6) {
-                            Image(systemName: "photo.on.rectangle.angled")
-                                .font(.system(size: 22, weight: .semibold))
-                            Text("Gallery")
-                                .font(.system(size: 16, weight: .semibold))
-                            Text("Up to 5 photos")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Color.black.opacity(0.45))
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 88)
-                        .foregroundStyle(Color.black)
-                        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.white))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .stroke(Color.black.opacity(0.08), lineWidth: 1)
-                        }
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        showAddMenuSheet = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
-                            showCamera = true
-                        }
-                    } label: {
-                        VStack(spacing: 6) {
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 22, weight: .semibold))
-                            Text("Camera")
-                                .font(.system(size: 16, weight: .semibold))
-                            Text("One photo instantly")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(Color.black.opacity(0.45))
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 88)
-                        .foregroundStyle(Color.black)
-                        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.white))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .stroke(Color.black.opacity(0.08), lineWidth: 1)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                shoePrivateStandalonePill
-
-                garmentPrivateStandalonePill
-            }
-            Spacer(minLength: 10)
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 22)
-        .presentationBackground(Color.white)
-    }
-
-    /// Entrada aparte del outfit de galería: subir sólo zapatos y decidir foto por ángulo.
-    private var shoePrivateStandalonePill: some View {
-        Button {
-            ClosetAnalytics.named("closet_shoe360_private_opened")
-            showAddMenuSheet = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
-                showPrivateShoe360Flow = true
-            }
-        } label: {
-            HStack(spacing: 14) {
-                Image("BannerZapatos")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 74, height: 52)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
-                    }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Your shoes only (360°)")
-                        .font(.system(size: 16, weight: .heavy))
-                        .foregroundStyle(Color.white)
-                    Text("Front, right side, back, and left: tap each side and add or change its photo.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.92))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 4)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Color.white.opacity(0.9))
-            }
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.black.opacity(0.88)))
-            .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// Entrada paralela «Zapatos 360»: ropa/complementos sin calzado → 5 referencias guiadas → 10 vistas IA estudio + lifestyle.
-    private var garmentPrivateStandalonePill: some View {
-        Button {
-            ClosetAnalytics.named("closet_ropa_lookbook_standalone_opened")
-            showAddMenuSheet = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
-                showPrivateGarmentLookbookFlow = true
-            }
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "rectangle.stack.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(Color.white)
-                    .frame(width: 42, height: 42)
-                    .background(Circle().fill(Color.white.opacity(0.22)))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Apparel · AI lookbook")
-                        .font(.system(size: 16, weight: .heavy))
-                        .foregroundStyle(Color.white)
-                    Text(
-                        "Shirts, pants, socks, belts… 5 guide photos "
-                            + "(front, back, details) and we generate catalog and lifestyle images you can swipe through.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.92))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 4)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Color.white.opacity(0.9))
-            }
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.black.opacity(0.74)))
-            .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
     }
 
     private func closetCell(_ item: ClosetItem) -> some View {
@@ -1724,6 +1410,8 @@ struct ClosetView: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .frame(minHeight: 36, alignment: .top)
+
+            closetCellSparkline(item)
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -1736,12 +1424,62 @@ struct ClosetView: View {
         }
         .contextMenu {
             if !closetSelectionMode {
+                Button {
+                    closetSelectionMode = true
+                    toggleClosetSelection(item)
+                } label: {
+                    Label("Select", systemImage: "checkmark.circle")
+                }
                 Button(role: .destructive) {
                     removalRequest = StockRemovalRequest(closetIDs: [item.id], catalogIDs: [])
                 } label: {
                     Label(L10n.tr("closet.removeItem"), systemImage: "trash")
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func closetCellSparkline(_ item: ClosetItem) -> some View {
+        let spark = StockItemSparkline.resolve(
+            marketPrice: item.marketPrice,
+            preferredPlatform: stockFilters.preferredMarketplacePlatform,
+            stockValueUSD: item.stockValueUSD,
+            purchaseUSD: item.purchaseValueUSD,
+            askingUSD: ClosetItem.parsePriceUSD(from: item.priceText)
+        )
+        if spark.points.count >= 2 {
+            PriceTrendSparkline(points: spark.points, isUp: spark.isUp)
+                .frame(height: 34)
+                .padding(.top, 2)
+        }
+    }
+
+    @MainActor
+    private func prefetchStockMarketPrices() async {
+        guard !marketPrefetchBusy else { return }
+        let candidates = filteredActiveClosetItems
+            .filter { $0.marketPriceNeedsRefresh && $0.hasStyleForMarketLookup }
+            .prefix(24)
+        guard !candidates.isEmpty else { return }
+
+        marketPrefetchBusy = true
+        defer { marketPrefetchBusy = false }
+
+        for item in candidates {
+            guard !Task.isCancelled else { break }
+            do {
+                let estimate = try await PieceMarketPrice.lookupForItem(
+                    item,
+                    goatVM: goatVM,
+                    useWebSearch: false
+                )
+                item.applyMarketPrice(estimate)
+                try? modelContext.save()
+            } catch {
+                continue
+            }
+            try? await Task.sleep(nanoseconds: 180_000_000)
         }
     }
 
@@ -1753,100 +1491,106 @@ struct ClosetView: View {
             isLoss: item.isProjectedLoss
         )
     }
-
-    @MainActor
-    private func consumeCameraPickIfNeeded() {
-        defer { cameraImage = nil }
-        guard let img = cameraImage else { return }
-        pickedGalleryItems.removeAll()
-        showGalleryPickSheet = false
-        showPipeline = true
-        addFlow.beginProcessing(images: [img])
-    }
-
-    @MainActor
-    private func ingestPhotoPickerItems(_ items: [PhotosPickerItem]) async {
-        var images = [UIImage]()
-        for pi in items {
-            if let data = try? await pi.loadTransferable(type: Data.self), let ui = UIImage(data: data) {
-                images.append(ui.closetFlattenedOrientation())
-            }
-        }
-        guard !images.isEmpty else {
-            pickedGalleryItems.removeAll()
-            showGalleryPickSheet = false
-            return
-        }
-        pickedGalleryItems.removeAll()
-        showGalleryPickSheet = false
-        if images.count == ShoeAngle.allCases.count {
-            stagingFiveGalleryImages = images
-            showFivePhotosUseModeSheet = true
-        } else {
-            showPipeline = true
-            addFlow.beginProcessing(images: images)
-        }
-    }
 }
 
-// MARK: - Zapatos 360° (galería o solo zapatos / “privados”)
+// MARK: - Producto 360° (cualquier categoría · galería o captura guiada)
 
-/// Pantalla puente: nombre + `ShoeMultiAngleCaptureView`. Opcionalmente trae las 4 fotos ya ordenadas desde galería; si es `nil`, configuración foto a foto.
-private struct ClosetShoe360FlowView: View {
+/// Pantalla puente: categoría, nombre + `ShoeMultiAngleCaptureView`.
+struct ClosetShoe360FlowView: View {
     var prefilledCapturedInCanonicalOrder: [UIImage]? = nil
+    var initialCategory: ClothingCategory = .shoes
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
-    @State private var shoeName = "Zapatos"
+    @State private var productCategory: ClothingCategory
+    @State private var productName: String
+
+    init(
+        prefilledCapturedInCanonicalOrder: [UIImage]? = nil,
+        initialCategory: ClothingCategory = .shoes
+    ) {
+        self.prefilledCapturedInCanonicalOrder = prefilledCapturedInCanonicalOrder
+        self.initialCategory = initialCategory
+        _productCategory = State(initialValue: initialCategory)
+        _productName = State(initialValue: initialCategory == .shoes ? "Shoes" : "New product")
+    }
 
     private var trimmedName: String {
-        let t = shoeName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? "Zapatos" : t
+        let t = productName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? "New product" : t
     }
 
     private var isPrivateFlow: Bool { prefilledCapturedInCanonicalOrder == nil }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(
+                    isPrivateFlow
+                        ? "Choose the product type, then capture front, right side, back, and left. AI generates professional white-background catalog photos for each angle."
+                        : "Photos were taken in the order you chose in the gallery — tap an angle to correct it."
+                )
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.black.opacity(0.5))
+                .fixedSize(horizontal: false, vertical: true)
+
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(
-                        isPrivateFlow
-                            ? "Tap each angle (front, right, back, left) and use Camera or Gallery to set that view. Here you decide which photo is each side of the shoe."
-                            : "Photos were taken in the order you chose in the gallery — tap an angle to correct it."
-                    )
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.5))
-                    .fixedSize(horizontal: false, vertical: true)
-                    TextField("Nombre del zapato", text: $shoeName)
-                        .font(.system(size: 15))
-                        .foregroundStyle(Color.black)
+                    Text("Product type")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                    Menu {
+                        ForEach(ClothingCategory.allCases, id: \.rawValue) { cat in
+                            Button {
+                                productCategory = cat
+                            } label: {
+                                Text("\(cat.emoji) \(cat.displayName)")
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Text("\(productCategory.emoji) \(productCategory.displayName)")
+                                .foregroundStyle(Color.black)
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .foregroundStyle(Color.black.opacity(0.42))
+                                .font(.system(size: 13, weight: .semibold))
+                        }
                         .padding(12)
                         .background(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .fill(Color(.secondarySystemBackground)))
+                    }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.white)
 
-                ShoeMultiAngleCaptureView(
-                    garmentName: trimmedName,
-                    prefilledCapturedInAngleOrder: prefilledCapturedInCanonicalOrder,
-                    showsCloseButton: false,
-                    onOrderedPathsCommitted: saveToCloset
-                )
-                .id(prefilledCapturedInCanonicalOrder?.count.description ?? "private")
+                TextField("Product name", text: $productName)
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.black)
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(.secondarySystemBackground)))
             }
-            .navigationTitle(isPrivateFlow ? "Zapatos — solo tus fotos" : "Zapatos — 360°")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.white, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.tr("common.close")) { dismiss() }
-                        .foregroundStyle(Color.black)
-                }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.white)
+
+            ShoeMultiAngleCaptureView(
+                garmentName: trimmedName,
+                productCategory: productCategory,
+                prefilledCapturedInAngleOrder: prefilledCapturedInCanonicalOrder,
+                showsCloseButton: false,
+                onOrderedPathsCommitted: saveToCloset
+            )
+            .id("\(prefilledCapturedInCanonicalOrder?.count.description ?? "private")-\(productCategory.rawValue)")
+        }
+        .navigationTitle(isPrivateFlow ? "Product · 360° studio" : "360° from gallery")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.white, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(L10n.tr("common.close")) { dismiss() }
+                    .foregroundStyle(Color.black)
             }
         }
         .preferredColorScheme(.light)
@@ -1855,8 +1599,8 @@ private struct ClosetShoe360FlowView: View {
 
     private func saveToCloset(paths: [String]) {
         guard paths.count == ShoeAngle.allCases.count else { return }
-        let leftIdx = ShoeAngle.left.rawValue
-        let imageFile = paths.indices.contains(leftIdx) ? paths[leftIdx] : paths[0]
+        let frontIdx = ShoeAngle.front.rawValue
+        let imageFile = paths.indices.contains(frontIdx) ? paths[frontIdx] : paths[0]
 
         var paletteJSON: String?
         if let ui = ImageStore.load(imageFile) {
@@ -1877,7 +1621,7 @@ private struct ClosetShoe360FlowView: View {
             aiColorsJSON: nil,
             multiAngleFilenamesJSON: nil,
             galleryCoverRelativePath: imageFile,
-            category: .shoes,
+            category: productCategory,
             imageFilename: imageFile,
             originalCropFilename: nil,
             sourceOutfitFilename: nil,
@@ -1888,23 +1632,26 @@ private struct ClosetShoe360FlowView: View {
         modelContext.insert(row)
         try? modelContext.save()
         Task {
-            await enrichSavedShoeMetadata(row: row, coverPath: imageFile)
+            await enrichSavedProductMetadata(row: row, coverPath: imageFile)
         }
         ClosetAnalytics.named(
-            isPrivateFlow ? "closet_shoe360_private_saved" : "closet_shoe360_gallery_saved")
+            isPrivateFlow ? "closet_product360_private_saved" : "closet_product360_gallery_saved",
+            params: "cat:\(productCategory.rawValue)"
+        )
+        dismiss()
     }
 
     @MainActor
-    private func enrichSavedShoeMetadata(row: ClosetItem, coverPath: String) async {
+    private func enrichSavedProductMetadata(row: ClosetItem, coverPath: String) async {
         guard GeminiService.apiKeyConfigured else { return }
         do {
             let meta = try await GeminiService.shared.enrichGarmentMetadata(
                 cropRelativePath: coverPath,
-                category: .shoes,
+                category: row.category,
                 provisionalName: row.name
             )
             if !meta.brand.isEmpty { row.brand = meta.brand }
-            if !meta.sku.isEmpty {
+            if row.category == .shoes, !meta.sku.isEmpty {
                 row.skuText = meta.sku.uppercased()
                 let split = SneakerSKU.splitNameAndSKU(from: row.name)
                 if split.sku != nil, !split.name.isEmpty {
@@ -1918,14 +1665,14 @@ private struct ClosetShoe360FlowView: View {
             if !meta.listingPlatforms.isEmpty { row.listingPlatforms = meta.listingPlatforms }
             try? modelContext.save()
         } catch {
-            // Metadatos opcionales al guardar zapatos directos.
+            // Metadatos opcionales al guardar producto directo.
         }
     }
 }
 
 // MARK: - Ropa / complementos · lookbook (entradas paralelas sin outfit)
 
-private struct ClosetGarmentLookbookStandaloneFlowView: View {
+struct ClosetGarmentLookbookStandaloneFlowView: View {
     /// Categorías con lookbook tipo catálogo; el calzado sigue usando «Zapatos solo tuyos (360°)».
     private static let categoryChoices: [ClothingCategory] = ClothingCategory.allCases.filter { $0 != .shoes }
 
@@ -1959,16 +1706,14 @@ private struct ClosetGarmentLookbookStandaloneFlowView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let row = draftRow {
-                    GarmentLookbookCaptureView(
-                        item: row,
-                        onAbortStandaloneDraftNotYetSaved: abandonStandaloneDraft
-                    )
-                } else {
-                    garmentLookbookIntroForm
-                }
+        Group {
+            if let row = draftRow {
+                GarmentLookbookCaptureView(
+                    item: row,
+                    onAbortStandaloneDraftNotYetSaved: abandonStandaloneDraft
+                )
+            } else {
+                garmentLookbookIntroForm
             }
         }
         .background(Color.white.ignoresSafeArea())
@@ -2079,6 +1824,7 @@ private struct ClosetGarmentLookbookStandaloneFlowView: View {
 struct AddToClosetPipelineView: View {
     @Binding var isPresented: Bool
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var flow: AddToClosetFlowViewModel
 
     @State private var savingAll = false
@@ -2118,86 +1864,85 @@ struct AddToClosetPipelineView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.white.ignoresSafeArea()
+        ZStack {
+            Color.white.ignoresSafeArea()
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
-                        if !flow.uploadRows.isEmpty {
-                            uploadingSection
-                        }
-                        if flow.phase == .review, !flow.pieces.isEmpty {
-                            reviewSection
-                        }
-                        if flow.phase == .idle, flow.uploadRows.isEmpty, flow.pieces.isEmpty {
-                            idleHint
-                        }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    if !flow.uploadRows.isEmpty {
+                        uploadingSection
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 40)
+                    if flow.phase == .review, !flow.pieces.isEmpty {
+                        reviewSection
+                    }
+                    if flow.phase == .idle, flow.uploadRows.isEmpty, flow.pieces.isEmpty {
+                        idleHint
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 40)
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.white, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        closePipelineTapped()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color.black)
-                            .frame(width: 36, height: 36)
-                            .background(Circle().fill(Color(.secondarySystemBackground)))
-                    }
-                    .buttonStyle(.plain)
-                }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        Task { await flow.generateAllStudio() }
-                    } label: {
-                        HStack(spacing: 5) {
-                            if flow.isGeneratingStudioBatch {
-                                ProgressView().scaleEffect(0.82).tint(.white)
-                                Text("Generating…")
-                            } else {
-                                Image(systemName: "sparkles")
-                                Text(flow.studioBatchInvocationFinished ? "Regenerar ✨" : "Generar ✨")
-                            }
-                        }
+        }
+        .navigationTitle("Review items")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.white, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button {
+                    closePipelineTapped()
+                } label: {
+                    Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(Color.black))
-                    }
-                    .disabled(
-                        flow.phase != .review || flow.pieces.isEmpty || flow.isGeneratingStudioBatch
-                            || !studioBatchAvailable)
-
-                    Button {
-                        Task { await saveAllTapped() }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "checkmark")
-                            Text("Add all")
-                        }
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(
-                            flow.canSaveAll && !flow.isGeneratingStudioBatch ? Color.black : Color(.tertiaryLabel)
-                        )
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(
-                            Capsule().fill(flow.canSaveAll && !flow.isGeneratingStudioBatch ? Color(.secondarySystemBackground) : Color(.tertiarySystemFill))
-                        )
-                    }
-                    .disabled(!flow.canSaveAll || savingAll || flow.isGeneratingStudioBatch)
-                    .scaleEffect(saveAllBump ? 0.96 : 1)
-                    .animation(.spring(response: 0.28, dampingFraction: 0.66), value: saveAllBump)
+                        .foregroundStyle(Color.black)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Color(.secondarySystemBackground)))
                 }
+                .buttonStyle(.plain)
+            }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    Task { await flow.generateAllStudio() }
+                } label: {
+                    HStack(spacing: 5) {
+                        if flow.isGeneratingStudioBatch {
+                            ProgressView().scaleEffect(0.82).tint(.white)
+                            Text("Generating…")
+                        } else {
+                            Image(systemName: "sparkles")
+                            Text(flow.studioBatchInvocationFinished ? "Regenerar ✨" : "Generar ✨")
+                        }
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(Color.black))
+                }
+                .disabled(
+                    flow.phase != .review || flow.pieces.isEmpty || flow.isGeneratingStudioBatch
+                        || !studioBatchAvailable)
+
+                Button {
+                    Task { await saveAllTapped() }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark")
+                        Text("Add all")
+                    }
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(
+                        flow.canSaveAll && !flow.isGeneratingStudioBatch ? Color.black : Color(.tertiaryLabel)
+                    )
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule().fill(flow.canSaveAll && !flow.isGeneratingStudioBatch ? Color(.secondarySystemBackground) : Color(.tertiarySystemFill))
+                    )
+                }
+                .disabled(!flow.canSaveAll || savingAll || flow.isGeneratingStudioBatch)
+                .scaleEffect(saveAllBump ? 0.96 : 1)
+                .animation(.spring(response: 0.28, dampingFraction: 0.66), value: saveAllBump)
             }
         }
         .alert("Item name", isPresented: Binding(
@@ -2225,7 +1970,8 @@ struct AddToClosetPipelineView: View {
             NavigationStack {
                 ShoeMultiAngleCaptureView(
                     garmentName:
-                        flow.pieces.first(where: { $0.id == token.pieceID })?.name ?? "Zapatos"
+                        flow.pieces.first(where: { $0.id == token.pieceID })?.name ?? "Product",
+                    productCategory: flow.pieces.first(where: { $0.id == token.pieceID })?.category ?? .shoes
                 ) { paths in
                     flow.applyShoe360Catalog(orderedPrettyPaths: paths, pieceID: token.pieceID)
                 }
@@ -2259,6 +2005,7 @@ struct AddToClosetPipelineView: View {
         }
         flow.clearEphemeralPresentationState()
         isPresented = false
+        dismiss()
     }
 
     private func queueAutoShoe360WizardDeferred() {
@@ -2916,6 +2663,7 @@ struct AddToClosetPipelineView: View {
             try flow.insertAll(modelContext: modelContext)
             flow.resetClearingDraftFile()
             isPresented = false
+            dismiss()
         } catch {
             flow.showToast(error.localizedDescription)
         }

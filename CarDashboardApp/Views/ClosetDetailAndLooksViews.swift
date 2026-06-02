@@ -365,7 +365,10 @@ struct ClosetGarmentDetailView: View {
         }
         .sheet(isPresented: $showShoe360Capture) {
             NavigationStack {
-                ShoeMultiAngleCaptureView(garmentName: item.name) { paths in
+                ShoeMultiAngleCaptureView(
+                    garmentName: item.name,
+                    productCategory: item.category
+                ) { paths in
                     item.multiAngleFilenames = paths
                     try? modelContext.save()
                 }
@@ -2073,6 +2076,7 @@ private struct Shoe360Viewer: View {
 /// Persistencia: llama `onOrderedPathsCommitted` con 4 rutas relativas cuando el usuario guarda (borrador SwiftData desde la vista llamante).
 struct ShoeMultiAngleCaptureView: View {
     let garmentName: String
+    var productCategory: ClothingCategory = .shoes
     /// Si vienen exactamente 4 UIImage, se asignan a `ShoeAngle.allCases` en ese orden (p. ej. galería en bloque).
     var prefilledCapturedInAngleOrder: [UIImage]? = nil
     /// Si `false`, no muestra toolbar «Cerrar» (usa el padre `NavigationStack`).
@@ -2138,7 +2142,7 @@ struct ShoeMultiAngleCaptureView: View {
                 .padding(.horizontal, 16)
 
                 if !allCaptured {
-                    Text(currentAngle.instruction)
+                    Text(currentAngle.productInstruction(for: productCategory))
                         .font(.caption)
                         .foregroundStyle(Color.black.opacity(0.55))
                         .multilineTextAlignment(.center)
@@ -2150,8 +2154,9 @@ struct ShoeMultiAngleCaptureView: View {
                         .font(.system(size: 14, weight: .heavy))
                         .foregroundStyle(Color.black)
                     Text(
-                        "Complete each side in order: Front, Right, Back, then Left. "
-                            + "You can tap a completed side to replace its photo."
+                        productCategory == .shoes
+                            ? "Complete each side in order: Front, Right, Back, then Left. You can tap a completed side to replace its photo."
+                            : "Capture front, right side, back, and left side in order. AI will turn each photo into a professional white-background catalog image."
                     )
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.48))
@@ -2210,7 +2215,7 @@ struct ShoeMultiAngleCaptureView: View {
                         HStack {
                             if isProcessing { ProgressView().tint(.white) }
                             Image(systemName: "sparkles")
-                            Text(isProcessing ? "Generating…" : "Generate 360° view")
+                            Text(isProcessing ? "Generating…" : "Generate studio photos")
                         }
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color.white)
@@ -2224,7 +2229,7 @@ struct ShoeMultiAngleCaptureView: View {
                     Button {
                         saveMultiAngle()
                     } label: {
-                        Label("Save 360° view", systemImage: "checkmark")
+                        Label("Save to stock", systemImage: "checkmark")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(Color.white)
                             .frame(maxWidth: .infinity)
@@ -2270,7 +2275,7 @@ struct ShoeMultiAngleCaptureView: View {
             }
             .padding(.bottom, 32)
         }
-        .navigationTitle("360° view")
+        .navigationTitle("360° studio")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if showsCloseButton {
@@ -2345,7 +2350,7 @@ struct ShoeMultiAngleCaptureView: View {
                 .resizable()
                 .scaledToFit()
                 .padding(12)
-        } else {
+        } else if productCategory == .shoes {
             ShoeGuideAngleVideoView(
                 resourceName: "Vidos-zapatos",
                 fileExtension: "mp4",
@@ -2355,6 +2360,15 @@ struct ShoeMultiAngleCaptureView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .padding(6)
             .animation(.easeInOut(duration: 0.45), value: currentAngle)
+        } else {
+            VStack(spacing: 12) {
+                Image(systemName: currentAngle.icon)
+                    .font(.system(size: 44, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.22))
+                Text(currentAngle.productSlotCue(for: productCategory))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.45))
+            }
         }
     }
 
@@ -2468,10 +2482,11 @@ struct ShoeMultiAngleCaptureView: View {
             } catch {
                 continue
             }
-            if let pretty = try? await GeminiService.shared.prettifyShoeAngle(
+            if let pretty = try? await GeminiService.shared.prettifyProductAngle(
                 cropRelativePath: cropName,
                 angle: angle,
-                itemName: nameSnapshot
+                itemName: nameSnapshot,
+                category: productCategory
             ) {
                 prettifiedFilenames[angle] = pretty
             }

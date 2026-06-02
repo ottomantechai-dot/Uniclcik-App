@@ -28,9 +28,7 @@ struct DashboardView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .environment(\.dashboardLightSurface, true)
             .preferredColorScheme(.light)
-            .navigationTitle(L10n.tr("tab.dashboard"))
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar { dashboardToolbar }
+            .toolbar(.hidden, for: .navigationBar)
             .task(id: auth.session?.user.id) {
                 if let uid = auth.session?.user.id {
                     await chatInbox.refreshCoordinatorTasksFromServer(currentUserId: uid)
@@ -43,6 +41,7 @@ struct DashboardView: View {
                 locationHub.requestWhenInUseAndStart()
             }
             .onDisappear { locationHub.stopUpdates() }
+            .task { await refreshHomeStats() }
             .task(id: carsVM.cars.count) { await refreshHomeStats() }
             .onChange(of: carsVM.cars) { _, _ in Task { await refreshHomeStats() } }
             .onChange(of: closetItems.count) { _, _ in Task { await refreshHomeStats() } }
@@ -70,30 +69,30 @@ struct DashboardView: View {
             Color.white.ignoresSafeArea()
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
-                    DashboardHeroBannerCard(onExplore: { tabRouter.selected = .closet })
-                        .padding(.top, 12)
+                    dashboardScreenHeader
+                    DashboardStatsOverview(stats: vm, didAppear: didAppear)
                         .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.05))
-                    DashboardStatsOverview(stats: vm)
-                        .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.15))
                     DashboardLatestSaleSection(closetItems: closetItems, cars: carsVM.cars)
-                        .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.22))
+                        .modifier(EntranceAnimation(didAppear: didAppear, delay: 0.15))
                 }
                 .padding(.horizontal, 16)
+                .padding(.top, 8)
                 .padding(.bottom, 28)
                 .frame(minWidth: 0, maxWidth: .infinity)
             }
         }
     }
 
-    @ToolbarContentBuilder
-    private var dashboardToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
+    private var dashboardScreenHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(L10n.tr("tab.dashboard"))
+                .font(.system(size: 28, weight: .bold))
+                .foregroundStyle(Color.black)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
             Button {
                 ClosetAnalytics.named("add_to_closet_opened")
-                tabRouter.selected = .closet
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    NotificationCenter.default.post(name: .upsoledPresentAddToClosetMenu, object: nil)
-                }
+                tabRouter.selected = .add
             } label: {
                 Image(systemName: "plus.circle.fill")
                     .font(.system(size: 22, weight: .semibold))
@@ -102,6 +101,7 @@ struct DashboardView: View {
             }
             .accessibilityLabel(L10n.tr("dashboard.quickAdd"))
         }
+        .padding(.bottom, 4)
     }
 
     private func handleDashboardAppear() {
@@ -137,6 +137,168 @@ private struct EntranceAnimation: ViewModifier {
     }
 }
 
+/// Count-up animado para montos en USD (hero KPIs).
+private struct DashboardCountUpCurrency: View {
+    let target: Double
+    let trigger: UUID
+    var fontSize: CGFloat = 30
+
+    @State private var animatedAmount: Double = 0
+
+    var body: some View {
+        CountUpCurrencyLabel(amount: animatedAmount, fontSize: fontSize)
+            .onAppear { runCountUp(to: target) }
+            .onChange(of: target) { _, newValue in runCountUp(to: newValue) }
+            .onChange(of: trigger) { _, _ in runCountUp(to: target) }
+    }
+
+    private func runCountUp(to value: Double) {
+        animatedAmount = 0
+        withAnimation(.easeOut(duration: 1.05)) {
+            animatedAmount = value
+        }
+    }
+}
+
+private struct CountUpCurrencyLabel: View, Animatable {
+    var amount: Double
+    var fontSize: CGFloat
+
+    var animatableData: Double {
+        get { amount }
+        set { amount = newValue }
+    }
+
+    var body: some View {
+        Text(DealershipStatsViewModel.formatUSD(amount))
+            .font(.system(size: fontSize, weight: .heavy, design: .rounded))
+            .foregroundStyle(Color.black.opacity(0.92))
+            .minimumScaleFactor(0.7)
+            .lineLimit(1)
+    }
+}
+
+/// Sparkline con reveal horizontal al aparecer o al refrescar datos.
+private struct DashboardAnimatedSparkline: View {
+    let points: [Double]
+    let isUp: Bool
+    let trigger: UUID
+
+    @State private var reveal: CGFloat = 0
+    @State private var dotPulse = false
+
+    var body: some View {
+        PriceTrendSparkline(points: points, isUp: isUp)
+            .mask(alignment: .leading) {
+                Rectangle()
+                    .scaleEffect(x: reveal, y: 1, anchor: .leading)
+            }
+            .overlay(alignment: .trailing) {
+                if reveal > 0.95 {
+                    Circle()
+                        .fill(isUp
+                            ? Color(red: 0.20, green: 0.70, blue: 0.45)
+                            : Color(red: 0.92, green: 0.30, blue: 0.30))
+                        .frame(width: 8, height: 8)
+                        .scaleEffect(dotPulse ? 1.25 : 0.85)
+                        .opacity(dotPulse ? 0.85 : 1)
+                        .animation(
+                            .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
+                            value: dotPulse
+                        )
+                        .offset(x: -2)
+                }
+            }
+            .onAppear { runReveal() }
+            .onChange(of: trigger) { _, _ in runReveal() }
+            .onChange(of: points.count) { _, _ in runReveal() }
+    }
+
+    private func runReveal() {
+        reveal = 0
+        dotPulse = false
+        withAnimation(.easeOut(duration: 1.15)) {
+            reveal = 1
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            dotPulse = true
+        }
+    }
+}
+
+/// Badge de tendencia con pop-in al cargar.
+private struct DashboardAnimatedTrendBadge: View {
+    let changePercent: Double
+    let isUp: Bool
+    var compact: Bool = false
+    let trigger: UUID
+
+    @State private var visible = false
+
+    var body: some View {
+        trendBadgeContent
+            .scaleEffect(visible ? 1 : 0.6)
+            .opacity(visible ? 1 : 0)
+            .onAppear { animateIn() }
+            .onChange(of: trigger) { _, _ in animateIn() }
+    }
+
+    private func animateIn() {
+        visible = false
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.72).delay(0.25)) {
+            visible = true
+        }
+    }
+
+    private var trendBadgeContent: some View {
+        let tint = isUp
+            ? Color(red: 0.20, green: 0.70, blue: 0.45)
+            : Color(red: 0.92, green: 0.30, blue: 0.30)
+
+        return HStack(spacing: 3) {
+            Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
+                .font(.system(size: compact ? 8 : 9, weight: .heavy))
+            Text(DealershipStatsViewModel.formatChangePercent(changePercent))
+                .font(.system(size: compact ? 9 : 11, weight: .heavy, design: .rounded))
+                .contentTransition(.numericText(value: changePercent))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, compact ? 6 : 8)
+        .padding(.vertical, compact ? 3 : 4)
+        .background(Capsule().fill(tint.opacity(0.12)))
+    }
+}
+
+/// Entrada escalonada para tarjetas de categoría y métricas.
+private struct StaggeredCardEntrance: ViewModifier {
+    let index: Int
+    let didAppear: Bool
+    let trigger: UUID
+
+    @State private var cardVisible = false
+
+    private var delay: Double { Double(index) * 0.07 + 0.12 }
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(cardVisible ? 1 : 0)
+            .offset(y: cardVisible ? 0 : 14)
+            .scaleEffect(cardVisible ? 1 : 0.94)
+            .onAppear { playEntrance() }
+            .onChange(of: didAppear) { _, appeared in
+                if appeared { playEntrance() }
+            }
+            .onChange(of: trigger) { _, _ in playEntrance() }
+    }
+
+    private func playEntrance() {
+        cardVisible = false
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.82).delay(delay)) {
+            cardVisible = true
+        }
+    }
+}
+
 // MARK: - Backdrop claro (no usado actualmente — se mantiene por si se reactiva)
 
 /// Fondo claro tipo UPSOLED. Sustituye `DashboardHomeBackdropImage` (video oscuro)
@@ -164,6 +326,7 @@ struct DashboardHomeLightBackdrop: View {
 
 private struct DashboardStatsOverview: View {
     @ObservedObject var stats: DealershipStatsViewModel
+    var didAppear: Bool = true
 
     private let columns = [
         GridItem(.flexible(), spacing: 12),
@@ -177,7 +340,7 @@ private struct DashboardStatsOverview: View {
             VStack(spacing: 12) {
                 heroKPICard(
                     title: L10n.tr("dashboard.totalStock"),
-                    value: stats.totalStockValue,
+                    amount: stats.totalStockValueAmount,
                     subtitle: stats.totalStockBadge.isEmpty
                         ? nil
                         : "\(stats.totalStockBadge) · \(stats.marketCoverageLabel)",
@@ -189,13 +352,25 @@ private struct DashboardStatsOverview: View {
 
                 heroKPICard(
                     title: "Total invested",
-                    value: stats.totalInvested,
+                    amount: stats.totalInvestedAmount,
                     subtitle: "Unrealized \(stats.unrealizedGainLabel)",
                     changePercent: stats.investedChangePercent,
                     isUp: stats.investedIsUp,
                     history: stats.stockValueHistory,
                     icon: "creditcard.fill"
                 )
+            }
+
+            if let snapshot = stats.marketSnapshot {
+                DashboardPortfolioMarketCard(
+                    snapshot: snapshot,
+                    animationToken: stats.statsAnimationToken
+                )
+                .modifier(StaggeredCardEntrance(
+                    index: 0,
+                    didAppear: didAppear,
+                    trigger: stats.statsAnimationToken
+                ))
             }
 
             if !stats.categorySnapshots.isEmpty {
@@ -205,8 +380,13 @@ private struct DashboardStatsOverview: View {
                         .foregroundStyle(Color.black.opacity(0.85))
 
                     HStack(spacing: 10) {
-                        ForEach(stats.categorySnapshots) { row in
+                        ForEach(Array(stats.categorySnapshots.enumerated()), id: \.element.id) { index, row in
                             categoryMiniCard(row)
+                                .modifier(StaggeredCardEntrance(
+                                    index: index,
+                                    didAppear: didAppear,
+                                    trigger: stats.statsAnimationToken
+                                ))
                         }
                     }
                 }
@@ -219,8 +399,13 @@ private struct DashboardStatsOverview: View {
                         .foregroundStyle(Color.black.opacity(0.85))
 
                     LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(stats.metricTiles) { tile in
+                        ForEach(Array(stats.metricTiles.enumerated()), id: \.element.id) { index, tile in
                             metricTileCard(tile)
+                                .modifier(StaggeredCardEntrance(
+                                    index: index,
+                                    didAppear: didAppear,
+                                    trigger: stats.statsAnimationToken
+                                ))
                         }
                     }
                 }
@@ -250,7 +435,7 @@ private struct DashboardStatsOverview: View {
 
     private func heroKPICard(
         title: String,
-        value: String,
+        amount: Double,
         subtitle: String?,
         changePercent: Double,
         isUp: Bool,
@@ -270,14 +455,17 @@ private struct DashboardStatsOverview: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.black.opacity(0.55))
                 Spacer(minLength: 0)
-                trendBadge(changePercent: changePercent, isUp: isUp)
+                DashboardAnimatedTrendBadge(
+                    changePercent: changePercent,
+                    isUp: isUp,
+                    trigger: stats.statsAnimationToken
+                )
             }
 
-            Text(value)
-                .font(.system(size: 30, weight: .heavy, design: .rounded))
-                .foregroundStyle(Color.black.opacity(0.92))
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
+            DashboardCountUpCurrency(
+                target: amount,
+                trigger: stats.statsAnimationToken
+            )
 
             if let subtitle {
                 Text(subtitle)
@@ -286,14 +474,25 @@ private struct DashboardStatsOverview: View {
             }
 
             if history.count >= 2 {
-                PriceTrendSparkline(points: history, isUp: isUp)
-                    .frame(height: 44)
+                DashboardAnimatedSparkline(
+                    points: history,
+                    isUp: isUp,
+                    trigger: stats.statsAnimationToken
+                )
+                .frame(height: 44)
+            } else if amount > 0 {
+                DashboardAnimatedSparkline(
+                    points: [amount * 0.8, amount * 0.9, amount],
+                    isUp: true,
+                    trigger: stats.statsAnimationToken
+                )
+                .frame(height: 44)
             } else {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(tint.opacity(0.08))
                     .frame(height: 44)
                     .overlay {
-                        Text("Add market prices to see trends")
+                        Text("Add items to track your portfolio")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(Color.black.opacity(0.38))
                     }
@@ -319,14 +518,19 @@ private struct DashboardStatsOverview: View {
                 .foregroundStyle(Color.black.opacity(0.50))
                 .lineLimit(1)
 
-            Text(row.valueLabel)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.black.opacity(0.90))
-                .minimumScaleFactor(0.75)
-                .lineLimit(1)
+            DashboardCountUpCurrency(
+                target: row.valueUSD,
+                trigger: stats.statsAnimationToken,
+                fontSize: 14
+            )
 
             if let change = row.changePercent {
-                trendBadge(changePercent: change, isUp: row.isUp, compact: true)
+                DashboardAnimatedTrendBadge(
+                    changePercent: change,
+                    isUp: row.isUp,
+                    compact: true,
+                    trigger: stats.statsAnimationToken
+                )
             } else {
                 Text("\(row.itemCount) items")
                     .font(.system(size: 9, weight: .medium))
@@ -355,7 +559,12 @@ private struct DashboardStatsOverview: View {
                     }
                 Spacer(minLength: 0)
                 if let change = tile.changePercent {
-                    trendBadge(changePercent: change, isUp: tile.isUp, compact: true)
+                    DashboardAnimatedTrendBadge(
+                        changePercent: change,
+                        isUp: tile.isUp,
+                        compact: true,
+                        trigger: stats.statsAnimationToken
+                    )
                 }
             }
 
@@ -370,6 +579,7 @@ private struct DashboardStatsOverview: View {
                 .foregroundStyle(Color.black.opacity(0.92))
                 .minimumScaleFactor(0.75)
                 .lineLimit(2)
+                .animation(.spring(response: 0.55, dampingFraction: 0.85), value: tile.value)
 
             if let subtitle = tile.subtitle {
                 Text(subtitle)
@@ -386,137 +596,150 @@ private struct DashboardStatsOverview: View {
                 .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 3)
         }
     }
-
-    private func trendBadge(changePercent: Double, isUp: Bool, compact: Bool = false) -> some View {
-        let tint = isUp
-            ? Color(red: 0.20, green: 0.70, blue: 0.45)
-            : Color(red: 0.92, green: 0.30, blue: 0.30)
-
-        return HStack(spacing: 3) {
-            Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
-                .font(.system(size: compact ? 8 : 9, weight: .heavy))
-            Text(DealershipStatsViewModel.formatChangePercent(changePercent))
-                .font(.system(size: compact ? 9 : 11, weight: .heavy, design: .rounded))
-        }
-        .foregroundStyle(tint)
-        .padding(.horizontal, compact ? 6 : 8)
-        .padding(.vertical, compact ? 3 : 4)
-        .background(Capsule().fill(tint.opacity(0.12)))
-    }
 }
 
-// MARK: - Hero banner (estilo UPSOLED)
+// MARK: - Portfolio market price (Home statistics)
 
-/// Tarjeta hero superior con título grande, CTA y arte del lado derecho.
-private struct DashboardHeroBannerCard: View {
-    var onExplore: () -> Void
-    @State private var sneakerBreathing = false
-    @State private var pulseDot = false
+private struct DashboardPortfolioMarketCard: View {
+    let snapshot: DashboardMarketSnapshot
+    let animationToken: UUID
+
+    private var tint: Color {
+        snapshot.isUp
+            ? Color(red: 0.20, green: 0.70, blue: 0.45)
+            : Color(red: 0.92, green: 0.30, blue: 0.30)
+    }
 
     var body: some View {
-        ZStack(alignment: .leading) {
-            // Fondo azul degradado más rico (3 paradas)
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.30, green: 0.55, blue: 0.95),
-                            Color(red: 0.18, green: 0.40, blue: 0.85),
-                            Color(red: 0.12, green: 0.30, blue: 0.75),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay {
-                    // Gloss superior tipo cristal
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.18), .clear],
-                                startPoint: .top,
-                                endPoint: .center
-                            )
+        VStack(spacing: 14) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 10, weight: .heavy))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.30, green: 0.55, blue: 0.95),
+                                Color(red: 0.14, green: 0.36, blue: 0.85),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
-                        .blendMode(.plusLighter)
-                        .opacity(0.6)
+                    )
+                Text("MARKET PRICE")
+                    .font(.system(size: 10, weight: .heavy))
+                    .tracking(1.0)
+                    .foregroundStyle(Color.black.opacity(0.55))
+                Spacer(minLength: 0)
+                if snapshot.trackedCount > 0 {
+                    Text("\(snapshot.trackedCount) tracked")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.38))
                 }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.30), lineWidth: 0.8)
-                }
-                .shadow(color: Color(red: 0.18, green: 0.40, blue: 0.85).opacity(0.30), radius: 18, x: 0, y: 10)
+            }
 
-            HStack(alignment: .center, spacing: 8) {
-                VStack(alignment: .leading, spacing: 12) {
-                    // Eyebrow pill con punto pulsante
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 5, height: 5)
-                            .scaleEffect(pulseDot ? 1.4 : 1.0)
-                            .opacity(pulseDot ? 0.6 : 1.0)
-                            .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulseDot)
-                        Text(L10n.tr("dashboard.new"))
-                            .font(.system(size: 9, weight: .heavy))
-                            .tracking(1.4)
-                            .foregroundStyle(.white)
+            HStack(spacing: 6) {
+                Image(systemName: snapshot.hasPlatformBreakdown ? "checkmark.seal.fill" : "chart.bar.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.75))
+                Text(snapshot.headline)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.55))
+                Spacer(minLength: 0)
+            }
+            .padding(.top, -2)
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        DashboardCountUpCurrency(
+                            target: snapshot.totalLiveValueUSD,
+                            trigger: animationToken
+                        )
+                        Text("average")
+                            .font(.system(size: 10, weight: .heavy))
+                            .tracking(0.6)
+                            .foregroundStyle(Color.black.opacity(0.45))
+                            .padding(.bottom, 4)
                     }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background {
-                        Capsule()
-                            .fill(Color.white.opacity(0.20))
-                    }
-
-                    Text(L10n.tr("dashboard.heroTitle"))
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Button(action: onExplore) {
-                        HStack(spacing: 6) {
-                            Text(L10n.tr("dashboard.heroCTA"))
-                                .font(.system(size: 13, weight: .bold))
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 11, weight: .heavy))
+                    HStack(spacing: 10) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(Color(red: 0.18, green: 0.65, blue: 0.40))
+                            Text("From \(DealershipStatsViewModel.formatUSD(snapshot.minUSD))")
+                                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                                .foregroundStyle(Color.black.opacity(0.70))
                         }
-                        .foregroundStyle(Color(red: 0.15, green: 0.32, blue: 0.75))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 9)
-                        .background {
-                            Capsule(style: .continuous)
-                                .fill(Color.white)
-                                .shadow(color: Color.black.opacity(0.18), radius: 6, y: 3)
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(Color.black.opacity(0.35))
+                            Text("Up to \(DealershipStatsViewModel.formatUSD(snapshot.maxUSD))")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Color.black.opacity(0.45))
                         }
                     }
-                    .buttonStyle(.plain)
                 }
-                .padding(.leading, 18)
-                .padding(.vertical, 18)
 
                 Spacer(minLength: 0)
 
-                Image("AuthSneakerHero")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 200, height: 200)
-                    .rotationEffect(.degrees(sneakerBreathing ? -16 : -20))
-                    .scaleEffect(sneakerBreathing ? 1.04 : 1.0)
-                    .offset(x: 18, y: sneakerBreathing ? -3 : 3)
-                    .shadow(color: Color.black.opacity(0.35), radius: 18, x: -3, y: 8)
-                    .shadow(color: Color(red: 0.18, green: 0.40, blue: 0.85).opacity(0.50), radius: 30, y: 12)
-                    .animation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true), value: sneakerBreathing)
-                    .accessibilityHidden(true)
+                DashboardAnimatedTrendBadge(
+                    changePercent: snapshot.changePercent,
+                    isUp: snapshot.isUp,
+                    trigger: animationToken
+                )
+            }
+
+            if snapshot.history.count >= 2 {
+                DashboardAnimatedSparkline(
+                    points: snapshot.history,
+                    isUp: snapshot.isUp,
+                    trigger: animationToken
+                )
+                .frame(height: 48)
+            }
+
+            if snapshot.hasPlatformBreakdown {
+                HStack(spacing: 8) {
+                    ForEach(snapshot.platforms) { platform in
+                        PlatformPriceTag(
+                            platform: platform,
+                            formatted: PieceMarketPrice.formatUSD(platform.avg)
+                        )
+                    }
+                    Spacer(minLength: 0)
+                }
             }
         }
-        .frame(height: 195)
-        .frame(maxWidth: .infinity)
-        .onAppear {
-            sneakerBreathing = true
-            pulseDot = true
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [tint.opacity(0.08), .clear],
+                            startPoint: .topTrailing,
+                            endPoint: .bottomLeading
+                        )
+                    )
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                tint.opacity(0.35),
+                                Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.15),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.2
+                    )
+            }
+            .shadow(color: tint.opacity(0.12), radius: 14, y: 5)
+            .shadow(color: Color.black.opacity(0.04), radius: 2, y: 1)
         }
     }
 }

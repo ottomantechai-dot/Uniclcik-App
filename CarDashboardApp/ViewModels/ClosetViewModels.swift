@@ -310,7 +310,7 @@ final class AddToClosetFlowViewModel: ObservableObject {
         guard let idx = pieces.firstIndex(where: { $0.id == pieceID }) else { return }
         let cat = pieces[idx].category ?? .accessories
         if cat == .shoes {
-            showToast("Para zapatos usa «Vista 360°» (4 fotos por ángulo).")
+            showToast("For shoes, use «360° studio» (4 angle photos) for best results.")
             return
         }
         pieces[idx].prettifyFailedBadge = false

@@ -188,7 +188,21 @@ enum L10n {
         "closet.addWide": "+ Add",
         "closet.starterReminderPartial": "Keep using the tab bar + or '+ Add' until you have five products in your stock.",
         "closet.addSheetTitle": "Add to stock",
-        "closet.addSheetPhotoHint": "📷 Choose photos for your stock",
+        "closet.addSheetSubtitle": "Add photos and details to your inventory in just a few steps.",
+        "closet.addSheetPhotoHint": "Choose photos for your stock",
+        "closet.addSheetSectionPhotos": "Choose photos for your stock",
+        "closet.addSheetSectionAI": "Or use AI-powered tools",
+        "closet.addSheetGallery": "Gallery",
+        "closet.addSheetGallerySub": "Up to 5 photos",
+        "closet.addSheetCamera": "Camera",
+        "closet.addSheetCameraSub": "One photo instantly",
+        "closet.addSheetShoes360": "Any product (360°)",
+        "closet.addSheetShoes360Sub": "Front, right, back, and left — AI turns your photos into professional white-background catalog images.",
+        "closet.addSheetRecommended": "Recommended",
+        "closet.addSheetApparel": "Apparel · AI lookbook",
+        "closet.addSheetApparelSub": "Shirts, pants, socks, belts… 5 guide photos (front, back, details) and we generate catalog and lifestyle images you can swipe through.",
+        "closet.addSheetTrustTitle": "Smart, fast and secure",
+        "closet.addSheetTrustSub": "AI guides you step by step to create the best product listings.",
         "closet.searchPrompt": "Search by brand, color, SKU…",
         "closet.scanBarcode": "Scan barcode or QR",
         "closet.scanHint": "The barcode must fit entirely inside the frame.",
@@ -221,6 +235,13 @@ enum L10n {
         "auth.signInTitle": "Sign in",
         "auth.signInSubtitle": "Access your UPSOLED account.",
         "auth.welcomeBack": "Welcome back",
+        "auth.welcomeLine1": "Welcome",
+        "auth.welcomeLine2": "back",
+        "auth.signUpLine1": "Create",
+        "auth.signUpLine2": "your account",
+        "auth.signInCardSubtitle": "Access your inventory and keep managing your store.",
+        "auth.signUpCardSubtitle": "Set up your account and start managing your inventory.",
+        "auth.rememberMe": "Remember me",
         "auth.createYourAccount": "Create your account",
         "auth.email": "Email",
         "auth.password": "Password",
@@ -228,11 +249,11 @@ enum L10n {
         "auth.signIn": "Sign in",
         "auth.alreadyHaveAccount": "Already have an account?",
         "auth.orContinue": "or continue with",
-        "auth.continueApple": "Continue with Apple",
-        "auth.continueGoogle": "Continue with Google",
+        "auth.continueApple": "Continuar con Apple",
+        "auth.continueGoogle": "Continuar con Google",
         "auth.noAccount": "Don't have an account?",
         "auth.signUp": "Sign up",
-        "auth.createAccount": "Create your account",
+        "auth.createAccount": "Create account",
         "auth.startCollection": "Start building your collection.",
         "auth.signInToEmpire": "Sign in to access your sneaker empire.",
         "auth.helpTitle": "Help",
@@ -241,6 +262,15 @@ enum L10n {
         "auth.comingSoonBody": "This option will be available in a future update.",
         "auth.resetAccess": "Recover access",
         "auth.connecting": "Connecting…",
+        "auth.landingHeadline1": "Your entire inventory.",
+        "auth.landingHeadline2": "In one place.",
+        "auth.landingSubtitle": "Manage products, orders and sales from one platform.",
+        "auth.featureInventory": "Inventory control",
+        "auth.featureOrders": "Orders & sales",
+        "auth.featureReports": "Smart reports",
+        "auth.featureAccess": "Access anywhere",
+        "auth.registerWithEmail": "Sign up with Email",
+        "auth.alreadyHaveAccountShort": "Already have an account?",
     ]
 }
 
@@ -253,10 +283,6 @@ struct SettingsView: View {
     @State private var showGoatConnect = false
     @State private var showProfilePhotoSheet = false
 
-    @AppStorage("openaiAPIKey") private var openaiAPIKey: String = ""
-    @State private var openaiKeyDraft: String = ""
-    @State private var openaiKeyRevealed = false
-
     var body: some View {
         ZStack {
             Color.white.ignoresSafeArea()
@@ -265,11 +291,6 @@ struct SettingsView: View {
                 VStack(spacing: 18) {
                     profileHeroSection
                         .padding(.top, 8)
-
-                    Group {
-                        sectionTitle(L10n.tr("settings.openAI"))
-                        openAIKeySection
-                    }
 
                     Group {
                         sectionTitle(L10n.tr("settings.personalInfo"))
@@ -335,141 +356,6 @@ struct SettingsView: View {
         }
         .task {
             await goatVM.validateStoredSession()
-        }
-    }
-
-    // MARK: - OpenAI API
-
-    private var openAIKeySection: some View {
-        ChromeSettingsCard(cornerRadius: 22, padding: 0) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.14))
-                            .frame(width: 32, height: 32)
-                        Image(systemName: "key.fill")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-                    }
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(L10n.tr("settings.openAIKeyTitle"))
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color.black.opacity(0.85))
-                        Text(
-                            openaiAPIKey.isEmpty
-                                ? L10n.tr("settings.openAIKeyMissing")
-                                : String(
-                                    format: L10n.tr("settings.openAIKeyActive"),
-                                    String(openaiAPIKey.suffix(4))
-                                )
-                        )
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(
-                            openaiAPIKey.isEmpty
-                                ? Color.orange.opacity(0.85)
-                                : Color(red: 0.18, green: 0.62, blue: 0.40)
-                        )
-                    }
-                    Spacer(minLength: 0)
-
-                    Circle()
-                        .fill(
-                            openaiAPIKey.isEmpty
-                                ? Color.orange.opacity(0.85)
-                                : Color(red: 0.20, green: 0.70, blue: 0.45)
-                        )
-                        .frame(width: 8, height: 8)
-                }
-
-                HStack(spacing: 10) {
-                    Group {
-                        if openaiKeyRevealed {
-                            TextField("sk-...", text: $openaiKeyDraft)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                        } else {
-                            SecureField("sk-...", text: $openaiKeyDraft)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                        }
-                    }
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Color.black.opacity(0.88))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color(red: 0.95, green: 0.96, blue: 0.99))
-                    }
-
-                    Button {
-                        openaiKeyRevealed.toggle()
-                    } label: {
-                        Image(systemName: openaiKeyRevealed ? "eye.slash.fill" : "eye.fill")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(Color.black.opacity(0.50))
-                            .frame(width: 36, height: 36)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                HStack(spacing: 10) {
-                    Button {
-                        openaiAPIKey = openaiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    } label: {
-                        Text(L10n.tr("settings.openAIKeySave"))
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background {
-                                Capsule().fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color(red: 0.30, green: 0.55, blue: 0.95),
-                                            Color(red: 0.14, green: 0.36, blue: 0.85),
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(openaiKeyDraft.trimmingCharacters(in: .whitespaces).isEmpty)
-                    .opacity(openaiKeyDraft.trimmingCharacters(in: .whitespaces).isEmpty ? 0.55 : 1)
-
-                    if !openaiAPIKey.isEmpty {
-                        Button {
-                            openaiAPIKey = ""
-                            openaiKeyDraft = ""
-                        } label: {
-                            Text(L10n.tr("settings.openAIKeyClear"))
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color.red.opacity(0.85))
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background {
-                                    Capsule()
-                                        .strokeBorder(Color.red.opacity(0.30), lineWidth: 1)
-                                }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Spacer(minLength: 0)
-                }
-
-                Text(L10n.tr("settings.openAIKeyHint"))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.50))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(16)
-            .onAppear {
-                if openaiKeyDraft.isEmpty { openaiKeyDraft = openaiAPIKey }
-            }
         }
     }
 

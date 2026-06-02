@@ -129,6 +129,31 @@ enum ShoeAngle: Int, CaseIterable, Identifiable {
         case .left: return "→ Inner side"
         }
     }
+
+    /// Instrucciones genéricas para cualquier producto (no solo calzado).
+    func productInstruction(for category: ClothingCategory) -> String {
+        if category == .shoes { return instruction }
+        switch self {
+        case .front:
+            return "Place the product facing the camera, showing the front."
+        case .right:
+            return "Rotate 90° to the right and capture the full right side."
+        case .back:
+            return "Turn the product around and capture the back."
+        case .left:
+            return "Rotate to show the full left side."
+        }
+    }
+
+    func productSlotCue(for category: ClothingCategory) -> String {
+        if category == .shoes { return slotCue }
+        switch self {
+        case .front: return "→ Front view"
+        case .right: return "→ Right side"
+        case .back: return "→ Back view"
+        case .left: return "→ Left side"
+        }
+    }
 }
 
 // MARK: - Lookbook de prenda (no zapatos)

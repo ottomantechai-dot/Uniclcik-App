@@ -184,10 +184,11 @@ extension ClosetItem {
         !(resolvedSKU ?? "").isEmpty || !marketLookupQuery.isEmpty
     }
 
-    /// True when cached market price is missing or older than 24 hours.
+    /// True when cached market price is missing, stale, or missing platform breakdown.
     var marketPriceNeedsRefresh: Bool {
         guard hasStyleForMarketLookup else { return false }
-        guard marketPrice != nil else { return true }
+        guard let mp = marketPrice else { return true }
+        if mp.platforms.isEmpty { return true }
         guard let fetched = marketPriceFetchedAt else { return true }
         return Date().timeIntervalSince(fetched) >= 86_400
     }

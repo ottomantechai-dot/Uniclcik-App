@@ -191,13 +191,288 @@ struct StockProfitCornerBadge: View {
     }
 }
 
-// MARK: - Marketplace list row (StockX-style)
+// MARK: - Stock market overview (summary card)
+
+struct StockMarketOverviewStrip: View {
+    let snapshot: DashboardMarketSnapshot
+
+    private var tint: Color {
+        snapshot.isUp
+            ? Color(red: 0.20, green: 0.70, blue: 0.45)
+            : Color(red: 0.92, green: 0.30, blue: 0.30)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
+                Text("MARKET LIVE")
+                    .font(.system(size: 9, weight: .heavy))
+                    .tracking(0.8)
+                    .foregroundStyle(Color.black.opacity(0.50))
+                Spacer(minLength: 0)
+                if snapshot.trackedCount > 0 {
+                    Text("\(snapshot.trackedCount) tracked")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.38))
+                }
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(DealershipStatsViewModel.formatUSD(snapshot.totalLiveValueUSD))
+                    .font(.system(size: 22, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.92))
+                    .minimumScaleFactor(0.75)
+                    .lineLimit(1)
+                Text("average")
+                    .font(.system(size: 9, weight: .heavy))
+                    .tracking(0.5)
+                    .foregroundStyle(Color.black.opacity(0.42))
+                    .padding(.bottom, 2)
+                Spacer(minLength: 0)
+                stockTrendBadge
+            }
+
+            HStack(spacing: 10) {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Color(red: 0.18, green: 0.65, blue: 0.40))
+                    Text("From \(DealershipStatsViewModel.formatUSD(snapshot.minUSD))")
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.65))
+                }
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.35))
+                    Text("Up to \(DealershipStatsViewModel.formatUSD(snapshot.maxUSD))")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.42))
+                }
+            }
+
+            if snapshot.history.count >= 2 {
+                PriceTrendSparkline(points: snapshot.history, isUp: snapshot.isUp)
+                    .frame(height: 44)
+            }
+
+            if snapshot.hasPlatformBreakdown {
+                HStack(spacing: 8) {
+                    ForEach(snapshot.platforms) { platform in
+                        PlatformPriceTag(
+                            platform: platform,
+                            formatted: PieceMarketPrice.formatUSD(platform.avg)
+                        )
+                    }
+                    Spacer(minLength: 0)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    stockPlaceholderPlatformChip(name: "StockX", color: PlatformPrice.brandColor(for: "StockX"))
+                    stockPlaceholderPlatformChip(name: "GOAT", color: PlatformPrice.brandColor(for: "GOAT"))
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [tint.opacity(0.07), Color.white],
+                        startPoint: .topTrailing,
+                        endPoint: .bottomLeading
+                    )
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(tint.opacity(0.22), lineWidth: 1)
+                }
+        }
+    }
+
+    private var stockTrendBadge: some View {
+        let pct = snapshot.changePercent
+        return HStack(spacing: 2) {
+            Image(systemName: snapshot.isUp ? "arrow.up.right" : "arrow.down.right")
+                .font(.system(size: 8, weight: .heavy))
+            Text(DealershipStatsViewModel.formatChangePercent(pct))
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(tint.opacity(0.12)))
+    }
+
+    private func stockPlaceholderPlatformChip(name: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            PlatformBrandBadge(name: name, color: color, size: 16)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(name.uppercased())
+                    .font(.system(size: 8, weight: .heavy))
+                    .tracking(0.5)
+                    .foregroundStyle(Color.black.opacity(0.45))
+                Text("Loading…")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.30))
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.85))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(color.opacity(0.18), lineWidth: 1)
+                }
+        }
+    }
+}
+
+/// Compact platform price row for stock list cells.
+struct StockRowPlatformChip: View {
+    let platform: PlatformPrice
+    var isPreferred: Bool = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            PlatformBrandBadge(name: platform.name, color: platform.color, size: 16)
+            Text(PieceMarketPrice.formatUSD(platform.avg))
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundStyle(Color.black.opacity(isPreferred ? 0.92 : 0.72))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isPreferred ? platform.color.opacity(0.10) : Color.white.opacity(0.9))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(platform.color.opacity(isPreferred ? 0.35 : 0.18), lineWidth: 1)
+                }
+        }
+    }
+}
+
+// MARK: - Marketplace list row (sparkline + platform price)
+
+struct StockItemSparkline {
+    let points: [Double]
+    let isUp: Bool
+
+    static func resolve(
+        marketPrice: PieceMarketPrice?,
+        preferredPlatform: String?,
+        stockValueUSD: Double,
+        purchaseUSD: Double,
+        askingUSD: Double
+    ) -> StockItemSparkline {
+        let platform = StockMarketRowMetrics.resolvedPlatform(from: marketPrice, preferred: preferredPlatform)
+        var points = StockMarketRowMetrics.sparklinePoints(from: marketPrice, platform: platform)
+        var isUp = StockMarketRowMetrics.trendPercent(from: marketPrice, platform: platform) >= 0
+
+        if points.count < 2 {
+            points = StockMarketRowMetrics.inventorySparkline(
+                stockValueUSD: stockValueUSD,
+                purchaseUSD: purchaseUSD,
+                askingUSD: askingUSD
+            )
+            if points.count >= 2, let first = points.first, let last = points.last, first > 0 {
+                isUp = last >= first
+            }
+        }
+
+        return StockItemSparkline(points: points, isUp: isUp)
+    }
+}
+
+private enum StockMarketRowMetrics {
+    static func resolvedPlatform(from estimate: PieceMarketPrice?, preferred: String?) -> PlatformPrice? {
+        guard let estimate else { return nil }
+        if let preferred {
+            return estimate.platforms.first {
+                $0.name.caseInsensitiveCompare(preferred) == .orderedSame
+            }
+        }
+        return estimate.platforms.first { $0.name == "StockX" }
+            ?? estimate.platforms.first { $0.name == "GOAT" }
+            ?? estimate.platforms.first
+    }
+
+    static func sparklinePoints(from estimate: PieceMarketPrice?, platform: PlatformPrice?) -> [Double] {
+        if let platform, platform.history.count >= 2 { return platform.history }
+        if let estimate, estimate.history.count >= 2 { return estimate.history }
+        if let platform, platform.avg > 0 {
+            let v = Double(platform.avg)
+            return [v * 0.92, v * 0.97, v]
+        }
+        if let estimate, estimate.avg > 0 {
+            let v = Double(estimate.avg)
+            return [v * 0.92, v * 0.97, v]
+        }
+        return []
+    }
+
+    /// Curva suave cuando aún no hay histórico de mercado (coste → valor actual).
+    static func inventorySparkline(
+        stockValueUSD: Double,
+        purchaseUSD: Double,
+        askingUSD: Double
+    ) -> [Double] {
+        let current = stockValueUSD > 0 ? stockValueUSD : (askingUSD > 0 ? askingUSD : purchaseUSD)
+        guard current > 0 else { return [] }
+
+        let start: Double
+        if purchaseUSD > 0 {
+            start = min(purchaseUSD, current * 0.92)
+        } else if askingUSD > 0, askingUSD != current {
+            start = min(askingUSD * 0.94, current * 0.9)
+        } else {
+            start = current * 0.82
+        }
+
+        return [
+            start,
+            start + (current - start) * 0.28,
+            start + (current - start) * 0.52,
+            start + (current - start) * 0.74,
+            current * 0.97,
+            current,
+        ]
+    }
+
+    static func trendPercent(from estimate: PieceMarketPrice?, platform: PlatformPrice?) -> Double {
+        let points = sparklinePoints(from: estimate, platform: platform)
+        guard points.count >= 2, let first = points.first, first > 0, let last = points.last else {
+            return estimate?.changePercent ?? 0
+        }
+        return ((last - first) / first) * 100
+    }
+
+    static func deltaUSD(from estimate: PieceMarketPrice?, platform: PlatformPrice?) -> Double {
+        let points = sparklinePoints(from: estimate, platform: platform)
+        guard points.count >= 2, let first = points.first, let last = points.last else { return 0 }
+        return last - first
+    }
+}
 
 struct StockMarketplaceListRow<ImageContent: View>: View {
-    let seriesLine: String
+    let brandLine: String
     let nameLine: String
-    var price: String? = nil
-    var size: String? = nil
+    var sizeLabel: String? = nil
+    var fallbackPrice: String? = nil
+    var marketPrice: PieceMarketPrice? = nil
+    var preferredPlatform: String? = nil
+    var stockValueUSD: Double = 0
+    var purchaseUSD: Double = 0
+    var askingUSD: Double = 0
     var profitUSD: String? = nil
     var profitPct: String? = nil
     var isLoss: Bool = false
@@ -207,98 +482,275 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
     var onTap: () -> Void
     @ViewBuilder var image: () -> ImageContent
 
-    private let rowHeight: CGFloat = 108
-    private let thumbSide: CGFloat = 88
-    private let priceColumnWidth: CGFloat = 76
-    private let textBlockHeight: CGFloat = 68
+    private var sparkBundle: StockItemSparkline {
+        StockItemSparkline.resolve(
+            marketPrice: marketPrice,
+            preferredPlatform: preferredPlatform,
+            stockValueUSD: stockValueUSD,
+            purchaseUSD: purchaseUSD,
+            askingUSD: askingUSD
+        )
+    }
+
+    private var sparkPoints: [Double] { sparkBundle.points }
+
+    private var trendUp: Bool { sparkBundle.isUp }
+
+    private var trendPercent: Double {
+        StockMarketRowMetrics.trendPercent(
+            from: marketPrice,
+            platform: StockMarketRowMetrics.resolvedPlatform(from: marketPrice, preferred: preferredPlatform)
+        )
+    }
+
+    private var deltaUSD: Double {
+        StockMarketRowMetrics.deltaUSD(
+            from: marketPrice,
+            platform: StockMarketRowMetrics.resolvedPlatform(from: marketPrice, preferred: preferredPlatform)
+        )
+    }
+
+    private var platform: PlatformPrice? {
+        StockMarketRowMetrics.resolvedPlatform(from: marketPrice, preferred: preferredPlatform)
+    }
+
+    private var displayPlatforms: [PlatformPrice] {
+        guard let marketPrice, !marketPrice.platforms.isEmpty else { return [] }
+        let order = ["StockX", "GOAT", "Flight Club"]
+        var result = order.compactMap { name in
+            marketPrice.platforms.first { $0.name == name && $0.avg > 0 }
+        }
+        if let preferred = preferredPlatform,
+           let idx = result.firstIndex(where: { $0.name.caseInsensitiveCompare(preferred) == .orderedSame }),
+           idx > 0 {
+            let preferredItem = result.remove(at: idx)
+            result.insert(preferredItem, at: 0)
+        }
+        return result
+    }
+
+    private var displayPriceUSD: Int {
+        platform?.avg ?? marketPrice?.avg ?? Int(stockValueUSD.rounded())
+    }
 
     var body: some View {
         Button(action: onTap) {
-            HStack(alignment: .center, spacing: 12) {
-                ZStack(alignment: .topTrailing) {
-                    Color.white
-                        .frame(width: thumbSide, height: thumbSide)
-                        .overlay {
-                            image()
-                                .frame(width: thumbSide - 10, height: thumbSide - 10)
-                        }
-
-                    if showProfitBadge, !selectionMode {
-                        StockProfitCornerBadge(
-                            usdLabel: profitUSD,
-                            pctLabel: profitPct,
-                            isLoss: isLoss
-                        )
-                        .scaleEffect(0.78)
-                        .offset(x: 4, y: -6)
-                    }
-                }
-                .frame(width: thumbSide, height: thumbSide)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(seriesLine)
-                        .font(.system(size: 15, weight: .regular))
-                        .foregroundStyle(Color.black.opacity(0.62))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, minHeight: 32, maxHeight: 32, alignment: .topLeading)
-
-                    Text(nameLine)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(Color.black.opacity(0.92))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36, alignment: .topLeading)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: textBlockHeight)
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(price ?? " ")
-                        .font(.system(size: 17, weight: .heavy, design: .rounded))
-                        .foregroundStyle(price == nil ? Color.clear : Color.black.opacity(0.92))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                        .frame(height: 22, alignment: .trailing)
-
-                    Text(size ?? " ")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(size == nil ? Color.clear : Color.black.opacity(0.45))
-                        .lineLimit(1)
-                        .frame(height: 18, alignment: .trailing)
-
-                    Group {
-                        if selectionMode {
-                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 22))
-                                .foregroundStyle(isSelected ? Color.black : Color.black.opacity(0.22))
-                                .contentTransition(.symbolEffect(.replace))
-                        } else {
-                            Color.clear
-                        }
-                    }
-                    .frame(width: 22, height: 22)
-                }
-                .frame(width: priceColumnWidth)
+            HStack(alignment: .center, spacing: 10) {
+                thumbnailBlock
+                productInfoBlock
+                sparklineBlock
+                priceBlock
             }
-            .frame(height: rowHeight)
-            .padding(.horizontal, 16)
+            .padding(12)
             .background {
-                RoundedRectangle(cornerRadius: 0, style: .continuous)
-                    .fill(selectionMode && isSelected ? Color.black.opacity(0.05) : Color.clear)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color(red: 0.975, green: 0.975, blue: 0.98))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(Color.black.opacity(0.07), lineWidth: 1)
+                    }
+                    .shadow(color: Color.black.opacity(0.04), radius: 8, y: 3)
+            }
+            .overlay {
+                if selectionMode && isSelected {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color.black.opacity(0.55), lineWidth: 2)
+                }
             }
             .animation(.easeInOut(duration: 0.18), value: isSelected)
-            .contentShape(Rectangle())
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+
+    private var thumbnailBlock: some View {
+        ZStack(alignment: .topTrailing) {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white)
+                .frame(width: 76, height: 76)
+                .overlay {
+                    image()
+                        .frame(width: 64, height: 64)
+                }
+
+            if showProfitBadge, !selectionMode {
+                StockProfitCornerBadge(
+                    usdLabel: profitUSD,
+                    pctLabel: profitPct,
+                    isLoss: isLoss
+                )
+                .scaleEffect(0.72)
+                .offset(x: 6, y: -6)
+            }
+
+            if selectionMode {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(isSelected ? Color.black : Color.black.opacity(0.25))
+                    .background(Circle().fill(Color.white))
+                    .offset(x: 6, y: -6)
+            }
+        }
+    }
+
+    private var productInfoBlock: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(brandLine)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.48))
+                .lineLimit(1)
+
+            Text(nameLine)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Color.black.opacity(0.92))
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let sizeLabel {
+                Text("Size \(sizeLabel)")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.42))
+                    .lineLimit(1)
+            }
+        }
+        .frame(width: 108, alignment: .leading)
+    }
+
+    private var sparklineBlock: some View {
+        ZStack(alignment: .bottomTrailing) {
+            PriceTrendSparkline(points: sparkPoints, isUp: trendUp)
+                .frame(height: 54)
+
+            trendBadge
+                .offset(x: 2, y: 2)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var trendBadge: some View {
+        let pct: Double = {
+            if sparkPoints.count >= 2, let first = sparkPoints.first, first > 0, let last = sparkPoints.last {
+                return ((last - first) / first) * 100
+            }
+            return trendPercent
+        }()
+        let up = pct >= 0
+        let tint = up
+            ? Color(red: 0.20, green: 0.70, blue: 0.45)
+            : Color(red: 0.92, green: 0.30, blue: 0.30)
+
+        return HStack(spacing: 2) {
+            Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
+                .font(.system(size: 7, weight: .heavy))
+            Text(String(format: "%@%.0f%%", up ? "+" : "", abs(pct)))
+                .font(.system(size: 9, weight: .heavy, design: .rounded))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(Color.white.opacity(0.92)))
+        .overlay(Capsule().strokeBorder(tint.opacity(0.25), lineWidth: 0.8))
+    }
+
+    private var priceBlock: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            if !displayPlatforms.isEmpty {
+                VStack(alignment: .trailing, spacing: 4) {
+                    ForEach(displayPlatforms.prefix(2)) { platform in
+                        StockRowPlatformChip(
+                            platform: platform,
+                            isPreferred: {
+                                if let preferred = preferredPlatform {
+                                    return platform.name.caseInsensitiveCompare(preferred) == .orderedSame
+                                }
+                                return platform.name == "StockX"
+                            }()
+                        )
+                    }
+                }
+
+                Text("Market price")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.40))
+
+                if sparkPoints.count >= 2 {
+                    deltaLabel
+                }
+            } else if let platform {
+                PlatformBrandBadge(name: platform.name, color: platform.color, size: 24)
+
+                if displayPriceUSD > 0 {
+                    Text(PieceMarketPrice.formatUSD(displayPriceUSD))
+                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.92))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+
+                    Text("Current price")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.40))
+
+                    if sparkPoints.count >= 2 {
+                        deltaLabel
+                    }
+                }
+            } else if displayPriceUSD > 0 || stockValueUSD > 0 || askingUSD > 0 {
+                Text(PieceMarketPrice.formatUSD(Int((stockValueUSD > 0 ? stockValueUSD : askingUSD).rounded())))
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.92))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                Text(marketPrice == nil ? "Estimated value" : "Current price")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.40))
+
+                if sparkPoints.count >= 2 {
+                    deltaLabel
+                }
+            } else if let fallbackPrice {
+                Text(fallbackPrice)
+                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.92))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+
+                Text("Your price")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.40))
+            } else {
+                Text("—")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.35))
+            }
+        }
+        .frame(minWidth: 96, maxWidth: 118, alignment: .trailing)
+    }
+
+    private var deltaLabel: some View {
+        let tint = trendUp
+            ? Color(red: 0.20, green: 0.70, blue: 0.45)
+            : Color(red: 0.92, green: 0.30, blue: 0.30)
+        let amount = Int(abs(deltaUSD).rounded())
+
+        return HStack(spacing: 2) {
+            Image(systemName: trendUp ? "arrow.up" : "arrow.down")
+                .font(.system(size: 8, weight: .heavy))
+            Text("\(trendUp ? "+" : "−")\(PieceMarketPrice.formatUSD(amount))")
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+            Text("(24h)")
+                .font(.system(size: 8, weight: .medium))
+        }
+        .foregroundStyle(tint)
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
     }
 }
 
 struct StockMarketplaceListDivider: View {
     var body: some View {
-        Divider()
-            .overlay(Color.black.opacity(0.08))
-            .padding(.leading, 116)
+        Color.clear.frame(height: 10)
     }
 }
 
@@ -306,68 +758,37 @@ struct StockMarketplaceListDivider: View {
 
 struct StockBrowseSearchBar: View {
     @Binding var searchText: String
-    @Binding var layoutMode: StockLayoutMode
-    var onScan: () -> Void
     @FocusState.Binding var searchFocused: Bool
 
     var body: some View {
         HStack(spacing: 10) {
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.55))
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.55))
 
-                TextField("", text: $searchText, prompt: Text(L10n.tr("closet.searchPrompt")).foregroundStyle(Color.black.opacity(0.38)))
-                    .focused($searchFocused)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.search)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Color.black)
+            TextField("", text: $searchText, prompt: Text(L10n.tr("closet.searchPrompt")).foregroundStyle(Color.black.opacity(0.38)))
+                .focused($searchFocused)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color.black)
 
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(Color.black.opacity(0.35))
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Button(action: onScan) {
-                    Image(systemName: "barcode.viewfinder")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(Color.black.opacity(0.72))
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color.black.opacity(0.35))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(L10n.tr("closet.scanBarcode"))
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background {
-                LiquidGlassSearchPillBackground()
-            }
-
-            HStack(spacing: 4) {
-                ForEach(StockLayoutMode.allCases) { mode in
-                    Button {
-                        layoutMode = mode
-                    } label: {
-                        Image(systemName: mode.iconName)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(layoutMode == mode ? Color.white : Color.black.opacity(0.55))
-                            .frame(width: 36, height: 36)
-                            .background {
-                                Circle()
-                                    .fill(layoutMode == mode ? Color.black : Color.black.opacity(0.06))
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(mode.accessibilityLabel)
-                }
-            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background {
+            LiquidGlassSearchPillBackground()
         }
     }
 }
@@ -397,12 +818,12 @@ enum StockSortOrder: String, CaseIterable, Identifiable {
 
     var menuLabel: String {
         switch self {
-        case .newest: return "Destacado"
-        case .priceLowHigh: return "Precio ↑"
-        case .priceHighLow: return "Precio ↓"
-        case .sizeLowHigh: return "Talla ↑"
-        case .sizeHighLow: return "Talla ↓"
-        case .brandAZ: return "Marca A-Z"
+        case .newest: return "Featured"
+        case .priceLowHigh: return "Price ↑"
+        case .priceHighLow: return "Price ↓"
+        case .sizeLowHigh: return "Size ↑"
+        case .sizeHighLow: return "Size ↓"
+        case .brandAZ: return "Brand A–Z"
         }
     }
 }
@@ -455,6 +876,24 @@ struct StockBrowseFilters: Equatable {
     var categoryKeys: Set<String> = []
     var brands: Set<String> = []
     var sizes: Set<String> = []
+    var availableNow = false
+    var expressShipping = false
+    var belowRetail = false
+    var genders: Set<String> = []
+    var shoeHeights: Set<String> = []
+    var activities: Set<String> = []
+    var sneakerStyles: Set<String> = []
+    /// StockX / GOAT — item must have live price on at least one selected platform.
+    var marketplacePlatforms: Set<String> = []
+
+    var preferredMarketplacePlatform: String? {
+        if marketplacePlatforms.count == 1 {
+            return marketplacePlatforms.first
+        }
+        if marketplacePlatforms.contains("StockX") { return "StockX" }
+        if marketplacePlatforms.contains("GOAT") { return "GOAT" }
+        return nil
+    }
 
     var quickCategory: StockQuickCategory {
         get {
@@ -470,7 +909,18 @@ struct StockBrowseFilters: Equatable {
     }
 
     var isActive: Bool {
-        !categoryKeys.isEmpty || !brands.isEmpty || !sizes.isEmpty || sort != .newest
+        !categoryKeys.isEmpty
+            || !brands.isEmpty
+            || !sizes.isEmpty
+            || !genders.isEmpty
+            || !shoeHeights.isEmpty
+            || !activities.isEmpty
+            || !sneakerStyles.isEmpty
+            || !marketplacePlatforms.isEmpty
+            || availableNow
+            || expressShipping
+            || belowRetail
+            || sort != .newest
     }
 
     mutating func reset() {
@@ -478,6 +928,14 @@ struct StockBrowseFilters: Equatable {
         categoryKeys = []
         brands = []
         sizes = []
+        availableNow = false
+        expressShipping = false
+        belowRetail = false
+        genders = []
+        shoeHeights = []
+        activities = []
+        sneakerStyles = []
+        marketplacePlatforms = []
     }
 }
 
@@ -507,12 +965,20 @@ enum StockFilterEngine {
            !filters.categoryKeys.contains(closetCategoryKey(item)) {
             return false
         }
+        if !filters.sneakerStyles.isEmpty, closetCategoryKey(item) != ClothingCategory.shoes.rawValue {
+            return false
+        }
         if !filters.brands.isEmpty {
             guard let b = brandKey(item.brand), filters.brands.contains(b) else { return false }
         }
         if !filters.sizes.isEmpty {
             guard let s = StockSizeDisplay.normalizedStorage(from: item.sizeText),
                   filters.sizes.contains(s) else { return false }
+        }
+        if filters.belowRetail, !isBelowRetail(closetItem: item) { return false }
+        if !filters.genders.isEmpty, !matchesGender(filters.genders, item: item) { return false }
+        if !filters.marketplacePlatforms.isEmpty, !matchesMarketplace(filters.marketplacePlatforms, item: item) {
+            return false
         }
         return true
     }
@@ -522,6 +988,10 @@ enum StockFilterEngine {
            !filters.categoryKeys.contains(catalogCategoryKey(product)) {
             return false
         }
+        if !filters.sneakerStyles.isEmpty {
+            let key = catalogCategoryKey(product)
+            guard key == "shoes" || key == "sneakers" || key == "footwear" else { return false }
+        }
         if !filters.brands.isEmpty {
             guard let b = brandKey(product.brand), filters.brands.contains(b) else { return false }
         }
@@ -529,7 +999,43 @@ enum StockFilterEngine {
             let productSizes = product.sizes.compactMap { StockSizeDisplay.normalizedStorage(from: $0) }
             guard productSizes.contains(where: { filters.sizes.contains($0) }) else { return false }
         }
+        if filters.belowRetail, !isBelowRetail(catalogProduct: product) { return false }
         return true
+    }
+
+    private static func isBelowRetail(closetItem item: ClosetItem) -> Bool {
+        let asking = ClosetItem.parsePriceUSD(from: item.priceText)
+        guard asking > 0, let market = item.marketPrice, market.min > 0 else { return false }
+        return asking < Double(market.min)
+    }
+
+    private static func isBelowRetail(catalogProduct product: UpsoledProduct) -> Bool {
+        guard product.price > 0, product.purchaseCostUSD > 0 else { return false }
+        return product.price < product.purchaseCostUSD
+    }
+
+    private static func matchesGender(_ genders: Set<String>, item: ClosetItem) -> Bool {
+        let blob = "\(item.name) \(item.brand ?? "")".lowercased()
+        for gender in genders {
+            switch gender {
+            case "men":
+                if blob.contains("men") || blob.contains("hombre") { return true }
+            case "women":
+                if blob.contains("women") || blob.contains("mujer") || blob.contains("wmns") { return true }
+            case "kids":
+                if blob.contains("kid") || blob.contains("gs") || blob.contains("niño") { return true }
+            case "unisex":
+                if blob.contains("unisex") { return true }
+            default: break
+            }
+        }
+        return false
+    }
+
+    private static func matchesMarketplace(_ platforms: Set<String>, item: ClosetItem) -> Bool {
+        guard let mp = item.marketPrice else { return false }
+        let available = Set(mp.platforms.map(\.name))
+        return !platforms.isDisjoint(with: available)
     }
 
     static func sortClosetItems(_ items: [ClosetItem], by order: StockSortOrder) -> [ClosetItem] {
@@ -701,7 +1207,7 @@ struct StockBrowseFilterSortBar: View {
         HStack(spacing: 10) {
             Button(action: onFilter) {
                 HStack(spacing: 6) {
-                    Text("Filtrar por")
+                    Text("Filter by")
                         .font(.system(size: 14, weight: .semibold))
                     Image(systemName: "chevron.down")
                         .font(.system(size: 11, weight: .bold))
@@ -731,7 +1237,7 @@ struct StockBrowseFilterSortBar: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Text("Ordenar por: \(filters.sort.menuLabel)")
+                    Text("Sort by: \(filters.sort.menuLabel)")
                         .font(.system(size: 14, weight: .semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
@@ -754,138 +1260,393 @@ struct StockBrowseFilterSortBar: View {
 
 struct StockBrowseFiltersSheet: View {
     @Binding var filters: StockBrowseFilters
+    @Binding var layoutMode: StockLayoutMode
     let closetItems: [ClosetItem]
     let catalogProducts: [UpsoledProduct]
     @Environment(\.dismiss) private var dismiss
+
+    @State private var categoryExpanded = true
+    @State private var platformExpanded = true
+    @State private var genderExpanded = false
+    @State private var brandsExpanded = false
+    @State private var shoeHeightExpanded = false
+    @State private var activityExpanded = false
 
     private var brands: [String] {
         StockFilterEngine.availableBrands(closet: closetItems, catalog: catalogProducts)
     }
 
-    private var sizes: [String] {
-        StockFilterEngine.availableSizes(closet: closetItems, catalog: catalogProducts)
+    private var resultCount: Int {
+        let closet = closetItems.filter { StockFilterEngine.matches(filters, closetItem: $0) }.count
+        let catalog = catalogProducts
+            .filter { StockFilterEngine.matches(filters, catalogProduct: $0) }
+            .reduce(0) { $0 + max(1, $1.quantity ?? 1) }
+        return closet + catalog
     }
 
-    private var categories: [(key: String, emoji: String, title: String)] {
-        StockFilterEngine.availableCategoryOptions(closet: closetItems, catalog: catalogProducts)
+    private var resultsLabel: String {
+        resultCount >= 1000 ? "1000+" : "\(resultCount)"
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section("Sort by") {
-                    Picker("Sort", selection: $filters.sort) {
-                        ForEach(StockSortOrder.allCases) { order in
-                            Text(order.label).tag(order)
-                        }
-                    }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
-                }
+        VStack(spacing: 0) {
+            headerBar
 
-                if !categories.isEmpty {
-                    Section("Category") {
-                        ForEach(categories, id: \.key) { cat in
-                            filterToggleRow(
-                                title: "\(cat.emoji) \(cat.title)",
-                                isOn: filters.categoryKeys.isEmpty || filters.categoryKeys.contains(cat.key)
-                            ) {
-                                toggleCategory(cat.key)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    layoutModeRow
+                    filterDivider
+
+                    toggleRow(title: "Available now", isOn: $filters.availableNow)
+                    filterDivider
+                    toggleRow(title: "Xpress shipping", icon: "🚀", isOn: $filters.expressShipping)
+                    filterDivider
+                    toggleRow(title: "Below retail price", isOn: $filters.belowRetail)
+                    filterDivider
+
+                    accordionSection(title: "Platform", isExpanded: $platformExpanded) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(StockMarketplacePlatformOption.allCases) { platform in
+                                platformOptionRow(platform)
                             }
                         }
+                        .padding(.bottom, 8)
                     }
-                }
 
-                if !brands.isEmpty {
-                    Section("Brand") {
-                        ForEach(brands, id: \.self) { brand in
-                            filterToggleRow(
-                                title: brand,
-                                isOn: filters.brands.isEmpty || filters.brands.contains(brand)
-                            ) {
-                                toggleBrand(brand)
+                    accordionSection(title: "Category", isExpanded: $categoryExpanded) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("Sneakers")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Color.black.opacity(0.88))
+                                .padding(.bottom, 10)
+
+                            ForEach(StockSneakerStyleFilter.allCases) { style in
+                                optionRow(
+                                    title: style.label,
+                                    isSelected: filters.sneakerStyles.contains(style.rawValue)
+                                ) {
+                                    toggleSet(style.rawValue, in: &filters.sneakerStyles)
+                                    if !filters.sneakerStyles.isEmpty {
+                                        filters.categoryKeys.insert(ClothingCategory.shoes.rawValue)
+                                    }
+                                }
                             }
                         }
+                        .padding(.bottom, 8)
                     }
-                }
 
-                if !sizes.isEmpty {
-                    Section("Size") {
-                        ForEach(sizes, id: \.self) { size in
-                            filterToggleRow(
-                                title: StockSizeDisplay.cardLabel(from: size) ?? size,
-                                isOn: filters.sizes.isEmpty || filters.sizes.contains(size)
-                            ) {
-                                toggleSize(size)
+                    accordionSection(title: "Gender", isExpanded: $genderExpanded) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(StockGenderFilter.allCases) { gender in
+                                optionRow(
+                                    title: gender.label,
+                                    isSelected: filters.genders.contains(gender.rawValue)
+                                ) {
+                                    toggleSet(gender.rawValue, in: &filters.genders)
+                                }
                             }
                         }
+                        .padding(.bottom, 8)
+                    }
+
+                    accordionSection(title: "Brands", isExpanded: $brandsExpanded) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            if brands.isEmpty {
+                                Text("No brands available")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(Color.black.opacity(0.45))
+                                    .padding(.vertical, 8)
+                            } else {
+                                ForEach(brands, id: \.self) { brand in
+                                    optionRow(
+                                        title: brand,
+                                        isSelected: filters.brands.contains(brand)
+                                    ) {
+                                        toggleSet(brand, in: &filters.brands)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.bottom, 8)
+                    }
+
+                    accordionSection(title: "Shoe height", isExpanded: $shoeHeightExpanded) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(StockShoeHeightFilter.allCases) { height in
+                                optionRow(
+                                    title: height.label,
+                                    isSelected: filters.shoeHeights.contains(height.rawValue)
+                                ) {
+                                    toggleSet(height.rawValue, in: &filters.shoeHeights)
+                                }
+                            }
+                        }
+                        .padding(.bottom, 8)
+                    }
+
+                    accordionSection(title: "Activity", isExpanded: $activityExpanded) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(StockActivityFilter.allCases) { activity in
+                                optionRow(
+                                    title: activity.label,
+                                    isSelected: filters.activities.contains(activity.rawValue)
+                                ) {
+                                    toggleSet(activity.rawValue, in: &filters.activities)
+                                }
+                            }
+                        }
+                        .padding(.bottom, 8)
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
             }
-            .navigationTitle("Filters")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Reset") { filters.reset() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .fontWeight(.semibold)
-                }
-            }
+
+            applyButton
         }
+        .background(Color.white)
         .preferredColorScheme(.light)
     }
 
-    private func filterToggleRow(title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+    private var headerBar: some View {
+        ZStack {
+            Text("Filter by")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.88))
+
+            HStack {
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.72))
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 14)
+    }
+
+    private var layoutModeRow: some View {
+        HStack {
+            Text("Results view")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color.black.opacity(0.88))
+            Spacer(minLength: 12)
+            HStack(spacing: 14) {
+                ForEach(StockLayoutMode.allCases) { mode in
+                    Button {
+                        layoutMode = mode
+                    } label: {
+                        Image(systemName: mode.iconName)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(layoutMode == mode ? Color.black : Color.black.opacity(0.28))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(mode.accessibilityLabel)
+                }
+            }
+        }
+        .padding(.vertical, 16)
+    }
+
+    private func toggleRow(title: String, icon: String? = nil, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 8) {
+            if let icon {
+                Text(icon)
+                    .font(.system(size: 14))
+            }
+            Text(title)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color.black.opacity(0.88))
+            Spacer(minLength: 12)
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .tint(.black)
+        }
+        .padding(.vertical, 16)
+    }
+
+    private func accordionSection<Content: View>(
+        title: String,
+        isExpanded: Binding<Bool>,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            } label: {
+                HStack {
+                    Text(title.uppercased())
+                        .font(.system(size: 13, weight: .heavy))
+                        .foregroundStyle(Color.black.opacity(0.88))
+                        .tracking(0.3)
+                    Spacer(minLength: 12)
+                    Image(systemName: isExpanded.wrappedValue ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                }
+                .padding(.vertical, 18)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded.wrappedValue {
+                content()
+            }
+
+            filterDivider
+        }
+    }
+
+    private func platformOptionRow(_ platform: StockMarketplacePlatformOption) -> some View {
+        Button {
+            toggleSet(platform.rawValue, in: &filters.marketplacePlatforms)
+        } label: {
+            HStack(spacing: 12) {
+                StylizedMarketplaceLogo(brand: platform.rawValue)
+                    .frame(width: 40, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                Text(platform.rawValue)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.88))
+
+                Spacer(minLength: 12)
+
+                if filters.marketplacePlatforms.contains(platform.rawValue) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color.black)
+                }
+            }
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func optionRow(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack {
                 Text(title)
-                    .foregroundStyle(Color.black)
-                Spacer()
-                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isOn ? Color.black : Color.black.opacity(0.25))
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(Color.black.opacity(0.82))
+                Spacer(minLength: 12)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color.black)
+                }
             }
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
-    private func toggleCategory(_ key: String) {
-        if filters.categoryKeys.isEmpty {
-            filters.categoryKeys = Set(categories.map(\.key).filter { $0 != key })
-        } else if filters.categoryKeys.contains(key) {
-            filters.categoryKeys.remove(key)
-            if filters.categoryKeys.count == categories.count - 1 {
-                filters.categoryKeys = []
-            }
-        } else {
-            filters.categoryKeys.insert(key)
-            if filters.categoryKeys.count == categories.count {
-                filters.categoryKeys = []
-            }
-        }
+    private var filterDivider: some View {
+        Rectangle()
+            .fill(Color.black.opacity(0.08))
+            .frame(height: 1)
     }
 
-    private func toggleBrand(_ brand: String) {
-        if filters.brands.isEmpty {
-            filters.brands = Set(brands.filter { $0 != brand })
-        } else if filters.brands.contains(brand) {
-            filters.brands.remove(brand)
-            if filters.brands.count == brands.count - 1 { filters.brands = [] }
-        } else {
-            filters.brands.insert(brand)
-            if filters.brands.count == brands.count { filters.brands = [] }
+    private var applyButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            Text("See \(resultsLabel) results")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Capsule(style: .continuous).fill(Color.black))
         }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 20)
+        .background(Color.white)
     }
 
-    private func toggleSize(_ size: String) {
-        if filters.sizes.isEmpty {
-            filters.sizes = Set(sizes.filter { $0 != size })
-        } else if filters.sizes.contains(size) {
-            filters.sizes.remove(size)
-            if filters.sizes.count == sizes.count - 1 { filters.sizes = [] }
+    private func toggleSet(_ value: String, in set: inout Set<String>) {
+        if set.contains(value) {
+            set.remove(value)
         } else {
-            filters.sizes.insert(size)
-            if filters.sizes.count == sizes.count { filters.sizes = [] }
+            set.insert(value)
+        }
+    }
+}
+
+private enum StockMarketplacePlatformOption: String, CaseIterable, Identifiable {
+    case stockX = "StockX"
+    case goat = "GOAT"
+
+    var id: String { rawValue }
+}
+
+private enum StockSneakerStyleFilter: String, CaseIterable, Identifiable {
+    case lifestyle
+    case performance
+    case luxury
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .lifestyle: return "Lifestyle"
+        case .performance: return "Performance"
+        case .luxury: return "Luxury"
+        }
+    }
+}
+
+private enum StockGenderFilter: String, CaseIterable, Identifiable {
+    case men, women, kids, unisex
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .men: return "Men"
+        case .women: return "Women"
+        case .kids: return "Kids"
+        case .unisex: return "Unisex"
+        }
+    }
+}
+
+private enum StockShoeHeightFilter: String, CaseIterable, Identifiable {
+    case low, mid, high
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .low: return "Low top"
+        case .mid: return "Mid top"
+        case .high: return "High top"
+        }
+    }
+}
+
+private enum StockActivityFilter: String, CaseIterable, Identifiable {
+    case lifestyle, running, basketball, training, outdoor
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .lifestyle: return "Lifestyle"
+        case .running: return "Running"
+        case .basketball: return "Basketball"
+        case .training: return "Training"
+        case .outdoor: return "Outdoor"
         }
     }
 }

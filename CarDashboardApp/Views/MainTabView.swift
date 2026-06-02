@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import PhotosUI
 
 // MARK: - Notificaciones entre pestañas (p. ej. abrir «Añadir» desde Inicio)
 
@@ -24,6 +25,8 @@ enum UpsoledMainTab: Hashable {
 @MainActor
 final class MainTabRouter: ObservableObject {
     @Published var selected: UpsoledMainTab = .home
+    /// Abre el pipeline de revisión al entrar en la pestaña Añadir (p. ej. borradores desde stock).
+    @Published var addTabOpenPipeline = false
 }
 
 /// Abre un hilo concreto al cambiar a la pestaña Chat (p. ej. grupo «Mi equipo» desde Inicio).
@@ -145,9 +148,7 @@ struct MainTabView: View {
             }
 
             Tab(value: UpsoledMainTab.add) {
-                NavigationStack {
-                    UpsoledAddTabPlaceholderView()
-                }
+                AddToStockTabView()
             } label: {
                 Label {
                     Text(L10n.tr("dashboard.quickAdd"))
@@ -181,12 +182,601 @@ struct MainTabView: View {
     }
 }
 
-/// Contenido mínimo de la pestaña «Añadir»; al pulsarla `onChange` en `MainTabView` cambia ya a Tu stock y abre el sheet.
-private struct UpsoledAddTabPlaceholderView: View {
+// MARK: - Pestaña Añadir (sección fija, barra inferior visible)
+
+enum AddStockRoute: Hashable {
+    case gallery
+    case fourPhotoChoice
+    case shoe360Private
+    case shoe360FromGallery
+    case apparelLookbook
+    case pipeline
+}
+
+private enum AddStockDesign {
+    static let purple = Color(red: 0.39, green: 0.40, blue: 0.95)
+    static let purpleSoft = Color(red: 0.93, green: 0.92, blue: 0.99)
+    static let green = Color(red: 0.18, green: 0.72, blue: 0.55)
+    static let pageBG = Color(red: 0.98, green: 0.98, blue: 0.99)
+    static let cardStroke = Color.black.opacity(0.07)
+    static let subtitle = Color.black.opacity(0.48)
+    static let darkCard = Color(red: 0.11, green: 0.12, blue: 0.16)
+}
+
+struct AddToStockTabView: View {
+    @EnvironmentObject private var addFlow: AddToClosetFlowViewModel
+    @EnvironmentObject private var tabRouter: MainTabRouter
+
+    @State private var path = NavigationPath()
+    @State private var showCamera = false
+    @State private var cameraImage: UIImage?
+    @State private var pickedGalleryItems: [PhotosPickerItem] = []
+    @State private var stagingFiveGalleryImages: [UIImage] = []
+    @State private var shoe360GalleryImagesPrepared: [UIImage] = []
+
     var body: some View {
-        Color.white
-            .ignoresSafeArea()
-            .accessibilityHidden(true)
+        NavigationStack(path: $path) {
+            ScrollView(.vertical, showsIndicators: false) {
+                addMenuContent
+            }
+            .background(AddStockDesign.pageBG.ignoresSafeArea())
+            .toolbar(path.isEmpty ? .hidden : .visible, for: .navigationBar)
+            .navigationDestination(for: AddStockRoute.self) { route in
+                destination(for: route)
+            }
+        }
+        .preferredColorScheme(.light)
+        .fullScreenCover(isPresented: $showCamera, onDismiss: consumeCameraPickIfNeeded) {
+            ClosetUIImagePickerBridge(image: $cameraImage)
+                .background(Color.black)
+                .ignoresSafeArea()
+        }
+        .toastOverlay(
+            message: Binding(
+                get: { addFlow.toast },
+                set: { addFlow.toast = $0 }
+            ))
+        .onAppear(perform: consumePendingPipelineRequest)
+        .onChange(of: tabRouter.addTabOpenPipeline) { _, open in
+            if open { consumePendingPipelineRequest() }
+        }
+    }
+
+    @ViewBuilder
+    private func destination(for route: AddStockRoute) -> some View {
+        switch route {
+        case .gallery:
+            AddStockGalleryStepView(
+                pickedGalleryItems: $pickedGalleryItems,
+                onContinue: { Task { await ingestPhotoPickerItems(pickedGalleryItems) } }
+            )
+        case .fourPhotoChoice:
+            AddStockFourPhotoChoiceView(
+                onShoe360: {
+                    shoe360GalleryImagesPrepared = stagingFiveGalleryImages
+                    stagingFiveGalleryImages = []
+                    if !path.isEmpty { path.removeLast() }
+                    path.append(AddStockRoute.shoe360FromGallery)
+                },
+                onOutfit: {
+                    let snap = stagingFiveGalleryImages
+                    stagingFiveGalleryImages = []
+                    if !path.isEmpty { path.removeLast() }
+                    path.append(AddStockRoute.pipeline)
+                    addFlow.beginProcessing(images: snap)
+                },
+                onCancel: {
+                    stagingFiveGalleryImages = []
+                    if !path.isEmpty { path.removeLast() }
+                }
+            )
+        case .shoe360Private:
+            ClosetShoe360FlowView()
+        case .shoe360FromGallery:
+            if shoe360GalleryImagesPrepared.count == ShoeAngle.allCases.count {
+                ClosetShoe360FlowView(prefilledCapturedInCanonicalOrder: shoe360GalleryImagesPrepared)
+            } else {
+                AddStockMissingImagesFallback(onBack: popToMenu)
+            }
+        case .apparelLookbook:
+            ClosetGarmentLookbookStandaloneFlowView()
+        case .pipeline:
+            AddToClosetPipelineView(isPresented: .constant(false))
+                .environmentObject(addFlow)
+        }
+    }
+
+    private var addMenuContent: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            addStockHeroHeader
+            addStockPhotoSection
+            addStockAISection
+            addStockTrustFooter
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 36)
+    }
+
+    private var addStockHeroHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: "sparkle")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(AddStockDesign.purple)
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(AddStockDesign.purpleSoft))
+
+            Text(L10n.tr("closet.addSheetTitle"))
+                .font(.system(size: 32, weight: .heavy, design: .rounded))
+                .foregroundStyle(Color.black.opacity(0.92))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(L10n.tr("closet.addSheetSubtitle"))
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(AddStockDesign.subtitle)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 4)
+    }
+
+    private var addStockPhotoSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            addStockSectionLabel(number: "01", title: L10n.tr("closet.addSheetSectionPhotos"))
+
+            HStack(spacing: 12) {
+                addStockMethodCard(
+                    icon: "photo.on.rectangle.angled",
+                    iconTint: AddStockDesign.purple,
+                    iconBackground: AddStockDesign.purpleSoft,
+                    arrowTint: AddStockDesign.purple,
+                    title: L10n.tr("closet.addSheetGallery"),
+                    subtitle: L10n.tr("closet.addSheetGallerySub")
+                ) {
+                    ClosetAnalytics.named("add_to_closet_opened")
+                    path.append(AddStockRoute.gallery)
+                }
+
+                addStockMethodCard(
+                    icon: "camera.fill",
+                    iconTint: AddStockDesign.green,
+                    iconBackground: AddStockDesign.green.opacity(0.14),
+                    arrowTint: AddStockDesign.green,
+                    title: L10n.tr("closet.addSheetCamera"),
+                    subtitle: L10n.tr("closet.addSheetCameraSub")
+                ) {
+                    ClosetAnalytics.named("add_to_closet_opened")
+                    showCamera = true
+                }
+            }
+        }
+    }
+
+    private var addStockAISection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            addStockSectionLabel(number: "02", title: L10n.tr("closet.addSheetSectionAI"))
+
+            addStockShoes360Card
+            addStockApparelLookbookCard
+        }
+    }
+
+    private func addStockSectionLabel(number: String, title: String) -> some View {
+        HStack(spacing: 8) {
+            Text(number)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundStyle(AddStockDesign.purple)
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundStyle(AddStockDesign.purple)
+                .tracking(0.4)
+        }
+    }
+
+    private func addStockMethodCard(
+        icon: String,
+        iconTint: Color,
+        iconBackground: Color,
+        arrowTint: Color,
+        title: String,
+        subtitle: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Image(systemName: icon)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(iconTint)
+                        .frame(width: 46, height: 46)
+                        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(iconBackground))
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(arrowTint)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(arrowTint.opacity(0.12)))
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.90))
+                    Text(subtitle)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(AddStockDesign.subtitle)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
+            .background {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Color.white)
+                    .shadow(color: Color.black.opacity(0.05), radius: 14, y: 6)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(AddStockDesign.cardStroke, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var addStockShoes360Card: some View {
+        Button {
+            ClosetAnalytics.named("closet_shoe360_private_opened")
+            path.append(AddStockRoute.shoe360Private)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "rotate.3d")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 46, height: 46)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.12)))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Text(L10n.tr("closet.addSheetShoes360"))
+                            .font(.system(size: 17, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(L10n.tr("closet.addSheetRecommended"))
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(AddStockDesign.purple)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(Color.white))
+                    }
+
+                    Text(L10n.tr("closet.addSheetShoes360Sub"))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.72))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(Color.white.opacity(0.12)))
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.14, green: 0.15, blue: 0.20),
+                                AddStockDesign.darkCard,
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .shadow(color: Color.black.opacity(0.22), radius: 18, y: 10)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var addStockApparelLookbookCard: some View {
+        Button {
+            ClosetAnalytics.named("closet_ropa_lookbook_standalone_opened")
+            path.append(AddStockRoute.apparelLookbook)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "rectangle.stack.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(AddStockDesign.purple)
+                    .frame(width: 46, height: 46)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.85)))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L10n.tr("closet.addSheetApparel"))
+                        .font(.system(size: 17, weight: .heavy))
+                        .foregroundStyle(Color.black.opacity(0.90))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(L10n.tr("closet.addSheetApparelSub"))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(AddStockDesign.subtitle)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(AddStockDesign.purple)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(Color.white))
+                    .shadow(color: Color.black.opacity(0.06), radius: 8, y: 3)
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.95, green: 0.93, blue: 0.99),
+                                Color(red: 0.91, green: 0.89, blue: 0.98),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .shadow(color: AddStockDesign.purple.opacity(0.10), radius: 14, y: 6)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(AddStockDesign.purple.opacity(0.10), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var addStockTrustFooter: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: "checkmark.shield.fill")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(AddStockDesign.purple)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(AddStockDesign.purpleSoft))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L10n.tr("closet.addSheetTrustTitle"))
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.88))
+                Text(L10n.tr("closet.addSheetTrustSub"))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(AddStockDesign.subtitle)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.white)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(AddStockDesign.cardStroke, lineWidth: 1)
+                }
+        }
+    }
+
+    private func consumePendingPipelineRequest() {
+        guard tabRouter.addTabOpenPipeline else { return }
+        tabRouter.addTabOpenPipeline = false
+        path = NavigationPath()
+        path.append(AddStockRoute.pipeline)
+    }
+
+    private func popToMenu() {
+        path = NavigationPath()
+    }
+
+    @MainActor
+    private func consumeCameraPickIfNeeded() {
+        defer { cameraImage = nil }
+        guard let img = cameraImage else { return }
+        pickedGalleryItems.removeAll()
+        path.append(AddStockRoute.pipeline)
+        addFlow.beginProcessing(images: [img])
+    }
+
+    @MainActor
+    private func ingestPhotoPickerItems(_ items: [PhotosPickerItem]) async {
+        var images = [UIImage]()
+        for pi in items {
+            if let data = try? await pi.loadTransferable(type: Data.self), let ui = UIImage(data: data) {
+                images.append(ui.closetFlattenedOrientation())
+            }
+        }
+        guard !images.isEmpty else {
+            pickedGalleryItems.removeAll()
+            if !path.isEmpty { path.removeLast() }
+            return
+        }
+        pickedGalleryItems.removeAll()
+        if !path.isEmpty { path.removeLast() }
+
+        if images.count == ShoeAngle.allCases.count {
+            stagingFiveGalleryImages = images
+            path.append(AddStockRoute.fourPhotoChoice)
+        } else {
+            path.append(AddStockRoute.pipeline)
+            addFlow.beginProcessing(images: images)
+        }
+    }
+}
+
+private struct AddStockGalleryStepView: View {
+    @Binding var pickedGalleryItems: [PhotosPickerItem]
+    var onContinue: () -> Void
+
+    var body: some View {
+        VStack(spacing: 22) {
+            AddStockStepHeader(step: 1, total: 2, title: "Choose photos")
+
+            Text(
+                "Choose up to 5 photos. With exactly 4 you can pick a 360° shoe view (front, right, back, left, in order) or analyze an outfit with the photos you choose."
+            )
+            .font(.system(size: 14))
+            .foregroundStyle(ClosetFlowPalette.secondaryText)
+            .multilineTextAlignment(.center)
+            .padding(.top, 4)
+
+            PhotosPicker(
+                selection: $pickedGalleryItems,
+                maxSelectionCount: 5,
+                matching: .images,
+                photoLibrary: .shared()
+            ) {
+                Label("Open photos", systemImage: "photo.on.rectangle.angled")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .foregroundStyle(Color.white)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.black)
+
+            Button(action: onContinue) {
+                Label("Continue", systemImage: "arrow.forward.circle.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .foregroundStyle(Color.white)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Color.black.opacity(0.82))
+            .disabled(pickedGalleryItems.isEmpty)
+
+            Text("Select photos and tap Continue (pick 4 in order for 360° shoes or another amount for an outfit).")
+                .font(.system(size: 11))
+                .foregroundStyle(Color.black.opacity(0.42))
+                .multilineTextAlignment(.center)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color.white.ignoresSafeArea())
+        .navigationTitle("Gallery")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct AddStockFourPhotoChoiceView: View {
+    var onShoe360: () -> Void
+    var onOutfit: () -> Void
+    var onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 18) {
+            AddStockStepHeader(step: 2, total: 2, title: "Use your 4 photos")
+
+            Text("4 photos selected")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Color.black)
+
+            Text(
+                "Shoes? Photos 1→4 map to: front, right side, back, and left side. "
+                    + "You can correct any angle afterward."
+            )
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(Color.black.opacity(0.52))
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 8)
+
+            VStack(spacing: 11) {
+                Button(action: onShoe360) {
+                    VStack(spacing: 5) {
+                        Text("Product — 360° studio")
+                            .font(.system(size: 17, weight: .semibold))
+                        Text("4 photos → professional white-background catalog images you can spin through")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.black.opacity(0.45))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 54)
+                    .foregroundStyle(Color.black)
+                    .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color.white))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .stroke(Color.black.opacity(0.1), lineWidth: 1)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onOutfit) {
+                    Text("Detect garments in outfit")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.white)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .background(RoundedRectangle(cornerRadius: 26).fill(ClosetFlowPalette.darkerPillFill))
+                }
+                .buttonStyle(.plain)
+            }
+
+            Button("Cancel", role: .cancel, action: onCancel)
+                .font(.system(size: 15))
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color.white.ignoresSafeArea())
+        .navigationTitle("Use your 4 photos")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct AddStockMissingImagesFallback: View {
+    var onBack: () -> Void
+
+    var body: some View {
+        ContentUnavailableView(
+            "Missing photos",
+            systemImage: "photo.on.rectangle.angled",
+            description: Text("Go back and choose 4 photos in order.")
+        )
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(L10n.tr("common.close"), action: onBack)
+            }
+        }
+    }
+}
+
+private struct AddStockStepHeader: View {
+    let step: Int
+    let total: Int
+    let title: String
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text("Step \(step) of \(total)")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Color(red: 0.58, green: 0.38, blue: 0.96))
+                .textCase(.uppercase)
+            Text(title)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.88))
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

@@ -842,8 +842,13 @@ actor GeminiService {
         return relSaved
     }
 
-    /// Prettify por ángulo para vista 360°: conserva orientación del zapato, solo limpia fondo/luz.
-    func prettifyShoeAngle(cropRelativePath: String, angle: ShoeAngle, itemName: String) async throws -> String {
+    /// Prettify por ángulo para vista 360° (calzado u otro producto): fondo blanco profesional.
+    func prettifyProductAngle(
+        cropRelativePath: String,
+        angle: ShoeAngle,
+        itemName: String,
+        category: ClothingCategory
+    ) async throws -> String {
         guard !apiKey.isEmpty else {
             throw GeminiError.apiError("Falta GeminiAPIKey.")
         }
@@ -851,30 +856,36 @@ actor GeminiService {
               let jpeg = image.jpegData(compressionQuality: 0.95)
         else { throw GeminiError.encodingFailed }
 
-        let anglePrompt = Self.englishPromptForShoeAngle(angle)
+        let anglePrompt = Self.englishPromptForProductAngle(angle, category: category)
+        let productNoun = category == .shoes ? "shoe" : "product"
+        let styleRef = category == .shoes
+            ? "StockX, Stadium Goods, GOAT catalog photography."
+            : "Apple, Amazon, Zara, Net-a-Porter white-background catalog photography."
+
         let prompt = """
-        TASK: Generate a brand new photorealistic studio product photograph of the shoe shown in the input image, viewed \(anglePrompt). This is for an interactive 360° viewer, so the SHOE ORIENTATION must be preserved exactly as in the input — do NOT rotate, flip, mirror, or change the viewing angle. Only clean up background and lighting.
+        TASK: Generate a brand new photorealistic studio product photograph of the \(productNoun) shown in the input image, viewed \(anglePrompt). This is for an interactive 360° viewer, so the PRODUCT ORIENTATION must be preserved exactly as in the input — do NOT rotate, flip, mirror, or change the viewing angle. Only clean up background and lighting.
 
         REQUIREMENTS:
         - Background: pure solid white #FFFFFF, seamless. Remove any background from the original photo.
-        - Lighting: soft even studio softbox; show laces, logos, stitching, sole, labels clearly.
-        - Contact shadow: ONE subtle natural shadow beneath the shoe (~10–15% opacity), soft edges.
-        - Composition: shoe centered with ~10% padding, fully visible, same pose/orientation as input.
+        - Lighting: soft even studio softbox; show materials, labels, stitching, hardware, and details clearly.
+        - Contact shadow: ONE subtle natural shadow beneath the item (~10–15% opacity), soft edges.
+        - Composition: product centered with ~10% padding, fully visible, same pose/orientation as input.
         - Format: square 1:1, high resolution.
-        - Style reference: StockX, Stadium Goods, GOAT catalog photography.
+        - Style reference: \(styleRef)
 
         ROTATION-SERIES ALIGNMENT (critical for interactive 360°):
-        - Keep the SAME apparent scale across the whole set — the shoe should fill about the SAME fraction of frame width/height every time (same camera distance/zoom metaphor).
-        - Same vertical grounding: imaginary floor line and vertical center stable; avoid shifting the shoe up/down between renders.
-        - Same horizontal framing: symmetric side margins (~10%) relative to the shoe silhouette across angles.
+        - Keep the SAME apparent scale across the whole set — the product should fill about the SAME fraction of frame width/height every time.
+        - Same vertical grounding: imaginary floor line and vertical center stable; avoid shifting the item up/down between renders.
+        - Same horizontal framing: symmetric side margins (~10%) relative to the product silhouette across angles.
 
         FIDELITY (CRITICAL):
         - Preserve the exact viewing angle and perspective from the input.
-        - Preserve colors, materials, printed text, hardware, zip-ties, tags 100%.
+        - Preserve colors, materials, printed text, hardware, tags 100%.
 
         REMOVE:
-        - Hands, feet, legs, scenery, furniture, other shoes.
+        - Hands, feet, legs, people, scenery, furniture, other objects.
 
+        Category: \(category.displayName)
         Item: \(itemName)
         Angle label: \(angle.displayName)
 
@@ -905,40 +916,40 @@ actor GeminiService {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        print("🟡 [Shoe360] Llamando Gemini (\(cropRelativePath)) ángulo \(angle.displayName) — \(itemName)…")
+        print("🟡 [Product360] Gemini (\(cropRelativePath)) \(angle.displayName) — \(category.displayName) · \(itemName)…")
 
         let backoffSeconds: [UInt64] = [5, 15, 45]
         var lastData: Data?
         var lastResponse: URLResponse?
 
         attempts: for attempt in 0 ..< backoffSeconds.count + 1 {
-            let pair = try await imageGenerationData(for: req, consoleTag: "Shoe360")
+            let pair = try await imageGenerationData(for: req, consoleTag: "Product360")
             lastData = pair.0
             lastResponse = pair.1
             let httpOpt = pair.1 as? HTTPURLResponse
 
             if let http = httpOpt, (200 ..< 300).contains(http.statusCode) {
-                Self.logGeminiMultimodalResponseParts(pair.0, tag: "[Shoe360]")
+                Self.logGeminiMultimodalResponseParts(pair.0, tag: "[Product360]")
                 guard let b64data = Self.extractFirstInlineImageBase64(from: pair.0),
                       let imgData = Self.decodeGeminiImageBase64(b64data)
                 else {
-                    print("🔴 [Shoe360] Sin imagen en la respuesta (modelo / modalities).")
+                    print("🔴 [Product360] Sin imagen en la respuesta.")
                     throw GeminiError.apiError(
-                        "Gemini did not return an image for 360° view (console `[Shoe360]`).")
+                        "Gemini did not return an image for 360° view (console `[Product360]`).")
                 }
                 let fname = "\(UUID().uuidString.lowercased()).jpg"
                 let rel = try ImageStore.save(imgData, inFolder: "shoe360", filename: fname)
-                print("✅ [Shoe360] Imagen guardada: \(rel)")
+                print("✅ [Product360] Imagen guardada: \(rel)")
                 return rel
             }
 
             let bodyStr = String(data: pair.0, encoding: .utf8) ?? ""
             let code = httpOpt?.statusCode ?? 0
-            print("🔴 [Shoe360] HTTP \(code): \(bodyStr.prefix(500))")
+            print("🔴 [Product360] HTTP \(code): \(bodyStr.prefix(500))")
 
             if attempt < backoffSeconds.count, code == 429 {
                 let sec = backoffSeconds[attempt]
-                print("🟡 [Shoe360] Reintentando tras \(sec)s por 429…")
+                print("🟡 [Product360] Reintentando tras \(sec)s por 429…")
                 try await Task.sleep(nanoseconds: sec * 1_000_000_000)
                 continue attempts
             }
@@ -948,6 +959,16 @@ actor GeminiService {
 
         let bodyStr = String(data: lastData ?? Data(), encoding: .utf8) ?? ""
         throw GeminiError.apiError(Self.humanGeminiHTTPError(statusCode: (lastResponse as? HTTPURLResponse)?.statusCode, body: bodyStr))
+    }
+
+    /// Prettify por ángulo para vista 360° de calzado (compatibilidad).
+    func prettifyShoeAngle(cropRelativePath: String, angle: ShoeAngle, itemName: String) async throws -> String {
+        try await prettifyProductAngle(
+            cropRelativePath: cropRelativePath,
+            angle: angle,
+            itemName: itemName,
+            category: .shoes
+        )
     }
 
     /// Spin 360° desde vídeo (~36 frames): mismo encuadre que el fotograma, fondo blanco catálogo (StockX / Zara sneaker).
@@ -1057,6 +1078,25 @@ actor GeminiService {
 
         let bodyStr = String(data: lastData ?? Data(), encoding: .utf8) ?? ""
         throw GeminiError.apiError(Self.humanGeminiHTTPError(statusCode: (lastResponse as? HTTPURLResponse)?.statusCode, body: bodyStr))
+    }
+
+    private nonisolated static func englishPromptForProductAngle(
+        _ angle: ShoeAngle,
+        category: ClothingCategory
+    ) -> String {
+        if category == .shoes {
+            return englishPromptForShoeAngle(angle)
+        }
+        switch angle {
+        case .front:
+            return "from a frontal angle (main face toward the camera)"
+        case .right:
+            return "from the right side—full lateral profile"
+        case .back:
+            return "from the rear (back facing the camera)"
+        case .left:
+            return "from the left side—full lateral profile"
+        }
     }
 
     private nonisolated static func englishPromptForShoeAngle(_ angle: ShoeAngle) -> String {
