@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 /// Pestaña/vista de productos Upsoled. Lee del catálogo compartido
 /// `public.upsoled_products` (mismo backend que la web Sneak Peek Miami)
@@ -290,6 +291,10 @@ struct AddUpsoledProductSheet: View {
     @State private var draft = ProductDraft()
     @State private var priceText: String = ""
 
+    // Foto seleccionada desde la galería/cámara (se sube a Storage al guardar).
+    @State private var pickedItem: PhotosPickerItem?
+    @State private var pickedImageData: Data?
+
     var body: some View {
         NavigationStack {
             Form {
@@ -343,7 +348,41 @@ struct AddUpsoledProductSheet: View {
                 }
 
                 Section("Imagen") {
-                    TextField("URL de la imagen (https://…)", text: $draft.imageURL)
+                    PhotosPicker(
+                        selection: $pickedItem,
+                        matching: .images,
+                        photoLibrary: .shared()
+                    ) {
+                        HStack {
+                            Image(systemName: "photo.on.rectangle.angled")
+                            Text(pickedImageData == nil ? "Elegir foto" : "Cambiar foto")
+                        }
+                    }
+                    .onChange(of: pickedItem) { _, newItem in
+                        Task {
+                            if let data = try? await newItem?.loadTransferable(type: Data.self) {
+                                pickedImageData = data
+                            }
+                        }
+                    }
+
+                    if let data = pickedImageData, let ui = UIImage(data: data) {
+                        Image(uiImage: ui)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(height: 160)
+                            .frame(maxWidth: .infinity)
+                            .clipped()
+                            .cornerRadius(8)
+                        Button(role: .destructive) {
+                            pickedItem = nil
+                            pickedImageData = nil
+                        } label: {
+                            Label("Quitar foto", systemImage: "trash")
+                        }
+                    }
+
+                    TextField("…o pega una URL (https://…)", text: $draft.imageURL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled(true)
                         .keyboardType(.URL)
@@ -371,7 +410,19 @@ struct AddUpsoledProductSheet: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Task {
-                            let ok = await viewModel.create(draft, ownerUserID: auth.session?.user.id)
+                            // Re-codifica la foto elegida a JPEG antes de subir.
+                            let jpeg: Data? = {
+                                guard let d = pickedImageData else { return nil }
+                                if let ui = UIImage(data: d) {
+                                    return ui.jpegData(compressionQuality: 0.85)
+                                }
+                                return d
+                            }()
+                            let ok = await viewModel.create(
+                                draft,
+                                ownerUserID: auth.session?.user.id,
+                                imageJPEG: jpeg
+                            )
                             if ok { dismiss() }
                         }
                     } label: {

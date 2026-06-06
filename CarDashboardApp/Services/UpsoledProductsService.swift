@@ -53,6 +53,29 @@ enum UpsoledProductsService {
         return response.first
     }
 
+    /// Sube una foto de producto al bucket `product-media` y devuelve la URL
+    /// pública absoluta (lista para guardar en image/main_image_url/images).
+    ///
+    /// Ruta: `{user_id}/{uuid}.jpg` — la primera carpeta debe ser el dueño para
+    /// cumplir la policy de Storage (ver migración product-media).
+    static func uploadProductImage(jpegData: Data, ownerUserID: UUID) async throws -> String {
+        let client = SupabaseClientProvider.shared
+        _ = try await client.auth.session // garantiza sesión válida (RLS authenticated)
+
+        let bucket = SupabaseClientProvider.productMediaBucket
+        let path = "\(ownerUserID.uuidString.lowercased())/\(UUID().uuidString.lowercased()).jpg"
+
+        _ = try await client.storage
+            .from(bucket)
+            .upload(
+                path,
+                data: jpegData,
+                options: FileOptions(contentType: "image/jpeg", upsert: true)
+            )
+
+        return SupabaseClientProvider.publicStorageObjectURL(bucket: bucket, path: path)
+    }
+
     /// Inserta un producto. Requiere usuario autenticado (RLS owner_insert).
     @discardableResult
     static func create(_ payload: UpsoledProductInsert) async throws -> UpsoledProduct {

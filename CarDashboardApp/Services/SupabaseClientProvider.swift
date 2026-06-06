@@ -87,6 +87,15 @@ enum SupabaseClientProvider {
     /// Bucket privado para notas de voz en mensajes directos de equipo.
     static let teamDirectVoiceBucket = "team_direct_voice"
 
+    /// Bucket público para fotos de productos subidas desde la app
+    /// (catálogo `upsoled_products`, mostrado también en la web Sneak Peek Miami).
+    static var productMediaBucket: String {
+        let fromInfoPlist = (Bundle.main.object(forInfoDictionaryKey: "PRODUCT_MEDIA_BUCKET") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let v = fromInfoPlist, !v.isEmpty else { return "product-media" }
+        return v
+    }
+
     /// Bucket Storage para fotos de perfil (ruta relativa guardada en `avatar_url`).
     static var userAvatarBucket: String {
         let fromInfoPlist = (Bundle.main.object(forInfoDictionaryKey: "USER_AVATAR_BUCKET") as? String)?

@@ -91,7 +91,6 @@ struct DashboardView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
-                ClosetAnalytics.named("add_to_closet_opened")
                 tabRouter.selected = .add
             } label: {
                 Image(systemName: "plus.circle.fill")

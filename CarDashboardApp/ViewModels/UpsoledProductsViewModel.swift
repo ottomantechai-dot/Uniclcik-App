@@ -65,13 +65,21 @@ final class UpsoledProductsViewModel: ObservableObject {
 
     /// Crea un producto nuevo a partir de un draft de UI.
     /// Devuelve `true` si OK.
-    func create(_ draft: ProductDraft, ownerUserID: UUID?) async -> Bool {
+    func create(_ draft: ProductDraft, ownerUserID: UUID?, imageJPEG: Data? = nil) async -> Bool {
         isCreating = true
         defer { isCreating = false }
         do {
-            let slug = try await UpsoledProductsService.ensureUniqueSlug(base: draft.name)
+            // Si el usuario eligió una foto, súbela a Storage y usa su URL pública.
+            var finalDraft = draft
+            if let data = imageJPEG, let owner = ownerUserID {
+                let url = try await UpsoledProductsService.uploadProductImage(
+                    jpegData: data, ownerUserID: owner
+                )
+                finalDraft.imageURL = url
+            }
+            let slug = try await UpsoledProductsService.ensureUniqueSlug(base: finalDraft.name)
             let saved = try await UpsoledProductsService.create(
-                draft.insertPayload(slug: slug, ownerUserID: ownerUserID)
+                finalDraft.insertPayload(slug: slug, ownerUserID: ownerUserID)
             )
             products.insert(saved, at: 0)
             errorMessage = nil

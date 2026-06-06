@@ -6,8 +6,6 @@ import PhotosUI
 // MARK: - Notificaciones entre pestañas (p. ej. abrir «Añadir» desde Inicio)
 
 extension Notification.Name {
-    /// Abre el mismo sheet de entrada que el botón + del stock (clóset).
-    static let upsoledPresentAddToClosetMenu = Notification.Name("Upsoled.presentAddToClosetMenu")
     /// Catálogo creado o editado — Inicio refresca totales.
     static let upsoledCatalogDidChange = Notification.Name("Upsoled.catalogDidChange")
     /// Prenda guardada, eliminada o precio cambiado — listas y KPIs refrescan.
@@ -59,14 +57,6 @@ struct MainTabView: View {
         return chatInbox.openCoordinatorRequestsAssigned(toRecipient: uid)
     }
 
-    private func presentAddToClosetFlowFromTabBar() {
-        ClosetAnalytics.named("add_to_closet_opened")
-        tabRouter.selected = .closet
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            NotificationCenter.default.post(name: .upsoledPresentAddToClosetMenu, object: nil)
-        }
-    }
-
     var body: some View {
         mainTabChrome
     }
@@ -97,9 +87,9 @@ struct MainTabView: View {
             communityVM.attach(auth: auth)
             Task { await communityVM.refresh() }
         }
-        .onChange(of: tabRouter.selected) { _, new in
-            if new == .add {
-                presentAddToClosetFlowFromTabBar()
+        .onChange(of: tabRouter.selected) { old, new in
+            if new == .add, old != .add {
+                ClosetAnalytics.named("add_to_closet_opened")
             }
         }
         .onChange(of: scenePhase) { _, phase in

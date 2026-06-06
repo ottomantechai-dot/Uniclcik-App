@@ -642,7 +642,6 @@ struct ClosetView: View {
             .padding(.horizontal, 16)
 
             Button {
-                ClosetAnalytics.named("add_to_closet_opened")
                 tabRouter.selected = .add
             } label: {
                 Text(L10n.tr("closet.addWide"))
@@ -670,7 +669,6 @@ struct ClosetView: View {
                 segmentCount: Self.closetStarterGarmentGoal
             )
             Button {
-                ClosetAnalytics.named("add_to_closet_opened")
                 tabRouter.selected = .add
             } label: {
                 Text(L10n.tr("closet.addWide"))
