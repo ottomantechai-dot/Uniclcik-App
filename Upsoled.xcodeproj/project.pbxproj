@@ -804,11 +804,11 @@
 				CODE_SIGN_ENTITLEMENTS = CarDashboardApp/CarDashboardApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = T6PX988URP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Upsoled;
+				INFOPLIST_KEY_CFBundleDisplayName = Uniclick;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Para crear en tu calendario el evento del plazo de la tarea cuando pulses «Aceptar» en la notificación.";
 				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Para añadir el plazo de la tarea a tu calendario (solo crear eventos, sin leer tus citas).";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Para hacer fotos de outfits y prendas que quieras añadir a tu clóset.";
@@ -844,11 +844,11 @@
 				CODE_SIGN_ENTITLEMENTS = "CarDashboardApp/CarDashboardApp-Release.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = T6PX988URP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Upsoled;
+				INFOPLIST_KEY_CFBundleDisplayName = Uniclick;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Para crear en tu calendario el evento del plazo de la tarea cuando pulses «Aceptar» en la notificación.";
 				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Para añadir el plazo de la tarea a tu calendario (solo crear eventos, sin leer tus citas).";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Para hacer fotos de outfits y prendas que quieras añadir a tu clóset.";
