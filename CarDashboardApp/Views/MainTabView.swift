@@ -97,11 +97,16 @@ struct MainTabView: View {
             case .active:
                 communityVM.startPeriodicRefresh()
                 Task { await communityVM.refresh() }
+                Task { await PriceAlertChecker.checkAll() }
             case .background, .inactive:
                 communityVM.stopPeriodicRefresh()
             @unknown default:
                 break
             }
+        }
+        .task {
+            // Chequeo de alertas de precio al arrancar (best-effort en foreground).
+            await PriceAlertChecker.checkAll()
         }
         .toolbarBackground(PremiumAccent.tabBarDockBackgroundGradient, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)

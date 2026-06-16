@@ -19,6 +19,13 @@ OPENAI_CLOSET_IMAGE_SIZE = 1024x1024
 // Get a key at https://kicks.dev — paste only in DeveloperSettings.local.xcconfig
 // KICKSDB_API_KEY = KICKS-XXXX-XXXX-XXXX-XXXXXXXXXXXX
 
+// --- eBay Browse API (listados Authenticity Guaranteed) ---
+// developer.ebay.com/my/keys → keyset de PRODUCTION.
+// EBAY_CLIENT_ID  = App ID (Client ID), ej: JesusCas-Upsoled-PRD-xxxxxxxx-xxxxxxxx
+// EBAY_CLIENT_SECRET = Cert ID (Client Secret), ej: PRD-xxxxxxxxxxxx-xxxx-xxxx-xxxx
+// EBAY_CLIENT_ID =
+// EBAY_CLIENT_SECRET =
+
 // --- GOAT / Alias (CommercialGoatAPI) ---
 // Provider token from https://github.com/Sting-Lee/CommercialGoatAPI (not your Alias password).
 // GOAT_API_TOKEN = your_commercial_api_token_here

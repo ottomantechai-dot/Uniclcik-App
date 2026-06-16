@@ -7,6 +7,8 @@ import PhotosUI
 struct UpsoledProductsView: View {
     @StateObject private var vm = UpsoledProductsViewModel()
     @State private var showingAdd: Bool = false
+    @State private var showingComparator: Bool = false
+    @State private var showingAlerts: Bool = false
 
     @EnvironmentObject var auth: AuthViewModel
 
@@ -19,6 +21,26 @@ struct UpsoledProductsView: View {
             .navigationTitle("Marketplace")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showingComparator = true
+                    } label: {
+                        Image(systemName: "chart.bar.xaxis")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.14, green: 0.36, blue: 0.75))
+                    }
+                    .accessibilityLabel("Comparar precios entre plataformas")
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showingAlerts = true
+                    } label: {
+                        Image(systemName: "bell.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.14, green: 0.36, blue: 0.75))
+                    }
+                    .accessibilityLabel("Alertas de precio")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingAdd = true
@@ -41,6 +63,12 @@ struct UpsoledProductsView: View {
             }
             .sheet(isPresented: $showingAdd) {
                 AddUpsoledProductSheet(viewModel: vm)
+            }
+            .sheet(isPresented: $showingComparator) {
+                MarketComparatorView()
+            }
+            .sheet(isPresented: $showingAlerts) {
+                PriceAlertsListView(store: PriceAlertStore.shared)
             }
             .task { await vm.reload() }
             .refreshable { await vm.reload() }
