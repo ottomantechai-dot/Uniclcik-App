@@ -26,117 +26,12 @@ extension Color {
     }
 }
 
-// MARK: - Looks · marcos blancos (sin halo gris al pulsar)
+// MARK: - Botones sin halo gris al pulsar
 
 /// Evita el oscurecimiento gris típico al mantener pulsado.
 private struct LookNoHighlightButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-    }
-}
-
-private enum LookVisualTab {
-    case avatar
-    case garments
-}
-
-/// Collage tipo Pinterest: dos columnas con proporciones variables.
-private struct LookGarmentsCollageView: View {
-    let items: [ClosetItem]
-    var horizontalInset: CGFloat = 16
-
-    private let columnGap: CGFloat = 14
-    private let verticalGap: CGFloat = 14
-    private let thumbPadding: CGFloat = 12
-    private let cardCorner: CGFloat = 18
-    private let aspectCycle: [CGFloat] = [0.72, 0.94, 0.82, 1.02, 0.86, 0.9]
-
-    var body: some View {
-        Group {
-            if items.isEmpty {
-                Text("Add items to the look to see the collage.")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color.black.opacity(0.45))
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 40)
-            } else {
-                let leftColumn = stride(from: 0, to: items.count, by: 2).map { items[$0] }
-                let rightColumn = stride(from: 1, to: items.count, by: 2).map { items[$0] }
-
-                HStack(alignment: .top, spacing: columnGap) {
-                    columnCells(leftColumn)
-                    columnCells(rightColumn)
-                }
-                .padding(.horizontal, horizontalInset)
-                .padding(.vertical, 8)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .background(Color.white)
-    }
-
-    @ViewBuilder
-    private func columnCells(_ columnItems: [ClosetItem]) -> some View {
-        VStack(spacing: verticalGap) {
-            ForEach(columnItems) { item in
-                let slot = items.firstIndex(where: { $0.id == item.id }) ?? 0
-                whiteWellCell(item: item, slot: slot)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .top)
-    }
-
-    private func whiteWellCell(item: ClosetItem, slot: Int) -> some View {
-        let ar = aspectCycle[slot % aspectCycle.count]
-        return ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
-            .frame(maxWidth: .infinity)
-            .aspectRatio(ar, contentMode: .fit)
-            .padding(thumbPadding)
-            .background(
-                RoundedRectangle(cornerRadius: cardCorner, style: .continuous)
-                    .fill(Color.white)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: cardCorner, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: cardCorner, style: .continuous)
-                    .strokeBorder(Color.white, lineWidth: 2)
-            )
-    }
-}
-
-private struct LookAvatarGarmentsToggle: View {
-    @Binding var tab: LookVisualTab
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Button {
-                tab = .avatar
-            } label: {
-                Image(systemName: "person.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(tab == .avatar ? Color.black : Color.white))
-                    .foregroundStyle(tab == .avatar ? Color.white : Color.black)
-                    .overlay(Circle().stroke(Color.black, lineWidth: tab == .avatar ? 0 : 1))
-            }
-            .buttonStyle(LookNoHighlightButtonStyle())
-
-            Button {
-                tab = .garments
-            } label: {
-                Image(systemName: "tshirt.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(tab == .garments ? Color.black : Color.white))
-                    .foregroundStyle(tab == .garments ? Color.white : Color.black)
-                    .overlay(Circle().stroke(Color.black, lineWidth: tab == .garments ? 0 : 1))
-            }
-            .buttonStyle(LookNoHighlightButtonStyle())
-        }
-        .padding(5)
-        .background(Capsule().fill(Color.white))
-        .overlay(Capsule().stroke(Color.black, lineWidth: 1))
     }
 }
 
@@ -185,15 +80,26 @@ struct ClosetGarmentDetailView: View {
     @State private var nameDraft: String = ""
     @State private var skuDraft: String = ""
     @State private var prettifying = false
-    @State private var showLookComposer = false
     @State private var showShoe360Capture = false
     @State private var showShoe360ProCapture = false
     @State private var showLookbookCapture = false
     @State private var toast: String?
     @State private var marketPriceBusy = false
+    @State private var shoeMarketComparison: MarketComparison?
+    @State private var shoeMarketLoading = false
+    @State private var showShoeItemDetails = false
     @State private var showRemoveItemDialog = false
-    @State private var detailSection: GarmentDetailSection = .itemInfo
+    @State private var detailSection: GarmentDetailSection
     @State private var savingChanges = false
+
+    init(item: ClosetItem) {
+        self.item = item
+        _detailSection = State(
+            initialValue: item.category == .shoes ? .marketPrice : .itemInfo
+        )
+    }
+
+    private var isShoeProduct: Bool { item.category == .shoes }
 
     private var secondary: Color {
         Color.black.opacity(0.55)
@@ -204,69 +110,12 @@ struct ClosetGarmentDetailView: View {
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 22) {
-                    studioHero
-
-                    detailSectionPicker
-                        .padding(.horizontal, 18)
-
-                    if detailSection == .marketPrice {
-                        garmentMarketPriceHeroSection
-                            .padding(.horizontal, 18)
+                VStack(spacing: isShoeProduct ? 16 : 22) {
+                    if isShoeProduct {
+                        shoeDetailLayout
                     } else {
-                        garmentItemInfoSection
+                        standardDetailLayout
                     }
-
-                    Button {
-                        saveAllChangesTapped()
-                    } label: {
-                        HStack(spacing: 8) {
-                            if savingChanges {
-                                ProgressView().tint(.white).scaleEffect(0.9)
-                            } else {
-                                Image(systemName: "square.and.arrow.down")
-                            }
-                            Text(savingChanges ? "Saving…" : "Save changes")
-                                .font(.system(size: 17, weight: .semibold))
-                        }
-                        .foregroundStyle(Color.white)
-                        .frame(maxWidth: .infinity, minHeight: 56)
-                        .background(RoundedRectangle(cornerRadius: 28).fill(Color.black))
-                    }
-                    .disabled(savingChanges || prettifying)
-                    .padding(.horizontal, 18)
-                    .padding(.top, 4)
-
-                    if item.isActiveInStock {
-                        Button {
-                            showRemoveItemDialog = true
-                        } label: {
-                            Label(L10n.tr("closet.removeItem"), systemImage: "trash")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(Color(red: 0.92, green: 0.30, blue: 0.30))
-                                .frame(maxWidth: .infinity, minHeight: 56)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 28)
-                                        .stroke(Color(red: 0.92, green: 0.30, blue: 0.30), lineWidth: 1.5)
-                                )
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.top, 4)
-                    }
-
-                    Button {
-                        showLookComposer = true
-                    } label: {
-                        Label("Create looks", systemImage: "sparkles")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(Color.white)
-                            .frame(maxWidth: .infinity, minHeight: 56)
-                            .background(RoundedRectangle(cornerRadius: 28).fill(Color.black))
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 8)
-
-                    Spacer(minLength: 24)
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 32)
@@ -301,10 +150,10 @@ struct ClosetGarmentDetailView: View {
             nameDraft = item.catalogDisplayName
             skuDraft = item.resolvedSKU ?? ""
             ensureLocalPalette()
-            if item.category == .shoes {
+            if isShoeProduct {
                 detailSection = .marketPrice
-            }
-            if item.marketPriceNeedsRefresh, item.hasStyleForMarketLookup, !marketPriceBusy {
+                Task { await loadShoeMarketTable() }
+            } else if item.marketPriceNeedsRefresh, item.hasStyleForMarketLookup, !marketPriceBusy {
                 Task { await refreshMarketPrice() }
             }
         }
@@ -312,12 +161,6 @@ struct ClosetGarmentDetailView: View {
             if !focused {
                 normalizeAndSaveAskingPrice(from: priceDraft)
             }
-        }
-        .sheet(isPresented: $showLookComposer) {
-            CreateLookComposerView(seedItemID: item.id)
-                .presentationDragIndicator(.visible)
-                .presentationDetents([.large])
-                .preferredColorScheme(.light)
         }
         .onDisappear {
             NotificationCenter.default.post(name: .closetInventoryDidChange, object: item.id)
@@ -361,11 +204,119 @@ struct ClosetGarmentDetailView: View {
         }
     }
 
+    @ViewBuilder
+    private var shoeDetailLayout: some View {
+        shoeDetailHero
+
+        shoeMarketPricesSection
+            .padding(.horizontal, 10)
+
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showShoeItemDetails.toggle()
+            }
+        } label: {
+            HStack {
+                Text(showShoeItemDetails ? "Hide item details" : "Item details")
+                    .font(.system(size: 14, weight: .semibold))
+                Spacer(minLength: 0)
+                Image(systemName: showShoeItemDetails ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 12, weight: .bold))
+            }
+            .foregroundStyle(Color.black.opacity(0.55))
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
+
+        if showShoeItemDetails {
+            garmentItemInfoSection
+                .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+
+        detailActionButtons
+    }
+
+    @ViewBuilder
+    private var standardDetailLayout: some View {
+        studioHero
+
+        detailSectionPicker
+            .padding(.horizontal, 18)
+
+        if detailSection == .marketPrice {
+            garmentMarketPriceHeroSection
+                .padding(.horizontal, 18)
+        } else {
+            garmentItemInfoSection
+        }
+
+        detailActionButtons
+    }
+
+    @ViewBuilder
+    private var detailActionButtons: some View {
+        Button {
+            saveAllChangesTapped()
+        } label: {
+            HStack(spacing: 8) {
+                if savingChanges {
+                    ProgressView().tint(.white).scaleEffect(0.9)
+                } else {
+                    Image(systemName: "square.and.arrow.down")
+                }
+                Text(savingChanges ? "Saving…" : "Save changes")
+                    .font(.system(size: 17, weight: .semibold))
+            }
+            .foregroundStyle(Color.white)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .background(RoundedRectangle(cornerRadius: 28).fill(Color.black))
+        }
+        .disabled(savingChanges || prettifying)
+        .padding(.horizontal, 18)
+        .padding(.top, 4)
+
+        if item.isActiveInStock {
+            Button {
+                showRemoveItemDialog = true
+            } label: {
+                Label(L10n.tr("closet.removeItem"), systemImage: "trash")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.92, green: 0.30, blue: 0.30))
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .background(
+                        RoundedRectangle(cornerRadius: 28)
+                            .stroke(Color(red: 0.92, green: 0.30, blue: 0.30), lineWidth: 1.5)
+                    )
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 4)
+        }
+
+        Spacer(minLength: 24)
+    }
+
+    private var shoeDetailHero: some View {
+        ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
+            .padding(.vertical, 12)
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity)
+            .aspectRatio(0.72, contentMode: .fit)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color.white)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(.horizontal, 10)
+    }
+
     private var studioHero: some View {
         Group {
             if item.allSelectableImagePaths.count > 1 {
                 ProductCoverGalleryView(item: item, toast: $toast, style: .detail) {
-                    heroStudioActionBar
+                    if item.category != .shoes {
+                        heroStudioActionBar
+                    }
                 }
             } else {
                 ZStack(alignment: .bottom) {
@@ -373,9 +324,11 @@ struct ClosetGarmentDetailView: View {
                         .padding(.vertical, 8)
                         .padding(.horizontal, 4)
 
-                    heroStudioActionBar
-                        .padding(.horizontal, 10)
-                        .padding(.bottom, 12)
+                    if item.category != .shoes {
+                        heroStudioActionBar
+                            .padding(.horizontal, 10)
+                            .padding(.bottom, 12)
+                    }
                 }
                 .aspectRatio(0.72, contentMode: .fit)
             }
@@ -877,6 +830,27 @@ struct ClosetGarmentDetailView: View {
 
     @ViewBuilder
     private var garmentMarketPriceHeroSection: some View {
+        if item.category == .shoes {
+            shoeMarketPricesSection
+        } else {
+            nonShoeMarketPriceSection
+        }
+    }
+
+    @ViewBuilder
+    private var shoeMarketPricesSection: some View {
+        if shoeMarketComparison != nil || !shoeMarketLoading {
+            DashboardMarketPricesSection(
+                comparison: shoeMarketComparison,
+                selectedProductName: item.catalogDisplayName,
+                maxVisibleRows: nil,
+                showsViewFullTable: false
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var nonShoeMarketPriceSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             marketCharacteristicsSummary
 
@@ -921,16 +895,6 @@ struct ClosetGarmentDetailView: View {
                 .buttonStyle(.plain)
                 .disabled(!item.hasStyleForMarketLookup)
                 .opacity(item.hasStyleForMarketLookup ? 1 : 0.45)
-
-                if !item.hasStyleForMarketLookup {
-                    Text("Add a name or Style / SKU (e.g. DD1391-101) to fetch real market prices.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.orange.opacity(0.85))
-                } else if !KicksDBClient.isConfigured {
-                    Text("Add KICKSDB_API_KEY in DeveloperSettings.local.xcconfig for StockX & GOAT prices.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.orange.opacity(0.85))
-                }
             }
         }
     }
@@ -1015,6 +979,44 @@ struct ClosetGarmentDetailView: View {
     }
 
     @MainActor
+    private func loadShoeMarketTable(force: Bool = false) async {
+        guard isShoeProduct else { return }
+        if shoeMarketLoading { return }
+
+        shoeMarketLoading = true
+        defer { shoeMarketLoading = false }
+
+        guard item.hasStyleForMarketLookup else { return }
+
+        let queries = item.marketLookupQueries
+        guard let query = queries.first else { return }
+        let fallback = queries.count > 1 ? queries[1] : nil
+
+        guard KicksDBClient.isConfigured else { return }
+
+        do {
+            if let comparison = try await KicksDBClient.fetchComparison(
+                query: query,
+                fallbackQuery: fallback
+            ) {
+                shoeMarketComparison = await HomeMarketTableBuilder.prepareDetailComparison(
+                    from: comparison,
+                    query: query
+                )
+                if force {
+                    let count = shoeMarketComparison?.rows.count ?? 0
+                    toast = count > 0 ? "Live prices · \(count) sizes" : "Live prices updated"
+                }
+            }
+        } catch {
+            let message = (error as NSError).localizedDescription
+            if force || shoeMarketComparison == nil {
+                toast = message
+            }
+        }
+    }
+
+    @MainActor
     private func refreshMarketPrice(force: Bool = false) async {
         guard item.hasStyleForMarketLookup else {
             toast = "Add a Style / SKU code first (e.g. DD1391-101)."
@@ -1088,802 +1090,6 @@ struct ClosetGarmentDetailView: View {
         } catch {
             toast = error.localizedDescription
         }
-    }
-}
-
-// MARK: - Crear look (combinar prendas en SwiftData)
-
-struct CreateLookComposerView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
-
-    /// Si viene del detalle, preselecciona esa prenda.
-    var seedItemID: UUID? = nil
-
-    @Query(sort: \ClosetItem.createdAt, order: .reverse)
-    private var closetItems: [ClosetItem]
-
-    private var selectableClosetItems: [ClosetItem] {
-        closetItems.filter(\.isActiveInStock)
-    }
-
-    @State private var selectedIDs = Set<UUID>()
-    @State private var lookTitle: String = ""
-    @State private var composerToast: String?
-
-    private let gridCols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
-
-    private var selectedOrderedPieces: [ClosetItem] {
-        selectableClosetItems.filter { selectedIDs.contains($0.id) }
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.white.ignoresSafeArea()
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Select at least one item. You can generate the studio-style avatar from the look detail.")
-                            .font(.system(size: 14))
-                            .foregroundStyle(Color.black.opacity(0.55))
-                            .padding(.horizontal, 18)
-
-                        TextField("Nombre del look (opcional)", text: $lookTitle)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
-                            .padding(.horizontal, 18)
-
-                        if !selectedOrderedPieces.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Your look — selected items")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Color.black.opacity(0.48))
-                                    .padding(.horizontal, 18)
-                                LookGarmentsCollageView(items: selectedOrderedPieces, horizontalInset: 14)
-                                    .padding(.bottom, 4)
-                            }
-                        }
-
-                        if closetItems.isEmpty {
-                            Text("You have no items in your closet yet. Add photos before creating a look.")
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(Color.black.opacity(0.45))
-                                .padding(.horizontal, 18)
-                                .padding(.top, 12)
-                        } else {
-                            LazyVGrid(columns: gridCols, spacing: 12) {
-                                ForEach(selectableClosetItems) { item in
-                                    lookPickerCell(item)
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                        }
-
-                        Spacer(minLength: 100)
-                    }
-                    .padding(.top, 8)
-                }
-
-                VStack {
-                    Spacer()
-                    Button {
-                        saveLookTapped()
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "checkmark.circle.fill")
-                            Text("Save look")
-                        }
-                        .font(.system(size: 17, weight: .heavy))
-                        .foregroundStyle(Color.white)
-                        .frame(maxWidth: .infinity, minHeight: 56)
-                        .background(RoundedRectangle(cornerRadius: 28).fill(Color.black))
-                        .opacity(selectedIDs.isEmpty ? 0.45 : 1)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(selectedIDs.isEmpty)
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 20)
-                    .background {
-                        LinearGradient(
-                            colors: [Color.white.opacity(0), Color.white],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: 120)
-                        .allowsHitTesting(false)
-                    }
-                }
-            }
-            .navigationTitle("Create looks")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.tr("common.close")) { dismiss() }.foregroundStyle(Color.black)
-                }
-            }
-            .toastOverlay(message: $composerToast)
-            .onAppear {
-                if let seed = seedItemID {
-                    selectedIDs.insert(seed)
-                }
-            }
-        }
-        .preferredColorScheme(.light)
-    }
-
-    private func lookPickerCell(_ item: ClosetItem) -> some View {
-        let on = selectedIDs.contains(item.id)
-        return Button {
-            if on { selectedIDs.remove(item.id) } else { selectedIDs.insert(item.id) }
-        } label: {
-            VStack(spacing: 6) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white)
-                    ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
-                        .padding(4)
-
-                    VStack {
-                        HStack {
-                            Spacer()
-                            Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 22))
-                                .foregroundStyle(on ? Color.black : Color.black.opacity(0.25))
-                                .padding(8)
-                                .allowsHitTesting(false)
-                        }
-                        Spacer()
-                    }
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(on ? Color.black : Color.clear, lineWidth: on ? 2.5 : 0)
-                }
-                .aspectRatio(0.72, contentMode: .fit)
-
-                Text(item.name)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Color.black.opacity(0.85))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-            }
-        }
-        .buttonStyle(LookNoHighlightButtonStyle())
-    }
-
-    private func saveLookTapped() {
-        let ordered = closetItems.filter { selectedIDs.contains($0.id) }
-        guard !ordered.isEmpty else { return }
-        let trimmed = lookTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        let defaultName = "Look \(Date().formatted(date: .abbreviated, time: .omitted))"
-        let look = Look(name: trimmed.isEmpty ? defaultName : trimmed, items: ordered)
-        modelContext.insert(look)
-        try? modelContext.save()
-        ClosetAnalytics.named("closet_look_saved", params: "items:\(ordered.count)")
-        pulseToast("Look saved.")
-        dismiss()
-    }
-
-    private func pulseToast(_ s: String) {}
-}
-
-// MARK: - Detalle de un Look guardado
-
-struct ClosetLookDetailSheet: View {
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
-
-    @Bindable var look: Look
-
-    @State private var confirmDelete = false
-    @State private var showAvatarGenerator = false
-    @State private var visualTab: LookVisualTab = .garments
-    @State private var lookDetailToast: String?
-    @State private var exportingAvatar = false
-
-    private var pieces: [ClosetItem] { look.resolvedItemsOrdered }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 16) {
-                    if look.avatarRelativePath != nil {
-                        HStack {
-                            LookAvatarGarmentsToggle(tab: $visualTab)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 4)
-                    }
-
-                    Group {
-                        if look.avatarRelativePath == nil {
-                            LookGarmentsCollageView(items: pieces, horizontalInset: 16)
-                                .padding(.vertical, 4)
-                        } else if visualTab == .avatar {
-                            if let avatarPath = look.avatarRelativePath {
-                                ZStack(alignment: .bottomTrailing) {
-                                    Color.white
-                                    ClosetDiskThumbnail(relativePath: avatarPath)
-                                        .aspectRatio(9 / 16, contentMode: .fit)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 10)
-
-                                    Button {
-                                        Task { await saveAvatarToPhotos(path: avatarPath) }
-                                    } label: {
-                                        HStack(spacing: 6) {
-                                            if exportingAvatar {
-                                                ProgressView().scaleEffect(0.85).tint(.white)
-                                            } else {
-                                                Image(systemName: "square.and.arrow.down")
-                                            }
-                                            Text("9:16 photos")
-                                                .font(.system(size: 13, weight: .semibold))
-                                        }
-                                        .foregroundStyle(Color.white)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .background(Capsule().fill(Color.black.opacity(0.55)))
-                                    }
-                                    .buttonStyle(LookNoHighlightButtonStyle())
-                                    .disabled(exportingAvatar)
-                                    .padding(14)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .background(Color.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                                .padding(.horizontal, 16)
-                            }
-                        } else {
-                            LookGarmentsCollageView(items: pieces, horizontalInset: 16)
-                                .padding(.vertical, 4)
-                        }
-                    }
-
-                    Text(look.name)
-                        .font(.system(size: 20, weight: .heavy))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 16)
-
-                    lookRibbonCoverSection
-
-                    if look.avatarRelativePath == nil {
-                        Text("Items in this look (\(pieces.count))")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.black.opacity(0.52))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 16)
-                    }
-
-                    HStack {
-                        Spacer()
-                        Button {
-                            showAvatarGenerator = true
-                        } label: {
-                            Label("Create avatar", systemImage: "sparkles")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.white)
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 10)
-                                .background(Capsule().fill(Color.black))
-                        }
-                        .disabled(pieces.isEmpty || !GeminiService.apiKeyConfigured)
-                        .buttonStyle(LookNoHighlightButtonStyle())
-                        Spacer()
-                    }
-                    .padding(.vertical, 10)
-
-                    Button(role: .destructive) {
-                        confirmDelete = true
-                    } label: {
-                        Text("Delete this look")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(LookNoHighlightButtonStyle())
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 32)
-                }
-                .padding(.top, 8)
-            }
-            .background(Color.white.ignoresSafeArea())
-            .navigationTitle("Look")
-            .navigationBarTitleDisplayMode(.inline)
-            .onAppear {
-                if look.avatarRelativePath != nil {
-                    visualTab = .avatar
-                } else {
-                    visualTab = .garments
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.tr("common.close")) { dismiss() }.foregroundStyle(Color.black)
-                }
-            }
-            .confirmationDialog(
-                "Delete this look?",
-                isPresented: $confirmDelete,
-                titleVisibility: .visible
-            ) {
-                Button("Delete", role: .destructive) {
-                    deleteLook()
-                    dismiss()
-                }
-                Button("Cancel", role: .cancel) {}
-            }
-            .sheet(isPresented: $showAvatarGenerator) {
-                LookAvatarGeneratorSheet(look: look)
-                    .presentationDragIndicator(.visible)
-                    .presentationDetents([.large])
-                    .preferredColorScheme(.light)
-            }
-        }
-        .preferredColorScheme(.light)
-        .toastOverlay(message: $lookDetailToast)
-    }
-
-    @ViewBuilder
-    private var lookRibbonCoverSection: some View {
-        let candidates = ribbonCoverCandidates()
-        let show = candidates.count > 1 || look.avatarRelativePath != nil
-        if show {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Cover for the My Looks carousel")
-                    .font(.system(size: 14, weight: .heavy))
-                    .foregroundStyle(Color.black.opacity(0.62))
-                    .padding(.horizontal, 16)
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        Button {
-                            look.ribbonCoverRelativePath = nil
-                            persistLookRibbonSettings()
-                            lookDetailToast = "Automatic cover (avatar → items)."
-                        } label: {
-                            VStack(spacing: 6) {
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 22, weight: .semibold))
-                                    .foregroundStyle(Color.black.opacity(0.35))
-                                Text("Auto")
-                                    .font(.system(size: 11, weight: .heavy))
-                                    .foregroundStyle(Color.black.opacity(0.55))
-                                    .lineLimit(1)
-                            }
-                            .frame(width: 74, height: 102)
-                            .background(Color.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(
-                                        look.ribbonCoverRelativePath == nil ? Color.black : Color.black.opacity(0.12),
-                                        lineWidth: look.ribbonCoverRelativePath == nil ? 2.5 : 1
-                                    )
-                            )
-                        }
-                        .buttonStyle(LookNoHighlightButtonStyle())
-
-                        ForEach(Array(candidates.enumerated()), id: \.offset) { _, pair in
-                            ribbonCoverChip(label: pair.0, path: pair.1)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                }
-            }
-        }
-    }
-
-    private func ribbonCoverChip(label: String, path: String) -> some View {
-        let on = look.ribbonCoverRelativePath == path
-        return Button {
-            look.ribbonCoverRelativePath = path
-            persistLookRibbonSettings()
-            lookDetailToast = "Esta foto es la miniatura del look."
-        } label: {
-            VStack(spacing: 6) {
-                if let ui = StockImageLoader.cachedLocalImage(relativePath: path) {
-                    Image(uiImage: ui)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 74, height: 78)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                } else {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.black.opacity(0.06))
-                        .frame(width: 74, height: 78)
-                }
-                Text(label)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.55))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                    .frame(width: 74)
-            }
-            .padding(.vertical, 4)
-            .background(Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(on ? Color.black : Color.black.opacity(0.1), lineWidth: on ? 2.5 : 1)
-            )
-        }
-        .buttonStyle(LookNoHighlightButtonStyle())
-    }
-
-    private func ribbonCoverCandidates() -> [(String, String)] {
-        var out: [(String, String)] = []
-        var seen = Set<String>()
-        func push(_ label: String, _ rawPath: String?) {
-            guard let trimmed = rawPath?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty,
-                  ImageStore.exists(trimmed) else { return }
-            if seen.insert(trimmed).inserted { out.append((label, trimmed)) }
-        }
-
-        push("Avatar IA", look.avatarRelativePath)
-        for it in pieces {
-            let sn = shortPieceLabel(it.name)
-            push("\(sn)\n(catálogo)", it.imageFilename)
-            for idx in it.lookbookAllFilenamesInOrder.indices {
-                let p = it.lookbookAllFilenamesInOrder[idx]
-                push("\(sn)\nlook \(idx + 1)", p)
-            }
-        }
-        return out
-    }
-
-    private func shortPieceLabel(_ name: String) -> String {
-        let t = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.count <= 10 { return t }
-        return String(t.prefix(8)) + "…"
-    }
-
-    private func persistLookRibbonSettings() {
-        try? modelContext.save()
-    }
-
-    @MainActor
-    private func saveAvatarToPhotos(path: String) async {
-        exportingAvatar = true
-        defer { exportingAvatar = false }
-        do {
-            try await ClosetPhotoExports.saveClosetAvatarForTikTokExport(relativePath: path)
-            lookDetailToast = "TikTok-ready avatar saved to Photos."
-        } catch {
-            lookDetailToast = error.localizedDescription
-        }
-    }
-
-    private func deleteLook() {
-        if let rel = look.avatarRelativePath {
-            ImageStore.deleteIfExists(rel)
-        }
-        modelContext.delete(look)
-        try? modelContext.save()
-        ClosetAnalytics.named("closet_look_deleted")
-    }
-}
-
-// MARK: - Generador de avatar (Gemini multimodal)
-
-struct LookAvatarGeneratorSheet: View {
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
-
-    let look: Look
-
-    @Query(sort: \UserProfile.createdAt) private var userProfiles: [UserProfile]
-
-    @State private var gender: AvatarGender = .female
-    @State private var visualTab: LookVisualTab = .avatar
-    @State private var isGenerating = false
-    @State private var generatedFilename: String?
-    @State private var error: String?
-    @State private var showFaceSetup = false
-    /// Por generación: respeta `UserProfile.useFaceByDefault` al abrir; el usuario puede desactivar solo esta sesión.
-    @State private var useFaceForAvatar: Bool = true
-    @State private var avatarExportBusy = false
-    @State private var avatarExportToast: String?
-
-    private var pieces: [ClosetItem] { look.resolvedItemsOrdered }
-
-    /// Avatar listo para mostrar (sesión actual o ya guardado en el look).
-    private var avatarDisplayPath: String? {
-        generatedFilename ?? look.avatarRelativePath
-    }
-
-    private var hasAvatarPreview: Bool {
-        guard let p = avatarDisplayPath, ImageStore.exists(p) else { return false }
-        return true
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 18) {
-                    previewBlock
-
-                    controlBar
-
-                    faceRow
-
-                    if let error {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(Color.red)
-                            .frame(maxWidth: .infinity)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
-                    }
-                }
-                .padding(.vertical, 14)
-                .padding(.bottom, 8)
-            }
-            .background(Color.white.ignoresSafeArea())
-            .navigationTitle("Avatar")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(L10n.tr("common.close")) { dismiss() }.foregroundStyle(Color.black)
-                }
-                ToolbarItemGroup(placement: .confirmationAction) {
-                    Button {
-                        showFaceSetup = true
-                    } label: {
-                        faceToolbarGlyph
-                    }
-                    .buttonStyle(LookNoHighlightButtonStyle())
-                    .accessibilityLabel("Mi rostro")
-
-                    Button {
-                        Task { await exportAvatarToPhotosTapped() }
-                    } label: {
-                        if avatarExportBusy {
-                            ProgressView()
-                                .scaleEffect(0.9)
-                                .tint(.black)
-                        } else {
-                            Image(systemName: "square.and.arrow.down")
-                        }
-                    }
-                    .buttonStyle(LookNoHighlightButtonStyle())
-                    .disabled(avatarExportBusy || avatarDisplayPath == nil)
-                    .accessibilityLabel("Save avatar to Photos")
-
-                    Button("Save") { saveTapped() }
-                        .disabled(avatarDisplayPath == nil)
-                }
-            }
-            .sheet(isPresented: $showFaceSetup) {
-                FaceSetupView()
-                    .presentationDragIndicator(.visible)
-            }
-            .onAppear {
-                _ = UserProfile.current(in: modelContext)
-                visualTab = hasAvatarPreview ? .avatar : .garments
-                if let saved = look.avatarGenderRaw, let parsed = AvatarGender(rawValue: saved) {
-                    gender = parsed
-                } else if let raw = userProfiles.first?.preferredGenderRaw,
-                          let parsed = AvatarGender(rawValue: raw) {
-                    gender = parsed
-                }
-                useFaceForAvatar = userProfiles.first?.useFaceByDefault ?? true
-            }
-        }
-        .preferredColorScheme(.light)
-        .toastOverlay(message: $avatarExportToast)
-    }
-
-    @MainActor
-    private func exportAvatarToPhotosTapped() async {
-        guard let rel = avatarDisplayPath else { return }
-        avatarExportBusy = true
-        defer { avatarExportBusy = false }
-        do {
-            try await ClosetPhotoExports.saveClosetAvatarForTikTokExport(relativePath: rel)
-            avatarExportToast = "9:16 avatar saved to Photos."
-        } catch {
-            avatarExportToast = error.localizedDescription
-        }
-    }
-
-    @ViewBuilder
-    private var previewBlock: some View {
-        ZStack {
-            Color.white
-            if visualTab == .garments {
-                LookGarmentsCollageView(items: pieces, horizontalInset: 14)
-                    .padding(.horizontal, 2)
-            } else {
-                avatarPreviewContent
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 460)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .padding(.horizontal, 14)
-    }
-
-    @ViewBuilder
-    private var avatarPreviewContent: some View {
-        if isGenerating {
-            ProgressView("Generando avatar…")
-                .padding(40)
-        } else if let path = avatarDisplayPath, let img = ImageStore.load(path) {
-            Image(uiImage: img)
-                .resizable()
-                .scaledToFit()
-                .aspectRatio(9 / 16, contentMode: .fit)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-        } else {
-            Text("Your look will appear here: full-body model on a pure white background, no shadows. Choose a model below and tap Generate.")
-                .font(.system(size: 15))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(Color.black.opacity(0.42))
-                .padding(.horizontal, 36)
-                .padding(.vertical, 48)
-        }
-    }
-
-    /// Barra inferior: vista avatar/prendas, género para la API y regenerar.
-    private var controlBar: some View {
-        VStack(spacing: 14) {
-            HStack(alignment: .center) {
-                LookAvatarGarmentsToggle(tab: $visualTab)
-
-                Spacer(minLength: 12)
-
-                Button {
-                    Task { await generate() }
-                } label: {
-                    HStack(spacing: 8) {
-                        if isGenerating {
-                            ProgressView()
-                                .tint(.white)
-                                .scaleEffect(0.9)
-                        }
-                        Image(systemName: "arrow.clockwise")
-                        Text(avatarDisplayPath == nil ? "Generar" : "Regenerar")
-                    }
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.white)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 11)
-                    .background(Capsule().fill(Color.black))
-                }
-                .disabled(isGenerating || pieces.isEmpty)
-                .buttonStyle(LookNoHighlightButtonStyle())
-            }
-            .padding(.horizontal, 16)
-
-            genderRow
-                .padding(.horizontal, 16)
-        }
-    }
-
-    private var faceToolbarGlyph: some View {
-        ZStack {
-            Circle()
-                .fill(Color(.secondarySystemBackground))
-                .frame(width: 34, height: 34)
-            if let rel = userProfiles.first?.faceImageFilename,
-               let ui = ImageStore.load(rel) {
-                Image(uiImage: ui)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 34, height: 34)
-                    .clipShape(Circle())
-            } else {
-                Image(systemName: "person.crop.circle.badge.plus")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.45))
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var faceRow: some View {
-        let hasPhoto = userProfiles.first?.faceImageFilename != nil
-        VStack(alignment: .leading, spacing: 10) {
-            if hasPhoto {
-                Toggle(isOn: $useFaceForAvatar) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "face.smiling")
-                            .foregroundStyle(Color.black.opacity(0.55))
-                        Text("Make it look like me")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color.black.opacity(0.82))
-                    }
-                }
-                .tint(.black)
-                .padding(.horizontal, 16)
-            } else {
-                Button {
-                    showFaceSetup = true
-                } label: {
-                    Label("Agregar mi rostro para personalizar el avatar", systemImage: "person.crop.circle.badge.plus")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.blue)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(LookNoHighlightButtonStyle())
-                .padding(.horizontal, 16)
-            }
-        }
-    }
-
-    /// Modelo físico pedido al generador — independiente del interruptor prendas / avatar.
-    private var genderRow: some View {
-        HStack(spacing: 10) {
-            Text("Model")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.45))
-
-            HStack(spacing: 6) {
-                ForEach(AvatarGender.allCases, id: \.self) { g in
-                    Button {
-                        gender = g
-                        if let p = userProfiles.first {
-                            p.preferredGenderRaw = g.rawValue
-                            try? modelContext.save()
-                        }
-                    } label: {
-                        Text(g.displayName)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(gender == g ? Color.white : Color.black)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Capsule().fill(gender == g ? Color.black : Color.white))
-                            .overlay(
-                                Capsule()
-                                    .stroke(Color.black, lineWidth: gender == g ? 0 : 1)
-                            )
-                    }
-                    .buttonStyle(LookNoHighlightButtonStyle())
-                }
-            }
-
-            Spacer(minLength: 0)
-        }
-    }
-
-    @MainActor
-    private func generate() async {
-        guard !pieces.isEmpty else { return }
-        isGenerating = true
-        error = nil
-        defer { isGenerating = false }
-        let paths = pieces.map(\.imageFilename)
-        let lines = pieces.map { piece in
-            "- \(piece.category.displayName): \(piece.name)"
-        }
-        let facePath: String? = {
-            guard useFaceForAvatar,
-                  let rel = userProfiles.first?.faceImageFilename?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !rel.isEmpty
-            else { return nil }
-            return rel
-        }()
-
-        do {
-            let rel = try await GeminiService.shared.generateLookAvatar(
-                garmentRelativePaths: paths,
-                itemDescriptionLines: lines,
-                gender: gender,
-                faceReferenceRelativePath: facePath
-            )
-            generatedFilename = rel
-            visualTab = .avatar
-        } catch {
-            self.error = error.localizedDescription
-        }
-    }
-
-    private func saveTapped() {
-        guard let f = generatedFilename ?? look.avatarRelativePath else { return }
-        look.avatarRelativePath = f
-        look.avatarGenderRaw = gender.rawValue
-        try? modelContext.save()
-        dismiss()
     }
 }
 
@@ -2603,7 +1809,9 @@ struct ProductCoverGalleryView<PhotoOverlay: View>: View {
                 if currentPathIfAny != nil {
                     VStack(spacing: 8) {
                         photoOverlay()
-                        heroActionBar
+                        if item.category != .shoes {
+                            heroActionBar
+                        }
                     }
                     .padding(.horizontal, 10)
                     .padding(.bottom, 10)

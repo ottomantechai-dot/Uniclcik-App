@@ -173,10 +173,7 @@ enum L10n {
 
         // Closet
         "closet.title": "Your stock",
-        "closet.myLooks": "My looks",
         "closet.segmentProducts": "Products",
-        "closet.segmentLooks": "Looks",
-        "closet.looksEmpty": "No saved looks yet. Combine items and generate an avatar to see them here.",
         "closet.empty": "Your saved items will appear here. Tap + to analyze photos with AI.",
         "closet.add": "Add",
         "closet.welcomeGreeting": "Welcome, %@!",

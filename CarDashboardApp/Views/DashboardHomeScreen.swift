@@ -241,7 +241,6 @@ struct DashboardHomeScreen: View {
     let closetItems: [ClosetItem]
     let catalogProducts: [UpsoledProduct]
     let marketComparison: MarketComparison?
-    var isLoadingMarketPrices: Bool = false
     @Binding var selectedTrendingID: String?
     var onViewStock: () -> Void = {}
 
@@ -269,7 +268,6 @@ struct DashboardHomeScreen: View {
 
             DashboardMarketPricesSection(
                 comparison: marketComparison,
-                isLoading: isLoadingMarketPrices,
                 selectedProductName: selectedTrendingItem?.displayName,
                 onViewFullTable: { showMarketComparator = true }
             )
@@ -755,10 +753,66 @@ private struct DashboardTrendingSneakersSection: View {
 
 enum HomeMarketTableBuilder {
     static let standardSizes = ["7", "7.5", "8"]
+    static let allShoeSizes: [String] = [
+        "4", "4.5", "5", "5.5", "6", "6.5", "7", "7.5", "8", "8.5",
+        "9", "9.5", "10", "10.5", "11", "11.5", "12", "13", "14", "15",
+    ]
     static let homePlatforms = ["StockX", "GOAT", "eBay", "Flight Club"]
 
     static func displayRows(from comparison: MarketComparison?, maxRows: Int = 5) -> [MarketSizeRow] {
         Array(buildHomeRows(from: comparison).prefix(maxRows))
+    }
+
+    static func resolvedAllSizes(from comparison: MarketComparison?) -> [String] {
+        let liveRows = comparison?.rows ?? []
+        var sizes = allShoeSizes
+        for row in liveRows {
+            let key = normalizeSizeKey(row.size)
+            guard !sizes.contains(where: { normalizeSizeKey($0) == key }) else { continue }
+            sizes.append(row.size)
+        }
+        return sizes.sorted { (numericSize($0) ?? 0) < (numericSize($1) ?? 0) }
+    }
+
+    /// Todas las tallas US en la tabla (precio real o estimado por extrapolación).
+    static func buildAllSizeRows(from comparison: MarketComparison?) -> [MarketSizeRow] {
+        let liveRows = comparison?.rows ?? []
+        let hasLive = liveRows.contains { !$0.asks.isEmpty }
+        let targetSizes = resolvedAllSizes(from: comparison)
+
+        if !hasLive {
+            return targetSizes.map { MarketSizeRow(size: $0, asks: completeAsks(demoAsks(for: $0))) }
+        }
+
+        return targetSizes.map { size in
+            let normalized = normalizeSizeKey(size)
+            let exact = liveRows.first { normalizeSizeKey($0.size) == normalized }
+            var asks = canonicalizeAsks(exact?.asks ?? [:])
+
+            if asks.isEmpty, let nearest = nearestRow(to: size, in: liveRows) {
+                let delta = (numericSize(size) ?? 0) - (numericSize(nearest.size) ?? 0)
+                asks = extrapolatedAsks(from: canonicalizeAsks(nearest.asks), halfSizeSteps: delta * 2)
+            } else if asks.isEmpty, let anchor = liveRows.max(by: { $0.asks.count < $1.asks.count }) {
+                let delta = (numericSize(size) ?? 0) - (numericSize(anchor.size) ?? 0)
+                asks = extrapolatedAsks(from: canonicalizeAsks(anchor.asks), halfSizeSteps: delta * 2)
+            }
+
+            return MarketSizeRow(size: size, asks: completeAsks(asks))
+        }
+    }
+
+    /// Enriquece con eBay y devuelve todas las tallas (ficha de zapato).
+    static func prepareDetailComparison(from raw: MarketComparison, query: String) async -> MarketComparison {
+        let enriched = await enrichWithEbay(comparison: raw, query: query, includeStandardSizes: false)
+        let rows = buildAllSizeRows(from: enriched)
+        return MarketComparison(
+            query: enriched.query,
+            platforms: enriched.platforms,
+            sizes: rows.map(\.size),
+            rows: rows,
+            fetchedAt: enriched.fetchedAt,
+            skuAligned: enriched.skuAligned
+        )
     }
 
     /// Construye filas del Home: precios reales cuando existen y estimados para plataformas/tallas faltantes.
@@ -801,14 +855,21 @@ enum HomeMarketTableBuilder {
         )
     }
 
-    static func enrichWithEbay(comparison: MarketComparison, query: String) async -> MarketComparison {
+    static func enrichWithEbay(
+        comparison: MarketComparison,
+        query: String,
+        includeStandardSizes: Bool = true
+    ) async -> MarketComparison {
         guard EbayPriceService.isConfigured else { return comparison }
 
         var rowsBySize = Dictionary(uniqueKeysWithValues: comparison.rows.map {
             (normalizeSizeKey($0.size), $0)
         })
 
-        let ebaySizes = Set(standardSizes + comparison.rows.map { normalizeSizeKey($0.size) })
+        let ebaySizes = Set(
+            (includeStandardSizes ? standardSizes : allShoeSizes)
+                + comparison.rows.map { normalizeSizeKey($0.size) }
+        )
 
         await withTaskGroup(of: (String, Double?).self) { group in
             for size in ebaySizes {
@@ -910,8 +971,7 @@ enum HomeMarketTableBuilder {
     }
 
     static func demoAsks(for size: String) -> [String: Double] {
-        let index = standardSizes.firstIndex(of: normalizeSizeKey(size)) ?? 2
-        let base = 420.0 + Double(index) * 18
+        let base = 320.0 + (numericSize(size) ?? 8) * 16
         return [
             "StockX": base,
             "GOAT": base * 0.96,
@@ -936,16 +996,19 @@ enum HomeMarketTableBuilder {
 
 struct DashboardMarketPricesSection: View {
     let comparison: MarketComparison?
-    var isLoading: Bool = false
     var selectedProductName: String? = nil
+    var maxVisibleRows: Int? = 3
+    var showsViewFullTable: Bool = true
     var onViewFullTable: () -> Void = {}
 
     private let platforms = HomeMarketTableBuilder.homePlatforms
     private let rowHeight: CGFloat = 52
-    private let maxVisibleRows = 3
 
     private var tableRows: [MarketSizeRow] {
-        HomeMarketTableBuilder.displayRows(from: comparison, maxRows: maxVisibleRows)
+        if let maxVisibleRows {
+            return HomeMarketTableBuilder.displayRows(from: comparison, maxRows: maxVisibleRows)
+        }
+        return HomeMarketTableBuilder.buildAllSizeRows(from: comparison)
     }
 
     var body: some View {
@@ -965,15 +1028,16 @@ struct DashboardMarketPricesSection: View {
                 rows: tableRows,
                 rowHeight: rowHeight
             )
-            .redacted(reason: isLoading ? .placeholder : [])
 
-            Button(action: onViewFullTable) {
-                Text("View full price table  ›")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.55))
-                    .frame(maxWidth: .infinity)
+            if showsViewFullTable {
+                Button(action: onViewFullTable) {
+                    Text("View full price table  ›")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 18)
         .padding(.top, 18)
@@ -1015,6 +1079,18 @@ private struct HomeMarketPriceGridTable: View {
     private let cellVerticalPadding: CGFloat = 12
     private let headerLogoMaxHeight: CGFloat = 20
     private let sizeColumnWidth: CGFloat = 74
+
+    /// Mediana de los precios reales de esa talla (misma fila) para marcar ↑ verde / ↓ rojo.
+    private func rowPriceMedian(_ asks: [String: Double]) -> Double? {
+        let prices = platforms.compactMap { asks[$0] }.filter { $0 > 0 }
+        guard !prices.isEmpty else { return nil }
+        let sorted = prices.sorted()
+        let mid = sorted.count / 2
+        if sorted.count.isMultiple(of: 2) {
+            return (sorted[mid - 1] + sorted[mid]) / 2
+        }
+        return sorted[mid]
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -1058,7 +1134,8 @@ private struct HomeMarketPriceGridTable: View {
         sizeLabel: String,
         asks: [String: Double]
     ) -> some View {
-        HStack(spacing: 0) {
+        let rowMedian = isHeader ? nil : rowPriceMedian(asks)
+        return HStack(spacing: 0) {
             sizeCell(
                 width: columnWidths[0],
                 isHeader: isHeader,
@@ -1074,7 +1151,8 @@ private struct HomeMarketPriceGridTable: View {
                 } else {
                     pricePlatformCell(
                         width: columnWidths[index + 1],
-                        price: asks[platform]
+                        price: asks[platform],
+                        rowMedian: rowMedian
                     )
                 }
             }
@@ -1106,17 +1184,18 @@ private struct HomeMarketPriceGridTable: View {
             .frame(width: width, height: rowHeight, alignment: .center)
     }
 
-    private func pricePlatformCell(width: CGFloat, price: Double?) -> some View {
-        priceCell(price: price)
+    private func pricePlatformCell(width: CGFloat, price: Double?, rowMedian: Double?) -> some View {
+        priceCell(price: price, rowMedian: rowMedian)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .padding(.horizontal, cellHorizontalPadding)
             .padding(.vertical, cellVerticalPadding)
             .frame(width: width, height: rowHeight, alignment: .center)
     }
 
-    private func priceCell(price: Double?) -> some View {
+    private func priceCell(price: Double?, rowMedian: Double?) -> some View {
         Group {
             if let price {
+                let isHigher = rowMedian.map { price >= $0 } ?? true
                 HStack(spacing: 4) {
                     Text(DealershipStatsViewModel.formatUSD(price))
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -1124,9 +1203,13 @@ private struct HomeMarketPriceGridTable: View {
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
-                    Image(systemName: "arrowtriangle.up.fill")
+                    Image(systemName: isHigher ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
                         .font(.system(size: 7, weight: .bold))
-                        .foregroundStyle(DashboardHomePalette.accentGreen)
+                        .foregroundStyle(
+                            isHigher
+                                ? DashboardHomePalette.accentGreen
+                                : Color(red: 0.92, green: 0.34, blue: 0.34)
+                        )
                 }
             } else {
                 Text("—")

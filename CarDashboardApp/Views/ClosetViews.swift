@@ -154,12 +154,10 @@ struct ClosetView: View {
 
     /// Ficha grande de una prenda (estudio).
     @State private var garmentDetailSheetItem: ClosetItem?
-    @State private var showCreateLookSheet = false
 
     @State private var stockSearchText = ""
     @FocusState private var stockSearchFocused: Bool
     @State private var stockFilters = StockBrowseFilters()
-    @State private var showStockFiltersSheet = false
     @AppStorage("stockLayoutMode") private var stockLayoutModeRaw = StockLayoutMode.grid.rawValue
     @State private var scanLookupPayload: StockScanLookupPayload?
     @State private var scanLookupBusy = false
@@ -194,6 +192,7 @@ struct ClosetView: View {
 
     private var filteredActiveClosetItems: [ClosetItem] {
         var items = activeClosetItems
+            .filter { !Self.stockHiddenCategoryKeys.contains(StockFilterEngine.closetCategoryKey($0)) }
         if !stockSearchQuery.isEmpty {
             items = items.filter { itemMatchesStockSearch($0, query: stockSearchQuery) }
         }
@@ -203,6 +202,7 @@ struct ClosetView: View {
 
     private var filteredCatalogProducts: [UpsoledProduct] {
         var products = catalogVM.products
+            .filter { !Self.stockHiddenCategoryKeys.contains(StockFilterEngine.catalogCategoryKey($0)) }
         if !stockSearchQuery.isEmpty {
             products = products.filter { product in
                 product.name.lowercased().contains(stockSearchQuery)
@@ -250,6 +250,7 @@ struct ClosetView: View {
         let extraKeys = allKeys.subtracting(Set(orderedKeys)).sorted()
 
         return (orderedKeys + extraKeys).compactMap { key in
+            guard !Self.stockHiddenCategoryKeys.contains(key) else { return nil }
             let closet = StockFilterEngine.sortClosetItems(closetGrouped[key] ?? [], by: stockFilters.sort)
             let catalog = StockFilterEngine.sortCatalogProducts(catalogGrouped[key] ?? [], by: stockFilters.sort)
             guard !closet.isEmpty || !catalog.isEmpty else { return nil }
@@ -277,13 +278,16 @@ struct ClosetView: View {
         let valueUSD: Double
     }
 
+    private static let stockHiddenCategoryKeys: Set<String> = [
+        ClothingCategory.bags.rawValue,
+    ]
+
     private static let stockSummaryCategoryOrder: [String] = [
         ClothingCategory.shoes.rawValue,
         ClothingCategory.tops.rawValue,
         ClothingCategory.dressesJumpsuits.rawValue,
         ClothingCategory.pantsSkirts.rawValue,
         ClothingCategory.coats.rawValue,
-        ClothingCategory.bags.rawValue,
         ClothingCategory.accessories.rawValue,
         ClothingCategory.underwear.rawValue,
         "clothing", "vintage", "new-drops", "other",
@@ -331,11 +335,13 @@ struct ClosetView: View {
 
         for item in closetItems {
             let cat = item.category
+            guard !Self.stockHiddenCategoryKeys.contains(cat.rawValue) else { continue }
             add(key: cat.rawValue, emoji: cat.emoji, title: cat.displayName, value: item.stockValueUSD)
         }
 
         for product in catalogProducts {
             let meta = catalogCategoryPresentation(product.category)
+            guard !Self.stockHiddenCategoryKeys.contains(meta.key) else { continue }
             add(
                 key: meta.key,
                 emoji: meta.emoji,
@@ -435,11 +441,6 @@ struct ClosetView: View {
                             searchFocused: $stockSearchFocused
                         )
 
-                        StockBrowseFilterStrip(
-                            filters: $stockFilters,
-                            onOpenSheet: { showStockFiltersSheet = true }
-                        )
-
                         stockFilterSortToolbar
                     }
                     .padding(.horizontal, 16)
@@ -448,28 +449,16 @@ struct ClosetView: View {
                     .background(Color.white)
                 }
 
-                ScrollViewReader { scrollProxy in
-                    ScrollView(showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Color.clear
-                                .frame(height: 1)
-                                .id("stockScrollTop")
-                            productsTabContent
-                        }
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Color.clear
+                            .frame(height: 1)
+                            .id("stockScrollTop")
+                        productsTabContent
                     }
-                    .refreshable {
-                        await catalogVM.reload()
-                    }
-                    .onChange(of: stockFilters.quickCategory) { _, _ in
-                        withAnimation(.easeOut(duration: 0.28)) {
-                            scrollProxy.scrollTo("stockScrollTop", anchor: .top)
-                        }
-                    }
-                    .onChange(of: stockFilters.categoryKeys) { _, _ in
-                        withAnimation(.easeOut(duration: 0.28)) {
-                            scrollProxy.scrollTo("stockScrollTop", anchor: .top)
-                        }
-                    }
+                }
+                .refreshable {
+                    await catalogVM.reload()
                 }
             }
 
@@ -503,12 +492,6 @@ struct ClosetView: View {
                 get: { addFlow.toast },
                 set: { addFlow.toast = $0 }
             ))
-        .sheet(isPresented: $showCreateLookSheet) {
-            CreateLookComposerView()
-                .presentationDragIndicator(.visible)
-                .presentationDetents([.large])
-                .preferredColorScheme(.light)
-        }
         .sheet(item: $garmentDetailSheetItem) { item in
             ClosetGarmentDetailView(item: item)
                 .presentationDragIndicator(.visible)
@@ -521,16 +504,6 @@ struct ClosetView: View {
                 onApplyClothing: { applyBulkCategory($0) }
             )
             .presentationDetents([.medium])
-            .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showStockFiltersSheet) {
-            StockBrowseFiltersSheet(
-                filters: $stockFilters,
-                layoutMode: stockLayoutModeBinding,
-                closetItems: activeClosetItems,
-                catalogProducts: catalogVM.products
-            )
-            .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
         .sheet(item: $scanLookupPayload) { payload in
@@ -943,7 +916,7 @@ struct ClosetView: View {
 
     private func unifiedSectionHeader(_ section: UnifiedStockSection) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("\(section.emoji) \(section.title)")
+            Text(section.title)
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Color.black)
             Spacer(minLength: 8)
@@ -1064,8 +1037,6 @@ struct ClosetView: View {
                 VStack(spacing: 0) {
                     ForEach(stockCategoryBreakdowns) { row in
                         HStack(spacing: 10) {
-                            Text(row.emoji)
-                                .font(.system(size: 16))
                             Text(row.title)
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(Color.black.opacity(0.82))

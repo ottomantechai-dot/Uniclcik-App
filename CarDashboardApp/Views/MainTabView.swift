@@ -188,6 +188,10 @@ struct AddToStockTabView: View {
     @State private var stagingFiveGalleryImages: [UIImage] = []
     @State private var shoe360GalleryImagesPrepared: [UIImage] = []
 
+    private var hidesTabBar: Bool {
+        !path.isEmpty || showCamera
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView(.vertical, showsIndicators: false) {
@@ -195,10 +199,12 @@ struct AddToStockTabView: View {
             }
             .background(AddStockDesign.pageBG.ignoresSafeArea())
             .toolbar(path.isEmpty ? .hidden : .visible, for: .navigationBar)
+            .toolbar(hidesTabBar ? .hidden : .visible, for: .tabBar)
             .navigationDestination(for: AddStockRoute.self) { route in
                 destination(for: route)
             }
         }
+        .toolbar(hidesTabBar ? .hidden : .visible, for: .tabBar)
         .preferredColorScheme(.light)
         .fullScreenCover(isPresented: $showCamera, onDismiss: consumeCameraPickIfNeeded) {
             ClosetUIImagePickerBridge(image: $cameraImage)
@@ -218,54 +224,55 @@ struct AddToStockTabView: View {
 
     @ViewBuilder
     private func destination(for route: AddStockRoute) -> some View {
-        switch route {
-        case .gallery:
-            AddStockGalleryStepView(
-                pickedGalleryItems: $pickedGalleryItems,
-                onContinue: { Task { await ingestPhotoPickerItems(pickedGalleryItems) } }
-            )
-        case .fourPhotoChoice:
-            AddStockFourPhotoChoiceView(
-                onShoe360: {
-                    shoe360GalleryImagesPrepared = stagingFiveGalleryImages
-                    stagingFiveGalleryImages = []
-                    if !path.isEmpty { path.removeLast() }
-                    path.append(AddStockRoute.shoe360FromGallery)
-                },
-                onOutfit: {
-                    let snap = stagingFiveGalleryImages
-                    stagingFiveGalleryImages = []
-                    if !path.isEmpty { path.removeLast() }
-                    path.append(AddStockRoute.pipeline)
-                    addFlow.beginProcessing(images: snap)
-                },
-                onCancel: {
-                    stagingFiveGalleryImages = []
-                    if !path.isEmpty { path.removeLast() }
+        Group {
+            switch route {
+            case .gallery:
+                AddStockGalleryStepView(
+                    pickedGalleryItems: $pickedGalleryItems,
+                    onContinue: { Task { await ingestPhotoPickerItems(pickedGalleryItems) } }
+                )
+            case .fourPhotoChoice:
+                AddStockFourPhotoChoiceView(
+                    onShoe360: {
+                        shoe360GalleryImagesPrepared = stagingFiveGalleryImages
+                        stagingFiveGalleryImages = []
+                        if !path.isEmpty { path.removeLast() }
+                        path.append(AddStockRoute.shoe360FromGallery)
+                    },
+                    onOutfit: {
+                        let snap = stagingFiveGalleryImages
+                        stagingFiveGalleryImages = []
+                        if !path.isEmpty { path.removeLast() }
+                        path.append(AddStockRoute.pipeline)
+                        addFlow.beginProcessing(images: snap)
+                    },
+                    onCancel: {
+                        stagingFiveGalleryImages = []
+                        if !path.isEmpty { path.removeLast() }
+                    }
+                )
+            case .shoe360Private:
+                ClosetShoe360FlowView()
+            case .shoe360FromGallery:
+                if shoe360GalleryImagesPrepared.count == ShoeAngle.allCases.count {
+                    ClosetShoe360FlowView(prefilledCapturedInCanonicalOrder: shoe360GalleryImagesPrepared)
+                } else {
+                    AddStockMissingImagesFallback(onBack: popToMenu)
                 }
-            )
-        case .shoe360Private:
-            ClosetShoe360FlowView()
-        case .shoe360FromGallery:
-            if shoe360GalleryImagesPrepared.count == ShoeAngle.allCases.count {
-                ClosetShoe360FlowView(prefilledCapturedInCanonicalOrder: shoe360GalleryImagesPrepared)
-            } else {
-                AddStockMissingImagesFallback(onBack: popToMenu)
+            case .apparelLookbook:
+                ClosetGarmentLookbookStandaloneFlowView()
+            case .pipeline:
+                AddToClosetPipelineView(isPresented: .constant(false))
+                    .environmentObject(addFlow)
             }
-        case .apparelLookbook:
-            ClosetGarmentLookbookStandaloneFlowView()
-        case .pipeline:
-            AddToClosetPipelineView(isPresented: .constant(false))
-                .environmentObject(addFlow)
         }
+        .toolbar(.hidden, for: .tabBar)
     }
 
     private var addMenuContent: some View {
         VStack(alignment: .leading, spacing: 28) {
             addStockHeroHeader
             addStockPhotoSection
-            addStockAISection
-            addStockTrustFooter
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
@@ -326,14 +333,6 @@ struct AddToStockTabView: View {
         }
     }
 
-    private var addStockAISection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            addStockSectionLabel(number: "02", title: L10n.tr("closet.addSheetSectionAI"))
-
-            addStockShoes360Card
-            addStockApparelLookbookCard
-        }
-    }
 
     private func addStockSectionLabel(number: String, title: String) -> some View {
         HStack(spacing: 8) {
@@ -398,157 +397,6 @@ struct AddToStockTabView: View {
         .buttonStyle(.plain)
     }
 
-    private var addStockShoes360Card: some View {
-        Button {
-            ClosetAnalytics.named("closet_shoe360_private_opened")
-            path.append(AddStockRoute.shoe360Private)
-        } label: {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "rotate.3d")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 46, height: 46)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.12)))
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Text(L10n.tr("closet.addSheetShoes360"))
-                            .font(.system(size: 17, weight: .heavy))
-                            .foregroundStyle(.white)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Text(L10n.tr("closet.addSheetRecommended"))
-                            .font(.system(size: 9, weight: .heavy))
-                            .foregroundStyle(AddStockDesign.purple)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(Color.white))
-                    }
-
-                    Text(L10n.tr("closet.addSheetShoes360Sub"))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.72))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(Circle().fill(Color.white.opacity(0.12)))
-            }
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.14, green: 0.15, blue: 0.20),
-                                AddStockDesign.darkCard,
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .shadow(color: Color.black.opacity(0.22), radius: 18, y: 10)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var addStockApparelLookbookCard: some View {
-        Button {
-            ClosetAnalytics.named("closet_ropa_lookbook_standalone_opened")
-            path.append(AddStockRoute.apparelLookbook)
-        } label: {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "rectangle.stack.fill")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(AddStockDesign.purple)
-                    .frame(width: 46, height: 46)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.85)))
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.tr("closet.addSheetApparel"))
-                        .font(.system(size: 17, weight: .heavy))
-                        .foregroundStyle(Color.black.opacity(0.90))
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text(L10n.tr("closet.addSheetApparelSub"))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(AddStockDesign.subtitle)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(AddStockDesign.purple)
-                    .frame(width: 38, height: 38)
-                    .background(Circle().fill(Color.white))
-                    .shadow(color: Color.black.opacity(0.06), radius: 8, y: 3)
-            }
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.95, green: 0.93, blue: 0.99),
-                                Color(red: 0.91, green: 0.89, blue: 0.98),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .shadow(color: AddStockDesign.purple.opacity(0.10), radius: 14, y: 6)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(AddStockDesign.purple.opacity(0.10), lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var addStockTrustFooter: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "checkmark.shield.fill")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(AddStockDesign.purple)
-                .frame(width: 44, height: 44)
-                .background(Circle().fill(AddStockDesign.purpleSoft))
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(L10n.tr("closet.addSheetTrustTitle"))
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Color.black.opacity(0.88))
-                Text(L10n.tr("closet.addSheetTrustSub"))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(AddStockDesign.subtitle)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color.white)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(AddStockDesign.cardStroke, lineWidth: 1)
-                }
-        }
-    }
 
     private func consumePendingPipelineRequest() {
         guard tabRouter.addTabOpenPipeline else { return }

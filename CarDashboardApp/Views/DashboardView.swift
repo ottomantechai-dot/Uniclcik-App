@@ -17,7 +17,6 @@ struct DashboardView: View {
     @State private var didAppear = false
     @State private var homeStatsReady = false
     @State private var homeMarketComparison: MarketComparison?
-    @State private var homeMarketLoading = false
     @State private var selectedTrendingID: String?
     @State private var homeStatsRefreshTask: Task<Void, Never>?
 
@@ -93,7 +92,6 @@ struct DashboardView: View {
                             closetItems: closetItems,
                             catalogProducts: homeCatalogVM.products,
                             marketComparison: homeMarketComparison,
-                            isLoadingMarketPrices: homeMarketLoading,
                             selectedTrendingID: $selectedTrendingID,
                             onViewStock: { tabRouter.selected = .closet }
                         )
@@ -148,9 +146,6 @@ struct DashboardView: View {
 
     @MainActor
     private func loadHomeMarketTable() async {
-        homeMarketLoading = true
-        defer { homeMarketLoading = false }
-
         guard let lookup = resolvedMarketLookup() else {
             homeMarketComparison = nil
             return
