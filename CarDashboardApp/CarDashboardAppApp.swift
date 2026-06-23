@@ -71,7 +71,6 @@ private struct AppShellRoot: View {
             .environment(\.locale, Locale(identifier: "en_US"))
             .task(id: authVM.isAuthenticated) {
                 guard authVM.isAuthenticated else { return }
-                await RemotePushRegistration.requestAuthorizationAndRegister()
                 await RemotePushRegistration.syncPendingTokenToSupabase()
             }
     }

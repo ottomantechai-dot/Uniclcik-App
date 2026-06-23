@@ -279,7 +279,6 @@ struct SettingsView: View {
     @EnvironmentObject var auth: AuthViewModel
     @EnvironmentObject var goatVM: GoatAccountViewModel
 
-    @State private var showClosetFaceSetup = false
     @State private var showGoatConnect = false
     @State private var showProfilePhotoSheet = false
 
@@ -307,18 +306,6 @@ struct SettingsView: View {
                         marketplaceLogosGallerySection
                     }
 
-                    Group {
-                        sectionTitle(L10n.tr("settings.closetAvatars"))
-                        closetAvatarSection
-                    }
-
-                    if auth.isAuthenticated {
-                        Group {
-                            sectionTitle(L10n.tr("settings.preferences"))
-                            notificationsSection
-                        }
-                    }
-
                     accountSection
                     aboutSection
                 }
@@ -332,10 +319,6 @@ struct SettingsView: View {
         .preferredColorScheme(.light)
         .environment(\.dashboardLightSurface, true)
         .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showClosetFaceSetup) {
-            FaceSetupView()
-                .presentationDragIndicator(Visibility.visible)
-        }
         .sheet(isPresented: $showGoatConnect) {
             GoatConnectSheetView(goatVM: goatVM)
                 .presentationDragIndicator(Visibility.visible)
@@ -347,93 +330,8 @@ struct SettingsView: View {
             .presentationDragIndicator(Visibility.visible)
             .presentationDetents([.medium])
         }
-        .task(id: auth.session?.user.id) {
-            guard let uid = auth.session?.user.id else { return }
-            await settingsVM.loadNotifyTeamPush(
-                client: SupabaseClientProvider.shared,
-                userId: uid
-            )
-        }
         .task {
             await goatVM.validateStoredSession()
-        }
-    }
-
-    // MARK: - Clóset (rostro para avatares Gemini)
-
-    private var closetAvatarSection: some View {
-        ChromeSettingsCard(cornerRadius: 22, padding: 16) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(L10n.tr("settings.referencePhoto"))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.50))
-
-                Button {
-                    showClosetFaceSetup = true
-                } label: {
-                    HStack {
-                        Image(systemName: "person.crop.circle.badge.plus")
-                            .font(.system(size: 20))
-                            .foregroundStyle(Color.black.opacity(0.75))
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(L10n.tr("settings.myFace"))
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.black.opacity(0.88))
-                            Text(L10n.tr("settings.myFaceDesc"))
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundStyle(Color.black.opacity(0.50))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.black.opacity(0.35))
-                    }
-                    .padding(.vertical, 6)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    // MARK: - Notificaciones
-
-    private var notificationsSection: some View {
-        ChromeSettingsCard(cornerRadius: 22, padding: 16) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(L10n.tr("settings.notificationsTitle"))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.50))
-
-                Toggle(
-                    isOn: Binding(
-                        get: { settingsVM.notifyTeamPushEnabled },
-                        set: { new in
-                            settingsVM.notifyTeamPushEnabled = new
-                            if let uid = auth.session?.user.id {
-                                Task {
-                                    await settingsVM.persistNotifyTeamPush(
-                                        new,
-                                        client: SupabaseClientProvider.shared,
-                                        userId: uid
-                                    )
-                                }
-                            }
-                        }
-                    )
-                ) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L10n.tr("settings.teamAlerts"))
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(Color.black.opacity(0.85))
-                        Text(L10n.tr("settings.teamAlertsDesc"))
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(Color.black.opacity(0.50))
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .tint(PremiumAccent.tabActive)
-            }
         }
     }
 
@@ -614,13 +512,9 @@ struct SettingsView: View {
                 }
                 .buttonStyle(.plain)
                 infoDivider
-                sellerRow(name: "Grailed", connected: false)
-                infoDivider
                 sellerRow(name: "eBay", connected: false)
                 infoDivider
                 sellerRow(name: "Flight Club", connected: false)
-                infoDivider
-                sellerRow(name: "Stadium Goods", connected: false)
             }
             .padding(.vertical, 4)
         }
@@ -643,7 +537,12 @@ struct SettingsView: View {
                     ],
                     spacing: 12
                 ) {
-                    ForEach(MarketplacePlatformDisplay.allCases, id: \.rawValue) { platform in
+                    ForEach(
+                        MarketplacePlatformDisplay.allCases.filter {
+                            $0 != .grailed && $0 != .stadiumGoods
+                        },
+                        id: \.rawValue
+                    ) { platform in
                         VStack(spacing: 8) {
                             StylizedMarketplaceLogo(brand: platform.rawValue)
                                 .frame(width: 54, height: 54)

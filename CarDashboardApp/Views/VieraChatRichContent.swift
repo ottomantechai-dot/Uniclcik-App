@@ -803,7 +803,6 @@ struct VieraAssistantRichCardsView: View {
                     chatInbox.applyTeamCoordinatorOutreach(peerUserId: peerId, line: "Tarea Viera: \(vieraShortCarLabel(car))")
                     if let thread = chatInbox.teamDirectChatThreads.first(where: { $0.peerUserId == peerId }) {
                         chatNav.threadToOpen = thread
-                        tabRouter.selected = .chat
                     }
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 }

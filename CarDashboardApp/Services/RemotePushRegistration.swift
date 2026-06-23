@@ -7,25 +7,9 @@ import UserNotifications
 enum RemotePushRegistration {
     private static let pendingTokenKey = "Upsoled.pendingAPNsTokenHex"
 
-    /// Solicita permiso de alertas y registra el dispositivo en APNs (token llega al `AppDelegate`).
+    /// Push desactivado: no solicita permiso ni registra el dispositivo en APNs.
     @MainActor
-    static func requestAuthorizationAndRegister() async {
-        let center = UNUserNotificationCenter.current()
-        do {
-            let granted = try await center.requestAuthorization(options: [.alert, .badge, .sound])
-            guard granted else {
-                #if DEBUG
-                print("[Upsoled APNs] Permiso de notificaciones denegado: no habrá push hasta que lo actives en Ajustes.")
-                #endif
-                return
-            }
-            UIApplication.shared.registerForRemoteNotifications()
-        } catch {
-            #if DEBUG
-            print("Permiso de notificaciones: \(error)")
-            #endif
-        }
-    }
+    static func requestAuthorizationAndRegister() async {}
 
     /// Llamar cuando APNs devuelve el token (desde `AppDelegate`).
     static func storeDeviceTokenFromAPNs(_ data: Data) {

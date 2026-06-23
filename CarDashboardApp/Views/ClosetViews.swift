@@ -217,12 +217,50 @@ struct ClosetView: View {
     private var hasCatalogStock: Bool { !catalogVM.products.isEmpty }
     private var hasAnyStockContent: Bool { !activeClosetItems.isEmpty || hasCatalogStock }
 
-    private var filteredClosetStockSections: [ClosetStockSection] {
-        let grouped = Dictionary(grouping: filteredActiveClosetItems) { $0.category }
-        return Self.stockCategoryPresentationOrder.compactMap { cat in
-            guard let arr = grouped[cat], !arr.isEmpty else { return nil }
-            let sorted = StockFilterEngine.sortClosetItems(arr, by: stockFilters.sort)
-            return ClosetStockSection(category: cat, items: sorted)
+    private struct UnifiedStockSection: Identifiable {
+        let key: String
+        let emoji: String
+        let title: String
+        let closetItems: [ClosetItem]
+        let catalogProducts: [UpsoledProduct]
+
+        var id: String { key }
+
+        var itemCount: Int {
+            closetItems.count + catalogProducts.reduce(0) { $0 + max(1, $1.quantity ?? 1) }
+        }
+
+        var totalValueUSD: Double {
+            let closet = closetItems.reduce(0.0) { $0 + $1.stockValueUSD }
+            let catalog = catalogProducts.reduce(0.0) { $0 + $1.stockValueUSD }
+            return closet + catalog
+        }
+    }
+
+    private var filteredUnifiedStockSections: [UnifiedStockSection] {
+        let closetGrouped = Dictionary(grouping: filteredActiveClosetItems) {
+            StockFilterEngine.closetCategoryKey($0)
+        }
+        let catalogGrouped = Dictionary(grouping: filteredCatalogProducts) {
+            StockFilterEngine.catalogCategoryKey($0)
+        }
+
+        let allKeys = Set(closetGrouped.keys).union(catalogGrouped.keys)
+        let orderedKeys = Self.stockSummaryCategoryOrder.filter { allKeys.contains($0) }
+        let extraKeys = allKeys.subtracting(Set(orderedKeys)).sorted()
+
+        return (orderedKeys + extraKeys).compactMap { key in
+            let closet = StockFilterEngine.sortClosetItems(closetGrouped[key] ?? [], by: stockFilters.sort)
+            let catalog = StockFilterEngine.sortCatalogProducts(catalogGrouped[key] ?? [], by: stockFilters.sort)
+            guard !closet.isEmpty || !catalog.isEmpty else { return nil }
+            let meta = catalogCategoryPresentation(key)
+            return UnifiedStockSection(
+                key: key,
+                emoji: meta.emoji,
+                title: meta.title,
+                closetItems: closet,
+                catalogProducts: catalog
+            )
         }
     }
 
@@ -230,21 +268,6 @@ struct ClosetView: View {
         GridItem(.flexible(minimum: 148), spacing: 12),
         GridItem(.flexible(minimum: 148), spacing: 12),
     ]
-
-    /// Orden visual del armario por categoría (solo se pintan bloques con prendas).
-    private static let stockCategoryPresentationOrder: [ClothingCategory] = [
-        .tops, .dressesJumpsuits, .pantsSkirts, .coats, .shoes, .bags, .accessories, .underwear,
-    ]
-
-    private struct ClosetStockSection: Identifiable {
-        var id: String { category.rawValue }
-        let category: ClothingCategory
-        let items: [ClosetItem]
-
-        var totalValueUSD: Double {
-            items.reduce(0) { $0 + $1.stockValueUSD }
-        }
-    }
 
     private struct StockCategoryBreakdown: Identifiable {
         let id: String
@@ -283,19 +306,6 @@ struct ClosetView: View {
         let closet = filteredActiveClosetItems.reduce(0.0) { $0 + $1.stockValueUSD }
         let catalog = filteredCatalogProducts.reduce(0.0) { $0 + $1.stockValueUSD }
         return closet + catalog
-    }
-
-    private var stockMarketSnapshot: DashboardMarketSnapshot? {
-        let history = DealershipStatsViewModel.aggregatePortfolioHistory(
-            closetItems: filteredActiveClosetItems,
-            catalogBaseline: filteredCatalogProducts.reduce(0.0) { $0 + $1.stockValueUSD },
-            baselineValue: stockGrandTotalValueUSD
-        )
-        return DealershipStatsViewModel.buildMarketSnapshot(
-            activeStock: filteredActiveClosetItems,
-            totalValue: stockGrandTotalValueUSD,
-            portfolioHistory: history
-        )
     }
 
     private var stockClosetInvestedUSD: Double {
@@ -368,17 +378,6 @@ struct ClosetView: View {
         }
     }
 
-    private var filteredCatalogStockSections: [(meta: (key: String, emoji: String, title: String), products: [UpsoledProduct])] {
-        let grouped = Dictionary(grouping: filteredCatalogProducts) { catalogCategoryPresentation($0.category).key }
-        let orderedKeys = Self.stockSummaryCategoryOrder.filter { grouped[$0] != nil }
-        let extraKeys = grouped.keys.filter { !Self.stockSummaryCategoryOrder.contains($0) }.sorted()
-        return (orderedKeys + extraKeys).compactMap { key in
-            guard let products = grouped[key], !products.isEmpty else { return nil }
-            let sorted = StockFilterEngine.sortCatalogProducts(products, by: stockFilters.sort)
-            return (catalogCategoryPresentation(key), sorted)
-        }
-    }
-
     /// Meta de onboarding: barra de 5 segmentos hasta tener 5 prendas guardadas.
     private static let closetStarterGarmentGoal: Int = 5
 
@@ -430,19 +429,23 @@ struct ClosetView: View {
 
             VStack(spacing: 0) {
                 if hasAnyStockContent {
-                    StockBrowseSearchBar(
-                        searchText: $stockSearchText,
-                        searchFocused: $stockSearchFocused
-                    )
+                    VStack(spacing: 12) {
+                        StockBrowseSearchBar(
+                            searchText: $stockSearchText,
+                            searchFocused: $stockSearchFocused
+                        )
+
+                        StockBrowseFilterStrip(
+                            filters: $stockFilters,
+                            onOpenSheet: { showStockFiltersSheet = true }
+                        )
+
+                        stockFilterSortToolbar
+                    }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
-                    .padding(.bottom, 4)
+                    .padding(.bottom, 12)
                     .background(Color.white)
-
-                    stockFilterSortToolbar
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 10)
-                        .background(Color.white)
                 }
 
                 ScrollViewReader { scrollProxy in
@@ -564,12 +567,6 @@ struct ClosetView: View {
             ),
             titleVisibility: .visible
         ) {
-            Button(L10n.tr("sold.removalSoldAction")) {
-                if let request = removalRequest {
-                    Task { await applyStockRemoval(reason: .sold, request: request) }
-                }
-                removalRequest = nil
-            }
             Button(L10n.tr("sold.removalDiscontinuedAction"), role: .destructive) {
                 if let request = removalRequest {
                     Task { await applyStockRemoval(reason: .discontinued, request: request) }
@@ -691,27 +688,6 @@ struct ClosetView: View {
 
     private var stockFilterSortToolbar: some View {
         HStack(spacing: 10) {
-            Button {
-                showStockFiltersSheet = true
-            } label: {
-                HStack(spacing: 6) {
-                    Text("Filter by")
-                        .font(.system(size: 14, weight: .semibold))
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .bold))
-                    if stockFilters.isActive {
-                        Circle()
-                            .fill(Color(red: 0.20, green: 0.45, blue: 0.85))
-                            .frame(width: 6, height: 6)
-                    }
-                }
-                .foregroundStyle(Color.black)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(Capsule().fill(Color.black.opacity(0.06)))
-            }
-            .buttonStyle(.plain)
-
             if closetSelectionMode {
                 Button {
                     closetSelectionMode = false
@@ -956,101 +932,50 @@ struct ClosetView: View {
                 .padding(.top, 40)
         }
 
-        if !filteredCatalogProducts.isEmpty {
+        if !filteredUnifiedStockSections.isEmpty {
             if stockLayoutModeBinding.wrappedValue == .list {
-                flatCatalogListSection
+                unifiedStockListContent
             } else {
-                catalogStockSection
-            }
-        }
-
-        if !filteredActiveClosetItems.isEmpty {
-            if stockLayoutModeBinding.wrappedValue == .list {
-                flatClosetListSection
-            } else {
-                sectionedClosetStockContent
+                unifiedStockGridContent
             }
         }
     }
 
-    private var sectionedClosetStockContent: some View {
+    private func unifiedSectionHeader(_ section: UnifiedStockSection) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(section.emoji) \(section.title)")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(Color.black)
+            Spacer(minLength: 8)
+            Text(PieceMarketPrice.formatUSD(Int(section.totalValueUSD.rounded())))
+                .font(.system(size: 13, weight: .heavy, design: .rounded))
+                .foregroundStyle(Color.black.opacity(0.72))
+            Text("\(section.itemCount)")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.42))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule(style: .continuous)
+                        .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                )
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private var unifiedStockGridContent: some View {
         LazyVStack(alignment: .leading, spacing: 24) {
-            ForEach(filteredClosetStockSections) { section in
+            ForEach(filteredUnifiedStockSections) { section in
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text("\(section.category.emoji) \(section.category.displayName)")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(Color.black)
-                        Spacer(minLength: 8)
-                        Text(PieceMarketPrice.formatUSD(Int(section.totalValueUSD.rounded())))
-                            .font(.system(size: 13, weight: .heavy, design: .rounded))
-                            .foregroundStyle(Color.black.opacity(0.72))
-                        Text("\(section.items.count)")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color.black.opacity(0.42))
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 4)
-                            .background(
-                                Capsule(style: .continuous)
-                                    .stroke(Color.black.opacity(0.12), lineWidth: 1)
-                            )
-                    }
-                    .padding(.horizontal, 16)
+                    unifiedSectionHeader(section)
 
                     LazyVGrid(columns: gridColumns, spacing: 12) {
-                        ForEach(section.items) { item in
+                        ForEach(section.closetItems) { item in
                             closetCell(item)
                                 .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")")
                                 .padding(.top, 10)
                         }
-                    }
-                    .padding(.horizontal, 8)
-                }
-            }
-        }
-        .padding(.bottom, bottomInsetForClosetGrid)
-    }
-
-    private var flatClosetListSection: some View {
-        LazyVStack(spacing: 10) {
-            if !filteredCatalogProducts.isEmpty {
-                Divider()
-                    .overlay(Color.black.opacity(0.08))
-                    .padding(.horizontal, 16)
-            }
-            ForEach(filteredActiveClosetItems) { item in
-                closetListRow(item)
-                    .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")-\(item.marketPriceJSON ?? "")")
-                    .padding(.horizontal, 16)
-            }
-        }
-        .padding(.bottom, bottomInsetForClosetGrid)
-    }
-
-    private var flatCatalogListSection: some View {
-        LazyVStack(spacing: 10) {
-            ForEach(filteredCatalogProducts) { product in
-                catalogListRow(product)
-                    .padding(.horizontal, 16)
-            }
-        }
-        .padding(.bottom, filteredActiveClosetItems.isEmpty ? bottomInsetForClosetGrid : 0)
-    }
-
-    /// Catálogo Supabase agrupado por categoría (misma tarjeta que Marketplace).
-    private var catalogStockSection: some View {
-        LazyVStack(alignment: .leading, spacing: 24) {
-            ForEach(filteredCatalogStockSections, id: \.meta.key) { section in
-                VStack(alignment: .leading, spacing: 10) {
-                    catalogSectionHeader(
-                        emoji: section.meta.emoji,
-                        title: section.meta.title,
-                        count: section.products.count,
-                        valueUSD: section.products.reduce(0) { $0 + $1.stockValueUSD }
-                    )
-
-                    LazyVGrid(columns: gridColumns, spacing: 12) {
-                        ForEach(section.products) { product in
+                        ForEach(section.catalogProducts) { product in
                             UpsoledProductCard(
                                 product: product,
                                 selectionMode: closetSelectionMode,
@@ -1069,29 +994,29 @@ struct ClosetView: View {
                 }
             }
         }
-        .padding(.bottom, filteredActiveClosetItems.isEmpty ? bottomInsetForClosetGrid : 0)
+        .padding(.bottom, bottomInsetForClosetGrid)
     }
 
-    private func catalogSectionHeader(emoji: String, title: String, count: Int, valueUSD: Double) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("\(emoji) \(title)")
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(Color.black)
-            Spacer(minLength: 8)
-            Text(PieceMarketPrice.formatUSD(Int(valueUSD.rounded())))
-                .font(.system(size: 13, weight: .heavy, design: .rounded))
-                .foregroundStyle(Color.black.opacity(0.72))
-            Text("\(count)")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.42))
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule(style: .continuous)
-                        .stroke(Color.black.opacity(0.12), lineWidth: 1)
-                )
+    private var unifiedStockListContent: some View {
+        LazyVStack(alignment: .leading, spacing: 22) {
+            ForEach(filteredUnifiedStockSections) { section in
+                VStack(alignment: .leading, spacing: 8) {
+                    unifiedSectionHeader(section)
+
+                    ForEach(section.closetItems) { item in
+                        closetListRow(item)
+                            .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")-\(item.marketPriceJSON ?? "")")
+                            .padding(.horizontal, 16)
+                    }
+
+                    ForEach(section.catalogProducts) { product in
+                        catalogListRow(product)
+                            .padding(.horizontal, 16)
+                    }
+                }
+            }
         }
-        .padding(.horizontal, 16)
+        .padding(.bottom, bottomInsetForClosetGrid)
     }
 
     private var stockSummaryCard: some View {
@@ -1133,10 +1058,6 @@ struct ClosetView: View {
                         }
                     }
                 }
-            }
-
-            if let snapshot = stockMarketSnapshot {
-                StockMarketOverviewStrip(snapshot: snapshot)
             }
 
             if !stockCategoryBreakdowns.isEmpty {
@@ -2676,20 +2597,6 @@ private struct ToastBannerModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .overlay(alignment: .bottom) {
-                if let msg = message {
-                    Text(msg)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 12)
-                        .background(Capsule().fill(Color.black.opacity(0.9)))
-                        .padding(.bottom, 48)
-                        .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                        .allowsHitTesting(false)
-                }
-            }
-            .animation(.spring(response: 0.42, dampingFraction: 0.85), value: message)
     }
 }
 
@@ -4406,12 +4313,14 @@ extension KicksDBClient {
         // Primer pase: cada plataforma resuelve con la query del usuario, en paralelo.
         async let stockx0 = quote(for: .stockx, query: query, fallbackQuery: fallbackQuery)
         async let goat0 = quote(for: .goat, query: query, fallbackQuery: fallbackQuery)
+        async let flightClub0 = quote(for: .flightclub, query: query, fallbackQuery: fallbackQuery)
         var sQuote = await stockx0
         var gQuote = await goat0
+        var fcQuote = await flightClub0
 
         // SKU canónico: el primero que parezca un style code real (StockX suele ser más limpio,
         // GOAT trae espacios). Sirve para forzar que ambas plataformas comparen el MISMO producto.
-        let candidateSKUs = [sQuote?.matchedSKU, gQuote?.matchedSKU].compactMap { $0 }
+        let candidateSKUs = [sQuote?.matchedSKU, gQuote?.matchedSKU, fcQuote?.matchedSKU].compactMap { $0 }
         let canonicalSKU = candidateSKUs.first(where: { looksLikeSKU($0) }) ?? candidateSKUs.first
 
         // Alineación (dedupe entre plataformas): si una plataforma no coincide con el SKU canónico,
@@ -4425,9 +4334,13 @@ extension KicksDBClient {
                let realigned = await quote(for: .goat, query: canon, fallbackQuery: nil) {
                 gQuote = realigned
             }
+            if !MarketComparison.skuEquals(fcQuote?.matchedSKU, canon),
+               let realigned = await quote(for: .flightclub, query: canon, fallbackQuery: nil) {
+                fcQuote = realigned
+            }
         }
 
-        let quotes = [sQuote, gQuote].compactMap { $0 }
+        let quotes = [sQuote, gQuote, fcQuote].compactMap { $0 }
         guard !quotes.isEmpty else { return nil }
 
         // Conjunto de tallas presentes en alguna plataforma, ordenadas numéricamente.

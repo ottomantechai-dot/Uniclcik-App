@@ -541,24 +541,21 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
                 sparklineBlock
                 priceBlock
             }
-            .padding(12)
+            .padding(.vertical, 8)
             .background {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color(red: 0.975, green: 0.975, blue: 0.98))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .strokeBorder(Color.black.opacity(0.07), lineWidth: 1)
-                    }
-                    .shadow(color: Color.black.opacity(0.04), radius: 8, y: 3)
+                if selectionMode && isSelected {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.black.opacity(0.04))
+                }
             }
             .overlay {
                 if selectionMode && isSelected {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(Color.black.opacity(0.55), lineWidth: 2)
                 }
             }
             .animation(.easeInOut(duration: 0.18), value: isSelected)
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

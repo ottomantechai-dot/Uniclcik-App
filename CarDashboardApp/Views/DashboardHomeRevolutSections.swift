@@ -328,7 +328,6 @@ struct DashboardConnectedUsersStrip: View {
             if let group = chatInbox.teamGroupChatThread {
                 chatNav.threadToOpen = group
             }
-            tabRouter.selected = .chat
         } label: {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
@@ -470,5 +469,131 @@ private struct DashboardConnectedMemberCell: View {
         }
         if let f = name.first { return String(f).uppercased() }
         return "?"
+    }
+}
+
+// MARK: - Tabla de precios por talla (Home)
+
+struct DashboardMarketSizeTableSection: View {
+    let comparison: MarketComparison
+
+    private let platforms = ["StockX", "GOAT", "Flight Club", "Stadium Goods"]
+    private let sizeColumnWidth: CGFloat = 58
+    private let platformColumnWidth: CGFloat = 68
+    private let maxVisibleRows = 5
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("By category")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.85))
+
+                if let title = comparison.matchedTitle, !title.isEmpty {
+                    Text(title)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.45))
+                        .lineLimit(1)
+                }
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    headerRow
+                    Divider().overlay(Color.black.opacity(0.08))
+                    ForEach(displayRows(for: comparison)) { row in
+                        dataRow(row)
+                        if row.id != displayRows(for: comparison).last?.id {
+                            Divider().overlay(Color.black.opacity(0.06))
+                        }
+                    }
+                }
+                .frame(minWidth: sizeColumnWidth + platformColumnWidth * CGFloat(platforms.count))
+            }
+            .background(tableBackground)
+        }
+    }
+
+    private var tableBackground: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(Color.white)
+            .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 3)
+    }
+
+    private var headerRow: some View {
+        HStack(spacing: 0) {
+            Text("Tallas")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.45))
+                .frame(width: sizeColumnWidth, alignment: .leading)
+                .padding(.leading, 14)
+
+            ForEach(platforms, id: \.self) { platform in
+                StylizedMarketplaceLogo(brand: platform)
+                    .frame(width: 34, height: 22)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .frame(width: platformColumnWidth)
+            }
+        }
+        .padding(.vertical, 12)
+    }
+
+    private func dataRow(_ row: MarketSizeRow) -> some View {
+        let rowMinimum = row.asks.values.min()
+
+        return HStack(spacing: 0) {
+            Text(sizeLabel(row.size))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.72))
+                .frame(width: sizeColumnWidth, alignment: .leading)
+                .padding(.leading, 14)
+
+            ForEach(platforms, id: \.self) { platform in
+                priceCell(
+                    price: row.asks[platform],
+                    isHighlighted: row.asks[platform] == rowMinimum && rowMinimum != nil,
+                    showTrendArrow: platform == "StockX" && row.asks[platform] != nil
+                )
+                .frame(width: platformColumnWidth)
+            }
+        }
+        .padding(.vertical, 11)
+    }
+
+    private func priceCell(price: Double?, isHighlighted: Bool, showTrendArrow: Bool) -> some View {
+        Group {
+            if let price {
+                HStack(spacing: 2) {
+                    Text(DealershipStatsViewModel.formatUSD(price))
+                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                        .foregroundStyle(
+                            isHighlighted
+                                ? Color(red: 0.20, green: 0.70, blue: 0.45)
+                                : Color.black.opacity(0.88)
+                        )
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    if showTrendArrow {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 7, weight: .heavy))
+                            .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
+                    }
+                }
+            } else {
+                Text("—")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.28))
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func displayRows(for comparison: MarketComparison) -> [MarketSizeRow] {
+        let priced = comparison.rows.filter { !$0.asks.isEmpty }
+        return Array(priced.prefix(maxVisibleRows))
+    }
+
+    private func sizeLabel(_ size: String) -> String {
+        size.uppercased().hasPrefix("US") ? size : "US \(size)"
     }
 }

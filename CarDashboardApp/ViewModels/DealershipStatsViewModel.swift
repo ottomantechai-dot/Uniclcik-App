@@ -119,7 +119,8 @@ final class DealershipStatsViewModel: ObservableObject {
         cars: [Car],
         closetItems: [ClosetItem] = [],
         catalogProducts: [UpsoledProduct] = [],
-        asOf date: Date = Date()
+        asOf date: Date = Date(),
+        replayAnimations: Bool = false
     ) {
         periodDisplayLabel = Self.monthLabel(for: date)
         comparisonDateLabel = Self.yearAgoLabel(from: date)
@@ -208,7 +209,9 @@ final class DealershipStatsViewModel: ObservableObject {
         }
 
         commercialCommissions = Self.formatUSD(0)
-        statsAnimationToken = UUID()
+        if replayAnimations {
+            statsAnimationToken = UUID()
+        }
     }
 
     private func resetExtendedKPIs() {

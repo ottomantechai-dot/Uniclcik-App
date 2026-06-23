@@ -191,7 +191,6 @@ struct ClosetGarmentDetailView: View {
     @State private var showLookbookCapture = false
     @State private var toast: String?
     @State private var marketPriceBusy = false
-    @State private var showMarkSoldConfirm = false
     @State private var showRemoveItemDialog = false
     @State private var detailSection: GarmentDetailSection = .itemInfo
     @State private var savingChanges = false
@@ -239,18 +238,6 @@ struct ClosetGarmentDetailView: View {
                     .padding(.top, 4)
 
                     if item.isActiveInStock {
-                        Button {
-                            showMarkSoldConfirm = true
-                        } label: {
-                            Label(L10n.tr("sold.markSold"), systemImage: "checkmark.seal.fill")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(Color.white)
-                                .frame(maxWidth: .infinity, minHeight: 56)
-                                .background(RoundedRectangle(cornerRadius: 28).fill(Color(red: 0.18, green: 0.62, blue: 0.40)))
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.top, 4)
-
                         Button {
                             showRemoveItemDialog = true
                         } label: {
@@ -337,25 +324,10 @@ struct ClosetGarmentDetailView: View {
         }
         .toastOverlay(message: $toast)
         .confirmationDialog(
-            L10n.tr("sold.markSoldConfirmTitle"),
-            isPresented: $showMarkSoldConfirm,
-            titleVisibility: .visible
-        ) {
-            Button(L10n.tr("sold.markSoldAction"), role: .destructive) {
-                markItemAsSold()
-            }
-            Button(L10n.tr("common.close"), role: .cancel) {}
-        } message: {
-            Text(L10n.tr("sold.markSoldConfirmMessage"))
-        }
-        .confirmationDialog(
             L10n.tr("sold.removalDialogTitle"),
             isPresented: $showRemoveItemDialog,
             titleVisibility: .visible
         ) {
-            Button(L10n.tr("sold.removalSoldAction")) {
-                markItemAsSoldFromRemoval()
-            }
             Button(L10n.tr("sold.removalDiscontinuedAction"), role: .destructive) {
                 archiveItemAsDiscontinued()
             }
@@ -662,27 +634,6 @@ struct ClosetGarmentDetailView: View {
         savingChanges = false
         toast = "All changes saved."
         NotificationCenter.default.post(name: .upsoledCatalogDidChange, object: nil)
-    }
-
-    private func markItemAsSold() {
-        item.isSold = true
-        item.soldAt = Date()
-        item.deletedAt = nil
-        item.deletionReasonRaw = nil
-        Task {
-            await CatalogClosetBridge.deleteLinkedCatalogProduct(forClosetItem: item.id)
-            await MainActor.run {
-                saveSilently()
-                NotificationCenter.default.post(name: .closetInventoryDidChange, object: item.id)
-                NotificationCenter.default.post(name: .upsoledCatalogDidChange, object: nil)
-                toast = L10n.tr("sold.markedSoldToast")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { dismiss() }
-            }
-        }
-    }
-
-    private func markItemAsSoldFromRemoval() {
-        markItemAsSold()
     }
 
     private func archiveItemAsDiscontinued() {
@@ -1311,13 +1262,7 @@ struct CreateLookComposerView: View {
         dismiss()
     }
 
-    private func pulseToast(_ s: String) {
-        composerToast = s
-        Task {
-            try? await Task.sleep(nanoseconds: 2_800_000_000)
-            if composerToast == s { composerToast = nil }
-        }
-    }
+    private func pulseToast(_ s: String) {}
 }
 
 // MARK: - Detalle de un Look guardado

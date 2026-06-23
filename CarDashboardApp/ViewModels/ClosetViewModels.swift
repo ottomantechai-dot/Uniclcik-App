@@ -43,11 +43,7 @@ final class AddToClosetFlowViewModel: ObservableObject {
     }
 
     func showToast(_ s: String) {
-        toast = s
-        Task {
-            try? await Task.sleep(nanoseconds: 2_600_000_000)
-            if toast == s { toast = nil }
-        }
+        // Toasts desactivados en toda la app.
     }
 
     func beginProcessing(images: [UIImage]) {
