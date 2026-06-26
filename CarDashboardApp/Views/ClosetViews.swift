@@ -3686,10 +3686,23 @@ enum KicksDBClient {
         return true
     }
 
+    /// Limpia la query antes de mandarla a KicksDB. `(Men's)`, apóstrofes y paréntesis
+    /// hacen que la API devuelva HTTP 500 (`search failed`), así que los quitamos.
+    static func sanitizeQuery(_ q: String) -> String {
+        var s = q
+        s = s.replacingOccurrences(of: #"\([^)]*\)"#, with: " ", options: .regularExpression) // (Men's), (GS), (W)…
+        s = s.replacingOccurrences(of: #"[’'`´]"#, with: "", options: .regularExpression)       // apóstrofes
+        s = s.replacingOccurrences(of: #"[^A-Za-z0-9\s\-./]"#, with: " ", options: .regularExpression) // otros símbolos raros
+        s = s.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)          // espacios colapsados
+        let cleaned = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? q.trimmingCharacters(in: .whitespacesAndNewlines) : cleaned
+    }
+
     /// Busca el primer hit en una plataforma concreta.
     static func search(platform: Platform, query: String) async throws -> ProductHit? {
+        let cleaned = sanitizeQuery(query)
         let path = "/\(platform.rawValue)/products?query="
-        return try await getFirst(at: path + (query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""))
+        return try await getFirst(at: path + (cleaned.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""))
     }
 
     /// Para GOAT necesitamos llamar al endpoint de detalle (`/products/{slug}`)
@@ -4136,9 +4149,10 @@ struct MarketPlatformQuote: Identifiable {
     let avg: Double?
     let lowestAsk: Double?
     let highestAsk: Double?
-    /// Para el endpoint de ventas (Sell/historial): clave de plataforma ("stockx"/"goat") y slug/id.
+    /// Para los endpoints Premium (ventas/unified): clave de plataforma, slug y product ID (UUID).
     var platformKey: String = ""
     var slug: String?
+    var productID: String?
     var id: String { platform }
 }
 
@@ -4284,14 +4298,12 @@ extension KicksDBClient {
         // Primer pase: cada plataforma resuelve con la query del usuario, en paralelo.
         async let stockx0 = quote(for: .stockx, query: query, fallbackQuery: fallbackQuery)
         async let goat0 = quote(for: .goat, query: query, fallbackQuery: fallbackQuery)
-        async let flightClub0 = quote(for: .flightclub, query: query, fallbackQuery: fallbackQuery)
         var sQuote = await stockx0
         var gQuote = await goat0
-        var fcQuote = await flightClub0
 
         // SKU canónico: el primero que parezca un style code real (StockX suele ser más limpio,
         // GOAT trae espacios). Sirve para forzar que ambas plataformas comparen el MISMO producto.
-        let candidateSKUs = [sQuote?.matchedSKU, gQuote?.matchedSKU, fcQuote?.matchedSKU].compactMap { $0 }
+        let candidateSKUs = [sQuote?.matchedSKU, gQuote?.matchedSKU].compactMap { $0 }
         let canonicalSKU = candidateSKUs.first(where: { looksLikeSKU($0) }) ?? candidateSKUs.first
 
         // Alineación (dedupe entre plataformas): si una plataforma no coincide con el SKU canónico,
@@ -4305,10 +4317,26 @@ extension KicksDBClient {
                let realigned = await quote(for: .goat, query: canon, fallbackQuery: nil) {
                 gQuote = realigned
             }
-            if !MarketComparison.skuEquals(fcQuote?.matchedSKU, canon),
-               let realigned = await quote(for: .flightclub, query: canon, fallbackQuery: nil) {
-                fcQuote = realigned
-            }
+        }
+
+        // Flight Club (y demás tiendas) vía Unified API, usando el slug emparejado. Requiere Premium.
+        var fcQuote: MarketPlatformQuote?
+        if let slug = sQuote?.slug ?? gQuote?.slug,
+           let fcPrices = try? await unifiedShopPrices(slug: slug, shop: "flightclub"), !fcPrices.isEmpty {
+            let vals = fcPrices.values.sorted()
+            fcQuote = MarketPlatformQuote(
+                platform: brandDisplayName(.flightclub),
+                color: brandColor(.flightclub),
+                matchedTitle: sQuote?.matchedTitle ?? gQuote?.matchedTitle,
+                matchedSKU: sQuote?.matchedSKU ?? gQuote?.matchedSKU,
+                productURL: nil,
+                asksBySize: fcPrices,
+                avg: vals.isEmpty ? nil : vals.reduce(0, +) / Double(vals.count),
+                lowestAsk: vals.first,
+                highestAsk: vals.last,
+                platformKey: "flightclub",
+                slug: slug
+            )
         }
 
         let quotes = [sQuote, gQuote, fcQuote].compactMap { $0 }
@@ -4344,10 +4372,11 @@ extension KicksDBClient {
     /// Historial de ventas DIARIO (Sell) de un producto. Endpoint `/{platform}/products/{slug}/sales/daily`.
     /// ⚠️ Es un **Premium Feature** de KicksDB: en plan free devuelve error y aquí []. Listo para
     /// activarse al subir a un plan con datos de ventas (Starter+).
-    static func dailySales(platformKey: String, slug: String) async -> [DailySalePoint] {
-        guard isConfigured, !platformKey.isEmpty, !slug.isEmpty,
+    /// Historial de ventas diario. ⚠️ El endpoint exige el **product ID (UUID)**, no el slug (el slug da 422).
+    static func dailySales(platformKey: String, productID: String) async -> [DailySalePoint] {
+        guard isConfigured, !platformKey.isEmpty, !productID.isEmpty,
               let key = apiKey,
-              let url = URL(string: "\(baseURL)/\(platformKey)/products/\(slug)/sales/daily") else { return [] }
+              let url = URL(string: "\(baseURL)/\(platformKey)/products/\(productID)/sales/daily") else { return [] }
 
         var req = URLRequest(url: url)
         req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
@@ -4367,11 +4396,39 @@ extension KicksDBClient {
                 guard let avg = r.avg_amount, avg > 0, let ds = r.date, let d = iso.date(from: ds) else { return nil }
                 return DailySalePoint(date: d, avg: avg, orders: r.orders ?? 0)
             }
-            // Orden cronológico ascendente (antiguo → reciente).
             return points.sorted { $0.date < $1.date }
         } catch {
             return []
         }
+    }
+
+    /// Precios por talla de una tienda concreta (ej. "flightclub") vía **Unified API** (Premium).
+    /// Endpoint: `/v3/unified/products/{slug}` → entradas con `shop_name` y `prices` (talla→precio).
+    static func unifiedShopPrices(slug: String, shop: String) async throws -> [String: Double] {
+        guard isConfigured, !slug.isEmpty, let key = apiKey,
+              let encoded = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "\(baseURL)/unified/products/\(encoded)") else { return [:] }
+
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.timeoutInterval = 15
+
+        struct UnifiedEnvelope: Decodable {
+            let data: [Entry]?
+            struct Entry: Decodable { let shop_name: String?; let prices: [String: Double]? }
+        }
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return [:] }
+        let decoded = try JSONDecoder().decode(UnifiedEnvelope.self, from: data)
+        // Puede haber varias entradas del mismo shop (GS/TD…); tomamos la que tenga MÁS tallas (la principal).
+        let entries = (decoded.data ?? []).filter { ($0.shop_name ?? "").lowercased() == shop.lowercased() }
+        let best = entries.max { ($0.prices?.count ?? 0) < ($1.prices?.count ?? 0) }
+        var result: [String: Double] = [:]
+        for (size, price) in (best?.prices ?? [:]) where price > 0 {
+            result[MarketComparison.normalizeSize(size) ?? size] = price
+        }
+        return result
     }
 
     /// Construye la cotización de una plataforma. No lanza: ante cualquier error devuelve nil.
@@ -4428,7 +4485,8 @@ extension KicksDBClient {
                 lowestAsk: askValues.first ?? stats?.min,
                 highestAsk: askValues.last ?? stats?.max,
                 platformKey: platform.rawValue,
-                slug: found.slug ?? found.id
+                slug: found.slug ?? found.id,
+                productID: found.id
             )
         } catch {
             print("[Comparador] \(platform.rawValue) error: \(error.localizedDescription)")
@@ -4918,13 +4976,14 @@ struct MarketComparatorView: View {
 
     @MainActor
     private func loadSales(_ comp: MarketComparison) async {
-        let q = comp.platforms.first(where: { $0.platformKey == "stockx" && $0.slug != nil })
-            ?? comp.platforms.first(where: { $0.slug != nil })
-        guard let quote = q, let slug = quote.slug else { sellPoints = []; return }
+        // Ventas: preferimos StockX; el endpoint exige el product ID (UUID), no el slug.
+        let q = comp.platforms.first(where: { $0.platformKey == "stockx" && $0.productID != nil })
+            ?? comp.platforms.first(where: { ($0.platformKey == "stockx" || $0.platformKey == "goat") && $0.productID != nil })
+        guard let quote = q, let pid = quote.productID else { sellPoints = []; return }
         sellLoading = true
         sellPoints = []
         defer { sellLoading = false }
-        sellPoints = await KicksDBClient.dailySales(platformKey: quote.platformKey, slug: slug)
+        sellPoints = await KicksDBClient.dailySales(platformKey: quote.platformKey, productID: pid)
     }
 
     // MARK: Lógica
@@ -5107,10 +5166,12 @@ enum EbayPriceService {
         let decoded = try JSONDecoder().decode(SearchResponse.self, from: data)
         let listings: [EbayListing] = (decoded.itemSummaries ?? []).compactMap { s in
             guard let valueStr = s.price?.value, let price = Double(valueStr), price > 0 else { return nil }
+            let title = s.title ?? query
+            // Descarta basura típica de eBay: zapatos sueltos, tallas de niño, cajas vacías, etc.
+            guard !isJunkTitle(title) else { return nil }
             let rawAspect = s.localizedAspects?.first {
                 ($0.name ?? "").lowercased().contains("size")
             }?.value
-            let title = s.title ?? query
             return EbayListing(
                 id: s.itemId ?? UUID().uuidString,
                 title: title,
@@ -5122,6 +5183,24 @@ enum EbayPriceService {
             )
         }
         return listings.sorted { $0.price < $1.price }
+    }
+
+    /// Filtra listados de eBay que NO son el sneaker de adulto completo: zapatos sueltos,
+    /// tallas de niño/bebé (TD/PS/GS/Y/youth/toddler/kids), reemplazos, cajas vacías, displays.
+    static func isJunkTitle(_ title: String) -> Bool {
+        let t = " " + title.lowercased() + " "
+        let badPhrases = [
+            "single shoe", "left foot", "right foot", "left only", "right only", "one shoe",
+            "replacement", "display", "empty box", "box only", "no shoes", "for parts",
+            "custom", "painted", "sample", "promo sample"
+        ]
+        if badPhrases.contains(where: { t.contains($0) }) { return true }
+        // Tokens de talla de niño/joven (con separadores para no pillar palabras dentro de otras).
+        let kidTokens = [" td ", " ps ", " gs ", " td)", " ps)", " gs)", "(td", "(ps", "(gs",
+                         " toddler", " infant", " youth", " kids", " child", " preschool", " gradeschool",
+                         "5y", "6y", "7y", "3.5y", "4y", "4.5y", "5.5y", "6.5y"]
+        if kidTokens.contains(where: { t.contains($0) }) { return true }
+        return false
     }
 
     /// Detecta la talla US (normalizada) de un listado: primero el aspecto estructurado;
@@ -5166,11 +5245,12 @@ enum EbayPriceService {
 // MARK: - Alertas de precio (P5) — store local (UserDefaults) + notificaciones locales
 
 enum PriceAlertType: String, Codable, CaseIterable, Identifiable {
-    case priceDrop, sizeAvailable, arbitrage
+    case priceDrop, priceRise, sizeAvailable, arbitrage
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .priceDrop:     return "Baja de precio"
+        case .priceDrop:     return "Baja de precio (comprar)"
+        case .priceRise:     return "Sube de precio (vender)"
         case .sizeAvailable: return "Aparece una talla"
         case .arbitrage:     return "Arbitraje entre plataformas"
         }
@@ -5178,6 +5258,7 @@ enum PriceAlertType: String, Codable, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .priceDrop:     return "arrow.down.circle.fill"
+        case .priceRise:     return "arrow.up.circle.fill"
         case .sizeAvailable: return "shoe.fill"
         case .arbitrage:     return "arrow.left.arrow.right.circle.fill"
         }
@@ -5264,6 +5345,18 @@ enum PriceAlertChecker {
             return p <= target
                 ? (true, "\(alert.displayName) a \(money(p)) (≤ \(money(target)))", p)
                 : (false, "", p)
+        case .priceRise:
+            let price: Double?
+            if let size = alert.targetSize, let norm = MarketComparison.normalizeSize(size),
+               let row = comp.rows.first(where: { $0.size == norm }) {
+                price = row.cheapest?.price
+            } else {
+                price = comp.bestBuyOverall?.price
+            }
+            guard let p = price, let target = alert.targetPrice else { return (false, "", price) }
+            return p >= target
+                ? (true, "Hora de vender: \(alert.displayName) a \(money(p)) (≥ \(money(target)))", p)
+                : (false, "", p)
         case .sizeAvailable:
             guard let size = alert.targetSize, let norm = MarketComparison.normalizeSize(size) else { return (false, "", nil) }
             if let row = comp.rows.first(where: { $0.size == norm }), let c = row.cheapest {
@@ -5332,6 +5425,14 @@ struct CreatePriceAlertSheet: View {
                                 .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 90)
                         }
                         if !sizes.isEmpty { sizePicker }
+                    case .priceRise:
+                        HStack {
+                            Text("Avísame si sube de")
+                            Spacer()
+                            TextField("$", text: $priceText)
+                                .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 90)
+                        }
+                        if !sizes.isEmpty { sizePicker }
                     case .sizeAvailable:
                         sizePicker
                     case .arbitrage:
@@ -5364,6 +5465,7 @@ struct CreatePriceAlertSheet: View {
     private var canCreate: Bool {
         switch type {
         case .priceDrop:     return Double(priceText) != nil
+        case .priceRise:     return Double(priceText) != nil
         case .sizeAvailable: return !selectedSize.isEmpty
         case .arbitrage:     return Double(marginText) != nil
         }
@@ -5373,6 +5475,9 @@ struct CreatePriceAlertSheet: View {
         var a = PriceAlert(query: query, displayName: displayName, type: type)
         switch type {
         case .priceDrop:
+            a.targetPrice = Double(priceText)
+            a.targetSize = selectedSize.isEmpty ? nil : selectedSize
+        case .priceRise:
             a.targetPrice = Double(priceText)
             a.targetSize = selectedSize.isEmpty ? nil : selectedSize
         case .sizeAvailable:
@@ -5446,6 +5551,7 @@ struct PriceAlertsListView: View {
     private func conditionText(_ a: PriceAlert) -> String {
         switch a.type {
         case .priceDrop:     return "Baja de $\(Int(a.targetPrice ?? 0))" + (a.targetSize.map { " · talla \($0)" } ?? "")
+        case .priceRise:     return "Vende si sube de $\(Int(a.targetPrice ?? 0))" + (a.targetSize.map { " · talla \($0)" } ?? "")
         case .sizeAvailable: return "Aparece talla \(a.targetSize ?? "?")"
         case .arbitrage:     return "Arbitraje ≥ \(Int(a.minMarginPercent ?? 15))% ROI"
         }

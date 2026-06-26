@@ -25,19 +25,33 @@ struct HomeSneakerHighlight: Identifiable {
 
     var name: String { title }
 
+    /// Un style code REAL de fábrica tiene un bloque de 3+ dígitos seguidos (CT8532-012, 136064-004,
+    /// DZ5485-100). Los códigos internos de tienda (JACK-LWR, SPL-OHR, LUC-OXR, SPL-HE-1) no → se ignoran
+    /// y se busca por nombre del modelo, que sí es real.
+    static func isRealStyleCode(_ sku: String) -> Bool {
+        sku.range(of: "[0-9]{3,}", options: .regularExpression) != nil
+    }
+
     var marketLookup: (query: String, fallback: String?)? {
         if let closet = closetItem {
-            let query = closet.resolvedSKU ?? closet.marketLookupQuery
-            guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-            return (query, closet.catalogDisplayName)
+            let sku = closet.resolvedSKU?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let name = closet.marketLookupQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+            let displayName = closet.catalogDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !sku.isEmpty, Self.isRealStyleCode(sku) {
+                return (sku, name.isEmpty ? (displayName.isEmpty ? nil : displayName) : name)
+            }
+            let q = name.isEmpty ? displayName : name
+            guard !q.isEmpty else { return nil }
+            return (q, nil)
         }
         if let product = catalogProduct {
             let sku = product.sku?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if !sku.isEmpty { return (sku, product.name) }
             let name = product.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !sku.isEmpty, Self.isRealStyleCode(sku) {
+                return (sku, name.isEmpty ? nil : name)
+            }
             guard !name.isEmpty else { return nil }
-            let brand = product.brand?.trimmingCharacters(in: .whitespacesAndNewlines)
-            return (name, brand?.isEmpty == false ? brand : nil)
+            return (name, nil)
         }
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return nil }
@@ -245,6 +259,7 @@ struct DashboardHomeScreen: View {
     var onViewStock: () -> Void = {}
 
     @State private var showMarketComparator = false
+    @State private var showPortfolio = false
 
     private var trending: [HomeSneakerHighlight] {
         HomeScreenDataBuilder.trendingHighlights(closet: closetItems, catalog: catalogProducts, limit: 4)
@@ -266,6 +281,11 @@ struct DashboardHomeScreen: View {
                 )
             }
 
+            DashboardPortfolioSection(
+                items: closetItems,
+                onOpen: { showPortfolio = true }
+            )
+
             DashboardMarketPricesSection(
                 comparison: marketComparison,
                 selectedProductName: selectedTrendingItem?.displayName,
@@ -279,7 +299,14 @@ struct DashboardHomeScreen: View {
             )
         }
         .sheet(isPresented: $showMarketComparator) {
-            MarketComparatorView()
+            if let item = selectedTrendingItem {
+                ShoeMarketDetailView(item: item)
+            } else {
+                MarketComparatorView()
+            }
+        }
+        .sheet(isPresented: $showPortfolio) {
+            PortfolioDetailView(items: closetItems)
         }
         .onAppear {
             if selectedTrendingID == nil, let first = trending.first {
@@ -290,6 +317,407 @@ struct DashboardHomeScreen: View {
             guard !ids.isEmpty else { return }
             if let selectedTrendingID, ids.contains(selectedTrendingID) { return }
             self.selectedTrendingID = ids.first
+        }
+    }
+}
+
+// MARK: - Comisiones de venta por plataforma (aproximadas, ajustables)
+
+enum PlatformFees {
+    /// (comisión %, fijo $). Valores aproximados — ajusta aquí si cambian.
+    static func params(_ platform: String) -> (rate: Double, fixed: Double) {
+        switch platform.lowercased() {
+        case let p where p.contains("stockx"):     return (0.12, 0)
+        case let p where p.contains("goat"):       return (0.095, 5)
+        case let p where p.contains("ebay"):       return (0.13, 0)
+        case let p where p.contains("flight"):     return (0.20, 0)
+        default:                                    return (0.12, 0)
+        }
+    }
+    /// Lo que el vendedor cobra tras comisión por vender a `price` en `platform`.
+    static func net(price: Double, platform: String) -> Double {
+        let p = params(platform)
+        return max(0, price * (1 - p.rate) - p.fixed)
+    }
+    static func ratePercent(_ platform: String) -> Int { Int((params(platform).rate * 100).rounded()) }
+}
+
+// MARK: - Ficha de mercado del zapato (compra, última venta, mejor oferta, historial)
+
+struct ShoeMarketDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    let item: HomeSneakerHighlight
+
+    @State private var comparison: MarketComparison?
+    @State private var sales: [DailySalePoint] = []
+    @State private var loading = true
+    @State private var costText = ""
+    @FocusState private var costFocused: Bool
+
+    private static let green = Color(red: 0.13, green: 0.55, blue: 0.30)
+    private static let red = Color(red: 0.85, green: 0.25, blue: 0.25)
+    private static let blue = Color(red: 0.20, green: 0.45, blue: 0.85)
+    private static func usd(_ v: Double) -> String { DealershipStatsViewModel.formatUSD(v) }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    header
+                    if loading {
+                        ProgressView("Consultando el mercado…")
+                            .frame(maxWidth: .infinity).padding(.top, 40)
+                    } else if let comp = comparison, !comp.rows.isEmpty {
+                        bestOfferCard(comp)
+                        sellerCard(comp)
+                        calculatorCard(comp)
+                        if !sales.isEmpty { salesCard }
+                        DashboardMarketPricesSection(
+                            comparison: comp,
+                            selectedProductName: nil,
+                            maxVisibleRows: nil,
+                            showsViewFullTable: false
+                        )
+                    } else {
+                        emptyState
+                    }
+                }
+                .padding(16)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(
+                LinearGradient(
+                    colors: [Color(red: 0.95, green: 0.96, blue: 1.0), Color(red: 0.99, green: 0.99, blue: 1.0)],
+                    startPoint: .top, endPoint: .bottom
+                ).ignoresSafeArea()
+            )
+            .navigationTitle("Detalle de precios")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button("Cerrar") { dismiss() } }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Listo") { costFocused = false }
+                        .font(.system(size: 15, weight: .semibold))
+                }
+            }
+            .task { await load() }
+        }
+        .preferredColorScheme(.light)
+    }
+
+    // Hero premium: degradado oscuro + glow verde + valor de mercado grande.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Circle().fill(Self.green).frame(width: 7, height: 7)
+                Text("LIVE").font(.system(size: 10, weight: .heavy)).tracking(1).foregroundStyle(.white.opacity(0.9))
+                Spacer()
+            }
+            Text(item.displayName)
+                .font(.system(size: 22, weight: .heavy))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+            if let sku = comparison?.matchedSKU {
+                Text("SKU \(sku)").font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(.white.opacity(0.6))
+            }
+            if let last = sales.last {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(Self.usd(last.avg)).font(.system(size: 32, weight: .heavy, design: .rounded)).foregroundStyle(.white)
+                    Text("valor de mercado").font(.system(size: 11)).foregroundStyle(.white.opacity(0.65))
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            ZStack {
+                LinearGradient(
+                    colors: [Color(red: 0.07, green: 0.09, blue: 0.15), Color(red: 0.13, green: 0.20, blue: 0.30)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+                Circle().fill(Self.green.opacity(0.30)).frame(width: 220, height: 220).blur(radius: 70).offset(x: 110, y: -30)
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: Color.black.opacity(0.18), radius: 18, x: 0, y: 10)
+    }
+
+    @ViewBuilder
+    private func bestOfferCard(_ comp: MarketComparison) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("LA MEJOR OFERTA").font(.system(size: 10, weight: .heavy)).tracking(0.8).foregroundStyle(.secondary)
+            if let buy = comp.bestBuyOverall {
+                offerRow(icon: "cart.fill", tint: Self.green, label: "Mejor para COMPRAR",
+                         value: Self.usd(buy.price), detail: "\(buy.platform) · talla \(buy.size)")
+            }
+            if let last = sales.last {
+                offerRow(icon: "dollarsign.circle.fill", tint: Self.blue, label: "Última venta (mercado)",
+                         value: Self.usd(last.avg), detail: "\(sales.count) días de historial real")
+            }
+            // Margen REALISTA: comprar al precio más bajo vs vender al valor de mercado REAL
+            // (la última venta), no al "ask" más alto que pide alguien y nadie compra.
+            if let buy = comp.bestBuyOverall, let market = sales.last?.avg {
+                let margin = market - buy.price
+                let roi = buy.price > 0 ? margin / buy.price * 100 : 0
+                offerRow(icon: "arrow.up.right.circle.fill", tint: margin >= 0 ? Self.green : Self.red,
+                         label: "Margen estimado (vs valor de mercado)",
+                         value: "\(margin >= 0 ? "+" : "")\(Self.usd(margin)) · \(Int(roi))% ROI",
+                         detail: "Compra \(Self.usd(buy.price)) (\(buy.platform), talla \(buy.size)) → mercado \(Self.usd(market))")
+            } else if let arb = comp.bestArbitrage {
+                offerRow(icon: "arrow.up.right.circle.fill", tint: Self.green, label: "Spread entre plataformas",
+                         value: "\(Self.usd(arb.margin)) · \(Int(arb.roi))% ROI",
+                         detail: "Compra en \(arb.buyPlatform) (\(Self.usd(arb.buy))) → vende en \(arb.sellPlatform) (\(Self.usd(arb.sell)))")
+            }
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(premiumCardBG)
+    }
+
+    private func offerRow(icon: String, tint: Color, label: String, value: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon).font(.system(size: 18)).foregroundStyle(tint).frame(width: 24)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                Text(detail).font(.system(size: 11)).foregroundStyle(Color.black.opacity(0.45)).lineLimit(2)
+            }
+            Spacer(minLength: 8)
+            Text(value).font(.system(size: 16, weight: .heavy, design: .rounded)).foregroundStyle(Color.black)
+        }
+    }
+
+    /// Precio de venta REAL del zapato: la última venta real (KicksDB). Si no hay historial,
+    /// usa el ask más bajo del mercado (lo más cercano a una venta real), NUNCA el avg inflado
+    /// de una sola plataforma (p.ej. Flight Club pidiendo $299 cuando el mercado es $140).
+    private func realSellPrice(_ comp: MarketComparison) -> Double? {
+        if let s = sales.last?.avg, s > 0 { return s }
+        if let b = comp.bestBuyOverall?.price, b > 0 { return b }
+        let asks = comp.platforms.compactMap { $0.lowestAsk ?? $0.avg }.filter { $0 > 0 }
+        return asks.min()
+    }
+
+    private func sellerCard(_ comp: MarketComparison) -> some View {
+        // Todas las plataformas venden al MISMO precio real de mercado; solo cambia la comisión.
+        let market = realSellPrice(comp) ?? 0
+        let rows: [(name: String, color: Color, price: Double, net: Double)] = comp.platforms
+            .compactMap { p in
+                guard market > 0 else { return nil }
+                return (p.platform, p.color, market, PlatformFees.net(price: market, platform: p.platform))
+            }
+            .sorted { $0.net > $1.net }
+        let bestName = rows.first?.name
+        let last30 = sales.suffix(30).reduce(0) { $0 + $1.orders }
+
+        VStack(alignment: .leading, spacing: 12) {
+            Text("PARA VENDER · lo que cobras tras comisiones")
+                .font(.system(size: 10, weight: .heavy)).tracking(0.6).foregroundStyle(.secondary)
+
+            let maxNet = rows.first?.net ?? 1
+            ForEach(rows.indices, id: \.self) { i in
+                let r = rows[i]
+                let frac = maxNet > 0 ? CGFloat(r.net / maxNet) : 0
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 8) {
+                        Circle().fill(r.color).frame(width: 9, height: 9)
+                        Text(r.name).font(.system(size: 14, weight: .bold)).foregroundStyle(Color.black)
+                        if r.name == bestName {
+                            Text("MÁS PAGA").font(.system(size: 8, weight: .heavy)).tracking(0.4)
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Capsule().fill(Self.green.opacity(0.15))).foregroundStyle(Self.green)
+                        }
+                        Spacer(minLength: 6)
+                        Text("Cobras \(Self.usd(r.net))")
+                            .font(.system(size: 15, weight: .heavy, design: .rounded))
+                            .foregroundStyle(r.name == bestName ? Self.green : Color.black)
+                    }
+                    GeometryReader { g in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.black.opacity(0.05)).frame(height: 11)
+                            Capsule()
+                                .fill(LinearGradient(colors: [r.color, r.color.opacity(0.55)], startPoint: .leading, endPoint: .trailing))
+                                .frame(width: max(10, g.size.width * frac), height: 11)
+                                .shadow(color: r.color.opacity(0.45), radius: 3, x: 0, y: 2)
+                        }
+                    }
+                    .frame(height: 11)
+                    Text("venta real \(Self.usd(r.price)) · −\(PlatformFees.ratePercent(r.name))% comisión")
+                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+            }
+
+            if last30 > 0 {
+                Divider()
+                HStack(spacing: 8) {
+                    Image(systemName: last30 >= 30 ? "flame.fill" : "tortoise.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(last30 >= 30 ? Color.orange : .secondary)
+                    Text(last30 >= 30 ? "Se vende rápido" : "Se vende lento")
+                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.black)
+                    Spacer()
+                    Text("~\(last30) ventas/mes (StockX)")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+            }
+
+            Text("Comisiones aproximadas; ajustables.")
+                .font(.system(size: 9)).foregroundStyle(.secondary.opacity(0.7))
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(premiumCardBG)
+    }
+
+    @ViewBuilder
+    private func calculatorCard(_ comp: MarketComparison) -> some View {
+        let cost = Double(costText.replacingOccurrences(of: ",", with: "."))
+        let market = realSellPrice(comp)
+        let rows: [(name: String, color: Color, profit: Double, roi: Double)] = comp.platforms
+            .compactMap { p in
+                guard let m = market, m > 0, let c = cost, c > 0 else { return nil }
+                let net = PlatformFees.net(price: m, platform: p.platform)
+                return (p.platform, p.color, net - c, (net - c) / c * 100)
+            }
+            .sorted { $0.profit > $1.profit }
+
+        VStack(alignment: .leading, spacing: 12) {
+            Text("CALCULADORA DE GANANCIA")
+                .font(.system(size: 10, weight: .heavy)).tracking(0.6).foregroundStyle(.secondary)
+
+            HStack {
+                Text("Tu coste de compra").font(.system(size: 13)).foregroundStyle(Color.black.opacity(0.7))
+                Spacer()
+                HStack(spacing: 4) {
+                    Text("$").font(.system(size: 16, weight: .semibold)).foregroundStyle(.secondary)
+                    TextField("0", text: $costText)
+                        .keyboardType(.decimalPad)
+                        .focused($costFocused)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 100)
+                        .font(.system(size: 17, weight: .bold))
+                }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemBackground)))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(costFocused ? Self.green : Color.clear, lineWidth: 1.5)
+                )
+            }
+
+            if rows.isEmpty {
+                Text("Escribe lo que pagaste para ver tu beneficio neto por plataforma.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            } else {
+                ForEach(rows.indices, id: \.self) { i in
+                    let r = rows[i]
+                    HStack(spacing: 10) {
+                        Circle().fill(r.color).frame(width: 9, height: 9)
+                        Text(r.name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.black)
+                        Spacer(minLength: 6)
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text("\(r.profit >= 0 ? "+" : "")\(Self.usd(r.profit))")
+                                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                                .foregroundStyle(r.profit >= 0 ? Self.green : Self.red)
+                            Text("\(r.roi >= 0 ? "+" : "")\(String(format: "%.0f", r.roi))% ROI")
+                                .font(.system(size: 10)).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(premiumCardBG)
+    }
+
+    private var salesCard: some View {
+        let vals = sales.map(\.avg)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Historial de ventas", systemImage: "chart.line.uptrend.xyaxis").font(.system(size: 13, weight: .bold))
+                Spacer()
+                if let last = sales.last { Text(Self.usd(last.avg)).font(.system(size: 16, weight: .heavy, design: .rounded)).foregroundStyle(Self.green) }
+            }
+            areaChart(vals).frame(height: 90)
+            HStack {
+                Text("mín \(Self.usd(vals.min() ?? 0))").font(.system(size: 10)).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(sales.count) días · ventas reales (KicksDB)").font(.system(size: 10)).foregroundStyle(.secondary)
+                Spacer()
+                Text("máx \(Self.usd(vals.max() ?? 0))").font(.system(size: 10)).foregroundStyle(.secondary)
+            }
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(premiumCardBG)
+    }
+
+    /// Gráfica de área premium: degradado bajo la línea + trazo con gradiente + punto final luminoso.
+    private func areaChart(_ values: [Double]) -> some View {
+        GeometryReader { geo in
+            let minV = values.min() ?? 0
+            let maxV = values.max() ?? 1
+            let range = max(maxV - minV, 1)
+            let pts: [CGPoint] = values.enumerated().map { i, v in
+                CGPoint(
+                    x: values.count > 1 ? geo.size.width * CGFloat(i) / CGFloat(values.count - 1) : 0,
+                    y: geo.size.height * (1 - CGFloat((v - minV) / range))
+                )
+            }
+            ZStack {
+                Path { p in
+                    guard let f = pts.first else { return }
+                    p.move(to: CGPoint(x: f.x, y: geo.size.height))
+                    p.addLine(to: f)
+                    for pt in pts.dropFirst() { p.addLine(to: pt) }
+                    if let l = pts.last { p.addLine(to: CGPoint(x: l.x, y: geo.size.height)) }
+                    p.closeSubpath()
+                }
+                .fill(LinearGradient(colors: [Self.green.opacity(0.32), Self.green.opacity(0.02)], startPoint: .top, endPoint: .bottom))
+                Path { p in
+                    guard let f = pts.first else { return }
+                    p.move(to: f)
+                    for pt in pts.dropFirst() { p.addLine(to: pt) }
+                }
+                .stroke(LinearGradient(colors: [Self.green, Self.green.opacity(0.6)], startPoint: .leading, endPoint: .trailing),
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                if let l = pts.last {
+                    Circle().fill(Self.green).frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                        .shadow(color: Self.green.opacity(0.7), radius: 6)
+                        .position(l)
+                }
+            }
+        }
+    }
+
+    /// Fondo de tarjeta premium reutilizable (blanco + borde sutil + sombra con profundidad).
+    private var premiumCardBG: some View {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .fill(Color.white)
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color.black.opacity(0.04), lineWidth: 1))
+            .shadow(color: Color.black.opacity(0.06), radius: 14, x: 0, y: 6)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").font(.system(size: 24)).foregroundStyle(.secondary)
+            Text("Sin precios reales para este modelo").font(.system(size: 14, weight: .semibold))
+            Text("No se encontró en StockX, GOAT ni eBay.").font(.system(size: 12)).foregroundStyle(.secondary)
+        }.frame(maxWidth: .infinity).padding(.vertical, 40)
+    }
+
+    @MainActor
+    private func load() async {
+        loading = true
+        defer { loading = false }
+        guard let lookup = item.marketLookup,
+              let raw = try? await KicksDBClient.fetchComparison(query: lookup.query, fallbackQuery: lookup.fallback) else {
+            comparison = nil
+            return
+        }
+        comparison = await HomeMarketTableBuilder.prepareDetailComparison(from: raw, query: lookup.query)
+        if let q = comparison?.platforms.first(where: { $0.platformKey == "stockx" && $0.productID != nil })
+            ?? comparison?.platforms.first(where: { $0.productID != nil }),
+           let pid = q.productID {
+            sales = await KicksDBClient.dailySales(platformKey: q.platformKey, productID: pid)
         }
     }
 }
@@ -752,7 +1180,9 @@ private struct DashboardTrendingSneakersSection: View {
 // MARK: - Market prices
 
 enum HomeMarketTableBuilder {
-    static let standardSizes = ["7", "7.5", "8"]
+    static let standardSizes = ["8", "9", "10"]
+    /// Tallas "normales" de adulto que priorizamos en el Home (evita tallas de niño tipo US 3-4).
+    static let preferredSizes = ["8", "9", "10", "11", "8.5", "9.5", "10.5", "12", "7", "7.5", "11.5", "13"]
     static let allShoeSizes: [String] = [
         "4", "4.5", "5", "5.5", "6", "6.5", "7", "7.5", "8", "8.5",
         "9", "9.5", "10", "10.5", "11", "11.5", "12", "13", "14", "15",
@@ -763,42 +1193,20 @@ enum HomeMarketTableBuilder {
         Array(buildHomeRows(from: comparison).prefix(maxRows))
     }
 
+    /// Tallas con precio REAL (no rellenamos toda la escala con estimaciones).
     static func resolvedAllSizes(from comparison: MarketComparison?) -> [String] {
-        let liveRows = comparison?.rows ?? []
-        var sizes = allShoeSizes
-        for row in liveRows {
-            let key = normalizeSizeKey(row.size)
-            guard !sizes.contains(where: { normalizeSizeKey($0) == key }) else { continue }
-            sizes.append(row.size)
-        }
-        return sizes.sorted { (numericSize($0) ?? 0) < (numericSize($1) ?? 0) }
+        (comparison?.rows ?? [])
+            .filter { !canonicalizeAsks($0.asks).isEmpty }
+            .map { normalizeSizeKey($0.size) }
+            .sorted { (numericSize($0) ?? 0) < (numericSize($1) ?? 0) }
     }
 
-    /// Todas las tallas US en la tabla (precio real o estimado por extrapolación).
+    /// Ficha de zapato: TODAS las tallas con precio real, sin inventar ni extrapolar.
     static func buildAllSizeRows(from comparison: MarketComparison?) -> [MarketSizeRow] {
-        let liveRows = comparison?.rows ?? []
-        let hasLive = liveRows.contains { !$0.asks.isEmpty }
-        let targetSizes = resolvedAllSizes(from: comparison)
-
-        if !hasLive {
-            return targetSizes.map { MarketSizeRow(size: $0, asks: completeAsks(demoAsks(for: $0))) }
-        }
-
-        return targetSizes.map { size in
-            let normalized = normalizeSizeKey(size)
-            let exact = liveRows.first { normalizeSizeKey($0.size) == normalized }
-            var asks = canonicalizeAsks(exact?.asks ?? [:])
-
-            if asks.isEmpty, let nearest = nearestRow(to: size, in: liveRows) {
-                let delta = (numericSize(size) ?? 0) - (numericSize(nearest.size) ?? 0)
-                asks = extrapolatedAsks(from: canonicalizeAsks(nearest.asks), halfSizeSteps: delta * 2)
-            } else if asks.isEmpty, let anchor = liveRows.max(by: { $0.asks.count < $1.asks.count }) {
-                let delta = (numericSize(size) ?? 0) - (numericSize(anchor.size) ?? 0)
-                asks = extrapolatedAsks(from: canonicalizeAsks(anchor.asks), halfSizeSteps: delta * 2)
-            }
-
-            return MarketSizeRow(size: size, asks: completeAsks(asks))
-        }
+        (comparison?.rows ?? [])
+            .map { MarketSizeRow(size: normalizeSizeKey($0.size), asks: canonicalizeAsks($0.asks)) }
+            .filter { !$0.asks.isEmpty }
+            .sorted { (numericSize($0.size) ?? 0) < (numericSize($1.size) ?? 0) }
     }
 
     /// Enriquece con eBay y devuelve todas las tallas (ficha de zapato).
@@ -815,30 +1223,39 @@ enum HomeMarketTableBuilder {
         )
     }
 
-    /// Construye filas del Home: precios reales cuando existen y estimados para plataformas/tallas faltantes.
+    /// SOLO precios reales de la API (StockX/GOAT/eBay). No se inventan precios ni se extrapolan
+    /// tallas: si la API no trae ese modelo/talla, la celda queda vacía → la tabla muestra "—".
+    /// Se devuelven únicamente las tallas que tienen al menos un precio real, ordenadas.
     static func buildHomeRows(from comparison: MarketComparison?) -> [MarketSizeRow] {
-        let liveRows = comparison?.rows ?? []
-        let hasLive = liveRows.contains { !$0.asks.isEmpty }
+        let real = (comparison?.rows ?? [])
+            .map { MarketSizeRow(size: normalizeSizeKey($0.size), asks: canonicalizeAsks($0.asks)) }
+            .filter { !$0.asks.isEmpty }
+        guard !real.isEmpty else { return [] }
 
-        if !hasLive {
-            return standardSizes.map { MarketSizeRow(size: $0, asks: completeAsks(demoAsks(for: $0))) }
+        let bySize = Dictionary(real.map { ($0.size, $0) }, uniquingKeysWith: { a, _ in a })
+        let cap = 6
+        var chosen: [MarketSizeRow] = []
+        var used = Set<String>()
+
+        // 1) Tallas normales de adulto primero (8, 9, 10, 11…).
+        for s in preferredSizes where chosen.count < cap {
+            if let r = bySize[s] { chosen.append(r); used.insert(s) }
         }
-
-        return standardSizes.map { size in
-            let normalized = normalizeSizeKey(size)
-            let exact = liveRows.first { normalizeSizeKey($0.size) == normalized }
-            var asks = canonicalizeAsks(exact?.asks ?? [:])
-
-            if asks.isEmpty, let nearest = nearestRow(to: size, in: liveRows) {
-                let delta = (numericSize(size) ?? 0) - (numericSize(nearest.size) ?? 0)
-                asks = extrapolatedAsks(from: canonicalizeAsks(nearest.asks), halfSizeSteps: delta * 2)
-            } else if asks.isEmpty, let anchor = liveRows.max(by: { $0.asks.count < $1.asks.count }) {
-                let delta = (numericSize(size) ?? 0) - (numericSize(anchor.size) ?? 0)
-                asks = extrapolatedAsks(from: canonicalizeAsks(anchor.asks), halfSizeSteps: delta * 2)
+        // 2) Si faltan, completa con otras tallas >= 7 (evita tallas de niño).
+        if chosen.count < cap {
+            for r in real
+                .filter({ !used.contains($0.size) && (numericSize($0.size) ?? 0) >= 7 })
+                .sorted(by: { (numericSize($0.size) ?? 0) < (numericSize($1.size) ?? 0) })
+            where chosen.count < cap {
+                chosen.append(r); used.insert(r.size)
             }
-
-            return MarketSizeRow(size: size, asks: completeAsks(asks))
         }
+        // 3) Último recurso: si el producto SOLO tiene tallas pequeñas, muestra esas.
+        if chosen.isEmpty {
+            chosen = real.sorted { (numericSize($0.size) ?? 0) < (numericSize($1.size) ?? 0) }
+        }
+
+        return chosen.sorted { (numericSize($0.size) ?? 0) < (numericSize($1.size) ?? 0) }
     }
 
     /// Enriquece la comparación con eBay por talla y deja filas listas para el Home.
@@ -862,33 +1279,37 @@ enum HomeMarketTableBuilder {
     ) async -> MarketComparison {
         guard EbayPriceService.isConfigured else { return comparison }
 
+        // eBay (Browse) encuentra muchos más listados buscando por NOMBRE del producto que por SKU.
+        // Usamos el título emparejado en StockX/GOAT; si no, la query original.
+        let matched = comparison.matchedTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ebayQuery = (matched?.isEmpty == false) ? matched! : query
+
+        // Una sola consulta a eBay (ya filtrada de basura: zapatos sueltos, tallas de niño…).
+        let listings = (try? await EbayPriceService.lowestListings(query: ebayQuery, limit: 50)) ?? []
+        guard !listings.isEmpty else { return comparison }
+
         var rowsBySize = Dictionary(uniqueKeysWithValues: comparison.rows.map {
             (normalizeSizeKey($0.size), $0)
         })
 
-        let ebaySizes = Set(
-            (includeStandardSizes ? standardSizes : allShoeSizes)
-                + comparison.rows.map { normalizeSizeKey($0.size) }
-        )
-
-        await withTaskGroup(of: (String, Double?).self) { group in
-            for size in ebaySizes {
-                group.addTask {
-                    let listing = try? await EbayPriceService.lowestListing(query: query, size: size)
-                    return (size, listing?.price)
-                }
+        _ = includeStandardSizes
+        for (sizeKey, row) in rowsBySize {
+            // Listados de eBay cuya talla detectada coincide con esta fila.
+            let sized = listings.filter {
+                guard let asp = $0.sizeAspect else { return false }
+                return normalizeSizeKey(asp) == sizeKey
             }
+            guard !sized.isEmpty else { continue }
 
-            for await (size, price) in group {
-                guard let price, price > 0 else { continue }
-                if let row = rowsBySize[size] {
-                    var asks = row.asks
-                    asks["eBay"] = price
-                    rowsBySize[size] = MarketSizeRow(size: row.size, asks: asks)
-                } else {
-                    rowsBySize[size] = MarketSizeRow(size: size, asks: ["eBay": price])
-                }
-            }
+            // Ancla de precio: el real de StockX/GOAT para esa talla. eBay solo se acepta dentro de
+            // una banda razonable → rechaza precios absurdos (modelo distinto, condición rara, etc.).
+            let anchor = [row.asks["StockX"], row.asks["GOAT"]].compactMap { $0 }.min()
+            let valid = anchor.map { a in sized.filter { $0.price >= a * 0.6 && $0.price <= a * 2.2 } } ?? sized
+            guard let best = valid.min(by: { $0.price < $1.price }) else { continue }
+
+            var asks = row.asks
+            asks["eBay"] = best.price
+            rowsBySize[sizeKey] = MarketSizeRow(size: row.size, asks: asks)
         }
 
         let rows = rowsBySize.values.sorted {
@@ -905,13 +1326,10 @@ enum HomeMarketTableBuilder {
         )
     }
 
-    /// Garantiza las 4 plataformas del Home en cada celda (real o estimado).
+    /// Real-only: NO rellena plataformas faltantes. Solo deja los precios reales (StockX/GOAT/eBay);
+    /// lo que no exista se queda fuera y la tabla lo pinta como "—".
     static func completeAsks(_ asks: [String: Double]) -> [String: Double] {
-        var result = fillMissingPlatforms(in: canonicalizeAsks(asks))
-        for platform in homePlatforms where result[platform] == nil || result[platform]! <= 0 {
-            result = fillMissingPlatforms(in: result)
-        }
-        return result
+        canonicalizeAsks(asks)
     }
 
     private static func nearestRow(to size: String, in rows: [MarketSizeRow]) -> MarketSizeRow? {
@@ -1023,11 +1441,28 @@ struct DashboardMarketPricesSection: View {
                     .minimumScaleFactor(0.85)
             }
 
-            HomeMarketPriceGridTable(
-                platforms: platforms,
-                rows: tableRows,
-                rowHeight: rowHeight
-            )
+            if tableRows.isEmpty {
+                VStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 20))
+                        .foregroundStyle(Color.black.opacity(0.25))
+                    Text("Sin precios reales para este modelo")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.6))
+                    Text("No se encontró en StockX, GOAT ni eBay con su SKU/nombre.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.black.opacity(0.4))
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 28)
+            } else {
+                HomeMarketPriceGridTable(
+                    platforms: platforms,
+                    rows: tableRows,
+                    rowHeight: rowHeight
+                )
+            }
 
             if showsViewFullTable {
                 Button(action: onViewFullTable) {
@@ -1326,4 +1761,280 @@ private var homeCardBackground: some View {
                 .strokeBorder(DashboardHomePalette.cardBorder, lineWidth: 1)
         }
         .shadow(color: DashboardHomePalette.cardShadow, radius: 14, x: 0, y: 4)
+}
+
+// MARK: - Portfolio P&L (coste vs valor de mercado real)
+
+/// Resumen financiero del inventario activo: cuánto invertiste, cuánto vale hoy y tu ganancia/pérdida.
+struct PortfolioStats {
+    var count: Int = 0
+    var pairsWithCost: Int = 0
+    var totalCost: Double = 0          // invertido (solo pares con coste)
+    var valueOfCosted: Double = 0      // valor mercado de esos mismos pares
+    var totalMarketValue: Double = 0   // valor mercado de TODO el stock activo
+    var estNetPayout: Double = 0       // payout estimado tras comisiones (~12%)
+    var realizedPL: Double = 0         // ganancia ya materializada (vendidos)
+    var soldCount: Int = 0
+
+    var unrealizedPL: Double { valueOfCosted - totalCost }
+    var unrealizedPct: Double? { totalCost > 0 ? (unrealizedPL / totalCost) * 100 : nil }
+
+    static func compute(_ items: [ClosetItem]) -> PortfolioStats {
+        var s = PortfolioStats()
+        for item in items where item.isActiveInStock {
+            s.count += 1
+            let value = item.stockValueUSD
+            s.totalMarketValue += value
+            s.estNetPayout += PlatformFees.net(price: value, platform: "stockx")
+            let cost = item.purchaseValueUSD
+            if cost > 0 {
+                s.pairsWithCost += 1
+                s.totalCost += cost
+                s.valueOfCosted += value
+            }
+        }
+        for item in items where item.isExplicitlySold {
+            let cost = item.purchaseValueUSD
+            let sell = item.effectiveSellValueUSD
+            if cost > 0, sell > 0 {
+                s.soldCount += 1
+                s.realizedPL += (sell - cost)
+            }
+        }
+        return s
+    }
+}
+
+enum PortfolioPalette {
+    static let green = Color(red: 0.11, green: 0.68, blue: 0.44)
+    static let red = Color(red: 0.86, green: 0.27, blue: 0.24)
+    static func money(_ v: Double) -> String { PieceMarketPrice.formatUSD(Int(v.rounded())) }
+    static func signed(_ v: Double) -> String {
+        let m = money(abs(v))
+        return v >= 0 ? "+\(m)" : "−\(m)"
+    }
+}
+
+struct DashboardPortfolioSection: View {
+    let items: [ClosetItem]
+    var onOpen: () -> Void = {}
+
+    private var stats: PortfolioStats { PortfolioStats.compute(items) }
+
+    var body: some View {
+        let s = stats
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Label("Mi portfolio", systemImage: "chart.pie.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(DashboardHomePalette.textPrimary)
+                    Spacer()
+                    Text("\(s.count) en stock")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DashboardHomePalette.labelMuted)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(DashboardHomePalette.labelMuted)
+                }
+
+                // Valor de mercado total
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Valor de mercado")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(DashboardHomePalette.labelMuted)
+                    Text(PortfolioPalette.money(s.totalMarketValue))
+                        .font(.system(size: 30, weight: .heavy, design: .rounded))
+                        .foregroundStyle(DashboardHomePalette.textPrimary)
+                }
+
+                // Fila de métricas
+                HStack(spacing: 10) {
+                    metric("Invertido", PortfolioPalette.money(s.totalCost), DashboardHomePalette.textPrimary)
+                    metric(
+                        "Ganancia no realizada",
+                        s.pairsWithCost > 0 ? PortfolioPalette.signed(s.unrealizedPL) : "—",
+                        s.unrealizedPL >= 0 ? PortfolioPalette.green : PortfolioPalette.red,
+                        badge: s.unrealizedPct.map { String(format: "%+.0f%%", $0) }
+                    )
+                }
+
+                Divider().opacity(0.5)
+
+                HStack {
+                    Image(systemName: "banknote.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DashboardHomePalette.labelMuted)
+                    Text("Payout neto estimado (tras comisiones)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(DashboardHomePalette.labelMuted)
+                    Spacer()
+                    Text(PortfolioPalette.money(s.estNetPayout))
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(DashboardHomePalette.textPrimary)
+                }
+            }
+            .padding(18)
+            .background(homeCardBackground)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func metric(_ title: String, _ value: String, _ color: Color, badge: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(DashboardHomePalette.labelMuted)
+                .lineLimit(1).minimumScaleFactor(0.8)
+            HStack(spacing: 5) {
+                Text(value)
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .foregroundStyle(color)
+                if let badge {
+                    Text(badge)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(color)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(Capsule().fill(color.opacity(0.12)))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct PortfolioDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    let items: [ClosetItem]
+
+    private var active: [ClosetItem] {
+        items.filter { $0.isActiveInStock }
+            .sorted { $0.projectedProfitUSD > $1.projectedProfitUSD }
+    }
+
+    var body: some View {
+        let s = PortfolioStats.compute(items)
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    summaryCard(s)
+                    if active.isEmpty {
+                        emptyState
+                    } else {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Por par")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(DashboardHomePalette.textPrimary)
+                            ForEach(active, id: \.id) { row($0) }
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .background(DashboardHomePalette.pageBG.ignoresSafeArea())
+            .navigationTitle("Portfolio")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button("Cerrar") { dismiss() } }
+            }
+        }
+        .preferredColorScheme(.light)
+    }
+
+    private func summaryCard(_ s: PortfolioStats) -> some View {
+        VStack(spacing: 14) {
+            VStack(spacing: 2) {
+                Text("Valor de mercado del inventario")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(DashboardHomePalette.labelMuted)
+                Text(PortfolioPalette.money(s.totalMarketValue))
+                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    .foregroundStyle(DashboardHomePalette.textPrimary)
+                if s.pairsWithCost > 0 {
+                    HStack(spacing: 6) {
+                        Text(PortfolioPalette.signed(s.unrealizedPL))
+                        if let pct = s.unrealizedPct { Text(String(format: "(%+.0f%%)", pct)) }
+                    }
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(s.unrealizedPL >= 0 ? PortfolioPalette.green : PortfolioPalette.red)
+                }
+            }
+            Divider()
+            HStack {
+                summaryStat("Invertido", PortfolioPalette.money(s.totalCost))
+                Divider().frame(height: 34)
+                summaryStat("Payout neto", PortfolioPalette.money(s.estNetPayout))
+                Divider().frame(height: 34)
+                summaryStat("Realizado", s.soldCount > 0 ? PortfolioPalette.signed(s.realizedPL) : "—",
+                            color: s.realizedPL >= 0 ? PortfolioPalette.green : PortfolioPalette.red)
+            }
+        }
+        .padding(18)
+        .background(homeCardBackground)
+    }
+
+    private func summaryStat(_ title: String, _ value: String, color: Color = DashboardHomePalette.textPrimary) -> some View {
+        VStack(spacing: 3) {
+            Text(title).font(.system(size: 10, weight: .medium)).foregroundStyle(DashboardHomePalette.labelMuted)
+            Text(value).font(.system(size: 15, weight: .bold, design: .rounded)).foregroundStyle(color)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "shippingbox")
+                .font(.system(size: 30)).foregroundStyle(DashboardHomePalette.labelMuted)
+            Text("Sin pares en stock")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(DashboardHomePalette.textPrimary)
+            Text("Añade el coste de compra a tus pares para ver tu ganancia.")
+                .font(.system(size: 12))
+                .foregroundStyle(DashboardHomePalette.labelMuted)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 30)
+    }
+
+    private func row(_ item: ClosetItem) -> some View {
+        let cost = item.purchaseValueUSD
+        let value = item.stockValueUSD
+        let hasPL = item.hasPricingForProfit
+        let pl = item.projectedProfitUSD
+        let color = pl >= 0 ? PortfolioPalette.green : PortfolioPalette.red
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.catalogDisplayName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(DashboardHomePalette.textPrimary)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    if let size = item.cardSizeLabel {
+                        Text(size).font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(DashboardHomePalette.labelMuted)
+                    }
+                    Text(cost > 0 ? "Coste \(PortfolioPalette.money(cost))" : "Sin coste")
+                        .font(.system(size: 10))
+                        .foregroundStyle(DashboardHomePalette.labelMuted)
+                    Text("· Vale \(PortfolioPalette.money(value))")
+                        .font(.system(size: 10))
+                        .foregroundStyle(DashboardHomePalette.labelMuted)
+                }
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(hasPL ? PortfolioPalette.signed(pl) : "—")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(hasPL ? color : DashboardHomePalette.labelMuted)
+                if hasPL, let pct = item.projectedProfitPercent {
+                    Text(String(format: "%+.0f%%", pct))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+            }
+        }
+        .padding(14)
+        .background(homeCardBackground)
+    }
 }
