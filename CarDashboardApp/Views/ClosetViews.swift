@@ -3690,6 +3690,11 @@ enum KicksDBClient {
     /// hacen que la API devuelva HTTP 500 (`search failed`), así que los quitamos.
     static func sanitizeQuery(_ q: String) -> String {
         var s = q
+        // Marca propia de la tienda que NO existe en StockX/GOAT y ensucia el emparejado.
+        let storeNoise = ["sneak peek luxury", "sneak peek lux", "sneakpeek", "sneak peek"]
+        for n in storeNoise {
+            s = s.replacingOccurrences(of: n, with: " ", options: [.caseInsensitive])
+        }
         s = s.replacingOccurrences(of: #"\([^)]*\)"#, with: " ", options: .regularExpression) // (Men's), (GS), (W)…
         s = s.replacingOccurrences(of: #"[’'`´]"#, with: "", options: .regularExpression)       // apóstrofes
         s = s.replacingOccurrences(of: #"[^A-Za-z0-9\s\-./]"#, with: " ", options: .regularExpression) // otros símbolos raros
@@ -3698,11 +3703,38 @@ enum KicksDBClient {
         return cleaned.isEmpty ? q.trimmingCharacters(in: .whitespacesAndNewlines) : cleaned
     }
 
-    /// Busca el primer hit en una plataforma concreta.
+    /// Palabras distintivas de la query (color/modelo), ignorando marcas y genéricos.
+    static func significantWords(_ query: String) -> [String] {
+        let stopwords: Set<String> = ["nike", "adidas", "jordan", "retro", "shoes", "size", "edition", "the", "and", "with", "air"]
+        return query.lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+            .filter { $0.count >= 4 && !stopwords.contains($0) && !$0.allSatisfy(\.isNumber) }
+    }
+
+    /// De varios resultados elige el que DE VERDAD coincide (no el primero a ciegas).
+    /// Si ninguno es relevante devuelve nil → la tabla muestra "—" en vez del precio de otro zapato.
+    static func bestMatch(_ hits: [ProductHit], to query: String) -> ProductHit? {
+        let relevant = hits.filter { hitIsRelevant($0, to: query) }
+        guard !relevant.isEmpty else { return nil }
+        let words = significantWords(query)
+        if words.isEmpty { return relevant.first }
+        func score(_ h: ProductHit) -> Int {
+            let t = ((h.title ?? "") + " " + (h.name ?? "") + " " + (h.slug ?? "")).lowercased()
+            return words.filter { t.contains($0) }.count
+        }
+        return relevant.max { score($0) < score($1) }
+    }
+
+    /// Busca y devuelve el MEJOR hit relevante (no solo el primero que devuelva la API).
     static func search(platform: Platform, query: String) async throws -> ProductHit? {
         let cleaned = sanitizeQuery(query)
-        let path = "/\(platform.rawValue)/products?query="
-        return try await getFirst(at: path + (cleaned.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""))
+        let encoded = cleaned.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let hits = try await getAll(at: "/\(platform.rawValue)/products?limit=20&query=" + encoded)
+        if hits.isEmpty { return nil }
+        // Si la query es un SKU o no tiene palabras distintivas, confiamos en el primero.
+        if significantWords(cleaned).isEmpty { return hits.first }
+        return bestMatch(hits, to: cleaned)
     }
 
     /// Para GOAT necesitamos llamar al endpoint de detalle (`/products/{slug}`)
@@ -3734,6 +3766,11 @@ enum KicksDBClient {
     }
 
     private static func getFirst(at path: String) async throws -> ProductHit? {
+        try await getAll(at: path).first
+    }
+
+    /// Devuelve TODOS los hits de una búsqueda (con reintentos), para poder elegir el correcto.
+    private static func getAll(at path: String) async throws -> [ProductHit] {
         guard let key = apiKey else {
             throw NSError(domain: "KicksDB", code: 401, userInfo: [
                 NSLocalizedDescriptionKey: "Falta KICKSDB_API_KEY"
@@ -3771,8 +3808,8 @@ enum KicksDBClient {
         guard http != nil else { throw URLError(.badServerResponse) }
 
         let envelope = try JSONDecoder().decode(SearchEnvelope.self, from: data)
-        let result = envelope.data?.first
-        if result == nil {
+        let result = envelope.data ?? []
+        if result.isEmpty {
             let body = String(data: data, encoding: .utf8) ?? ""
             print("[KicksDB] 200 OK pero sin data en \(path) · body: \(body.prefix(240))")
         }
