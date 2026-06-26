@@ -260,6 +260,8 @@ struct DashboardHomeScreen: View {
 
     @State private var showMarketComparator = false
     @State private var showPortfolio = false
+    @State private var showWatchlist = false
+    @ObservedObject private var watchlist = WatchlistStore.shared
 
     private var trending: [HomeSneakerHighlight] {
         HomeScreenDataBuilder.trendingHighlights(closet: closetItems, catalog: catalogProducts, limit: 4)
@@ -286,6 +288,24 @@ struct DashboardHomeScreen: View {
                 onOpen: { showPortfolio = true }
             )
 
+            if !watchlist.items.isEmpty {
+                Button { showWatchlist = true } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "star.fill").font(.system(size: 13)).foregroundStyle(.yellow)
+                        Text("Mi watchlist").font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(DashboardHomePalette.textPrimary)
+                        Spacer()
+                        Text("\(watchlist.items.count)").font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(DashboardHomePalette.labelMuted)
+                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(DashboardHomePalette.labelMuted)
+                    }
+                    .padding(14)
+                    .background(homeCardBackground)
+                }
+                .buttonStyle(.plain)
+            }
+
             DashboardMarketPricesSection(
                 comparison: marketComparison,
                 selectedProductName: selectedTrendingItem?.displayName,
@@ -307,6 +327,9 @@ struct DashboardHomeScreen: View {
         }
         .sheet(isPresented: $showPortfolio) {
             PortfolioDetailView(items: closetItems)
+        }
+        .sheet(isPresented: $showWatchlist) {
+            WatchlistView()
         }
         .onAppear {
             if selectedTrendingID == nil, let first = trending.first {
@@ -353,6 +376,7 @@ struct ShoeMarketDetailView: View {
     @State private var loading = true
     @State private var costText = ""
     @FocusState private var costFocused: Bool
+    @ObservedObject private var watchlist = WatchlistStore.shared
 
     private static let green = Color(red: 0.13, green: 0.55, blue: 0.30)
     private static let red = Color(red: 0.85, green: 0.25, blue: 0.25)
@@ -365,11 +389,11 @@ struct ShoeMarketDetailView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     header
                     if loading {
-                        ProgressView("Consultando el mercado…")
-                            .frame(maxWidth: .infinity).padding(.top, 40)
+                        loadingSkeleton
                     } else if let comp = comparison, !comp.rows.isEmpty {
                         bestOfferCard(comp)
                         sellerCard(comp)
+                        sellSuggestionCard(comp)
                         calculatorCard(comp)
                         if !sales.isEmpty { salesCard }
                         DashboardMarketPricesSection(
@@ -394,6 +418,16 @@ struct ShoeMarketDetailView: View {
             .navigationTitle("Detalle de precios")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if let q = item.marketLookup?.query {
+                        Button {
+                            watchlist.toggle(query: q, displayName: item.displayName)
+                        } label: {
+                            Image(systemName: watchlist.contains(q) ? "star.fill" : "star")
+                                .foregroundStyle(watchlist.contains(q) ? Color.yellow : Color.secondary)
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) { Button("Cerrar") { dismiss() } }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -497,6 +531,7 @@ struct ShoeMarketDetailView: View {
         return asks.min()
     }
 
+    @ViewBuilder
     private func sellerCard(_ comp: MarketComparison) -> some View {
         // Todas las plataformas venden al MISMO precio real de mercado; solo cambia la comisión.
         let market = realSellPrice(comp) ?? 0
@@ -567,6 +602,65 @@ struct ShoeMarketDetailView: View {
         .background(premiumCardBG)
     }
 
+    /// Plataforma donde el vendedor cobra más (mayor neto tras comisiones) a un precio dado.
+    private func bestPayout(_ price: Double, _ comp: MarketComparison) -> (platform: String, net: Double) {
+        let names = comp.platforms.map(\.platform)
+        let options = (names.isEmpty ? ["StockX", "GOAT"] : names)
+            .map { (p: $0, n: PlatformFees.net(price: price, platform: $0)) }
+        let best = options.max { $0.n < $1.n } ?? (p: "StockX", n: PlatformFees.net(price: price, platform: "StockX"))
+        return (best.p, best.n)
+    }
+
+    /// Sugerencia accionable de a qué precio LISTAR para vender — rápido (siendo el más barato)
+    /// o al valor de mercado real — con el neto que cobrarías en la mejor plataforma.
+    @ViewBuilder
+    private func sellSuggestionCard(_ comp: MarketComparison) -> some View {
+        let market = realSellPrice(comp) ?? 0
+        if market > 0 {
+            let lowestAsk = comp.bestBuyOverall?.price
+            let fastPrice = ((lowestAsk.map { $0 * 0.98 } ?? market * 0.97)).rounded()
+            let fast = bestPayout(fastPrice, comp)
+            let fair = bestPayout(market, comp)
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("SUGERENCIA DE PRECIO · PARA VENDER")
+                    .font(.system(size: 10, weight: .heavy)).tracking(0.6).foregroundStyle(.secondary)
+
+                suggestionRow(
+                    icon: "bolt.fill", tint: Color.orange,
+                    title: "Vender rápido", listPrice: fastPrice,
+                    detail: "sé el más barato · cobras \(Self.usd(fast.net)) en \(fast.platform)"
+                )
+                Divider().opacity(0.5)
+                suggestionRow(
+                    icon: "checkmark.seal.fill", tint: Self.green,
+                    title: "Precio de mercado", listPrice: market,
+                    detail: "valor real · cobras \(Self.usd(fair.net)) en \(fair.platform)"
+                )
+
+                Text("Listar por debajo del ask más bajo te pone primero en la búsqueda y vende antes.")
+                    .font(.system(size: 9)).foregroundStyle(.secondary.opacity(0.7))
+            }
+            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(premiumCardBG)
+        }
+    }
+
+    private func suggestionRow(icon: String, tint: Color, title: String, listPrice: Double, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon).font(.system(size: 16)).foregroundStyle(tint).frame(width: 22)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 14, weight: .bold)).foregroundStyle(Color.black)
+                Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(2)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 0) {
+                Text("Lista").font(.system(size: 9)).foregroundStyle(.secondary)
+                Text(Self.usd(listPrice)).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(Color.black)
+            }
+        }
+    }
+
     @ViewBuilder
     private func calculatorCard(_ comp: MarketComparison) -> some View {
         let cost = Double(costText.replacingOccurrences(of: ",", with: "."))
@@ -630,11 +724,34 @@ struct ShoeMarketDetailView: View {
 
     private var salesCard: some View {
         let vals = sales.map(\.avg)
+        // Tendencia: compara la media de la primera mitad con la de la segunda mitad del periodo.
+        let trendPct: Double = {
+            guard vals.count >= 4 else { return 0 }
+            let half = vals.count / 2
+            let firstAvg = vals.prefix(half).reduce(0, +) / Double(half)
+            let lastAvg = vals.suffix(half).reduce(0, +) / Double(vals.count - half)
+            return firstAvg > 0 ? (lastAvg - firstAvg) / firstAvg * 100 : 0
+        }()
+        let up = trendPct >= 0
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label("Historial de ventas", systemImage: "chart.line.uptrend.xyaxis").font(.system(size: 13, weight: .bold))
                 Spacer()
                 if let last = sales.last { Text(Self.usd(last.avg)).font(.system(size: 16, weight: .heavy, design: .rounded)).foregroundStyle(Self.green) }
+            }
+            if abs(trendPct) >= 1 {
+                HStack(spacing: 6) {
+                    Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("\(up ? "Tiende a subir" : "Tiende a bajar") · \(up ? "+" : "")\(String(format: "%.0f", trendPct))%")
+                        .font(.system(size: 11, weight: .semibold))
+                    Spacer()
+                    Text(up ? "buen momento para vender" : "buen momento para comprar")
+                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+                .foregroundStyle(up ? Self.green : Self.red)
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(RoundedRectangle(cornerRadius: 10).fill((up ? Self.green : Self.red).opacity(0.10)))
             }
             areaChart(vals).frame(height: 90)
             HStack {
@@ -686,6 +803,23 @@ struct ShoeMarketDetailView: View {
                 }
             }
         }
+    }
+
+    /// Skeleton de carga: tarjetas grises difuminadas mientras se consulta el mercado.
+    private var loadingSkeleton: some View {
+        VStack(spacing: 16) {
+            ForEach(0..<3, id: \.self) { _ in
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Cargando modelo del mercado").font(.system(size: 14, weight: .bold))
+                    Text("$000 · consultando precios reales").font(.system(size: 12))
+                    Text("$000 · $000 · $000 · $000").font(.system(size: 12))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(premiumCardBG)
+            }
+        }
+        .redacted(reason: .placeholder)
     }
 
     /// Fondo de tarjeta premium reutilizable (blanco + borde sutil + sombra con profundidad).
@@ -1361,7 +1495,17 @@ enum HomeMarketTableBuilder {
                 result[name] = min(result[name] ?? value, value)
             }
         }
-        return result
+        return dropPriceOutliers(result)
+    }
+
+    /// Descarta precios claramente irreales — p.ej. un emparejado erróneo a $1,772 cuando el resto
+    /// de plataformas están en ~$140. Solo actúa con 3+ precios para no eliminar datos válidos.
+    static func dropPriceOutliers(_ asks: [String: Double]) -> [String: Double] {
+        let values = asks.values.sorted()
+        guard values.count >= 3 else { return asks }
+        let median = values[values.count / 2]
+        guard median > 0 else { return asks }
+        return asks.filter { _, v in v <= median * 3.5 && v >= median / 3.5 }
     }
 
     static func fillMissingPlatforms(in asks: [String: Double]) -> [String: Double] {
@@ -1912,6 +2056,21 @@ struct PortfolioDetailView: View {
             .sorted { $0.projectedProfitUSD > $1.projectedProfitUSD }
     }
 
+    /// CSV del inventario activo para exportar/compartir (abrir en Excel/Sheets).
+    private var portfolioCSV: String {
+        var lines = ["Modelo,Talla,Coste,Valor de mercado,Ganancia,ROI%"]
+        for it in active {
+            let name = it.catalogDisplayName.replacingOccurrences(of: ",", with: " ")
+            let size = (it.cardSizeLabel ?? "").replacingOccurrences(of: ",", with: " ")
+            let cost = Int(it.purchaseValueUSD.rounded())
+            let value = Int(it.stockValueUSD.rounded())
+            let pl = Int(it.projectedProfitUSD.rounded())
+            let roi = it.projectedProfitPercent.map { String(format: "%.0f", $0) } ?? ""
+            lines.append("\(name),\(size),\(cost),\(value),\(pl),\(roi)")
+        }
+        return lines.joined(separator: "\n")
+    }
+
     var body: some View {
         let s = PortfolioStats.compute(items)
         NavigationStack {
@@ -1935,6 +2094,13 @@ struct PortfolioDetailView: View {
             .navigationTitle("Portfolio")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if !active.isEmpty {
+                        ShareLink(item: portfolioCSV) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) { Button("Cerrar") { dismiss() } }
             }
         }
@@ -2036,5 +2202,75 @@ struct PortfolioDetailView: View {
         }
         .padding(14)
         .background(homeCardBackground)
+    }
+}
+
+// MARK: - Watchlist (favoritos)
+
+struct WatchlistView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var store = WatchlistStore.shared
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if store.items.isEmpty {
+                    ContentUnavailableView(
+                        "Sin favoritos",
+                        systemImage: "star",
+                        description: Text("Añade modelos con la estrella ★ en la ficha de precios para seguir su precio aquí.")
+                    )
+                } else {
+                    List {
+                        ForEach(store.items) { WatchRow(item: $0) }
+                            .onDelete { idx in idx.map { store.items[$0] }.forEach(store.remove) }
+                    }
+                }
+            }
+            .navigationTitle("Watchlist")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { Button("Cerrar") { dismiss() } }
+            }
+        }
+        .preferredColorScheme(.light)
+    }
+}
+
+struct WatchRow: View {
+    let item: WatchItem
+    @State private var price: Double?
+    @State private var loading = true
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.displayName).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                Text(item.query).font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if loading {
+                ProgressView()
+            } else if let p = price {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(PieceMarketPrice.formatUSD(Int(p.rounded())))
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                    Text("mejor compra").font(.system(size: 9)).foregroundStyle(.secondary)
+                }
+            } else {
+                Text("—").foregroundStyle(.secondary)
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        loading = true
+        defer { loading = false }
+        if let comp = (try? await KicksDBClient.fetchComparison(query: item.query)) ?? nil,
+           let v = comp.bestBuyOverall?.price {
+            price = v
+        }
     }
 }

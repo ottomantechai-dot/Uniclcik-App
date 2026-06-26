@@ -62,7 +62,10 @@ struct DashboardView: View {
             .onChange(of: closetItems.count) { _, _ in scheduleHomeStatsRefresh() }
             .onChange(of: closetInventoryFingerprint) { _, _ in scheduleHomeStatsRefresh() }
             .onReceive(inventoryRefreshPublisher) { _ in scheduleHomeStatsRefresh() }
-            .task(id: "\(homeMarketLookupKey)|\(closetInventoryFingerprint)") {
+            // Solo recargamos la tabla de mercado cuando cambia el MODELO seleccionado,
+            // NO con cada cambio de inventario (eso reiniciaba el task y cancelaba la
+            // petición en curso → "Operación cancelada" en bucle y precios sin cargar).
+            .task(id: homeMarketLookupKey) {
                 await loadHomeMarketTable()
             }
     }
@@ -179,7 +182,8 @@ struct DashboardView: View {
 
         if let cached = Self.cachedMarketComparison(closetItems: closetItems) {
             homeMarketComparison = Self.homeReadyComparison(from: cached)
-        } else {
+        } else if !Task.isCancelled {
+            // Si se canceló, conservamos el último dato bueno en vez de dejar la tabla vacía.
             homeMarketComparison = nil
         }
     }

@@ -3747,15 +3747,28 @@ enum KicksDBClient {
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.timeoutInterval = 15
 
-        let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
-        guard (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            print("[KicksDB] HTTP \(http.statusCode) en \(path) · body: \(body.prefix(200))")
-            throw NSError(domain: "KicksDB", code: http.statusCode, userInfo: [
-                NSLocalizedDescriptionKey: "KicksDB HTTP \(http.statusCode) · \(body.prefix(120))"
+        // KicksDB devuelve 500/502/503 de forma intermitente. Reintentamos hasta 3 veces
+        // con backoff corto antes de rendirnos, para no dejar la tabla vacía por un fallo pasajero.
+        var data = Data()
+        var http: HTTPURLResponse?
+        for attempt in 0..<3 {
+            try Task.checkCancellation()
+            let (d, response) = try await URLSession.shared.data(for: req)
+            guard let h = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+            data = d; http = h
+            if (200..<300).contains(h.statusCode) { break }
+            let transient = [500, 502, 503, 504, 429].contains(h.statusCode)
+            if transient, attempt < 2 {
+                try? await Task.sleep(nanoseconds: UInt64((attempt + 1) * 400) * 1_000_000) // 0.4s, 0.8s
+                continue
+            }
+            let body = String(data: d, encoding: .utf8) ?? ""
+            print("[KicksDB] HTTP \(h.statusCode) en \(path) · body: \(body.prefix(200))")
+            throw NSError(domain: "KicksDB", code: h.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: "KicksDB HTTP \(h.statusCode) · \(body.prefix(120))"
             ])
         }
+        guard http != nil else { throw URLError(.badServerResponse) }
 
         let envelope = try JSONDecoder().decode(SearchEnvelope.self, from: data)
         let result = envelope.data?.first
@@ -5143,7 +5156,7 @@ enum EbayPriceService {
             "deliveryPostalCode:33101",                    // Miami — requerido por qualifiedPrograms
         ].joined(separator: ",")
         comps.queryItems = [
-            .init(name: "q", value: query),
+            .init(name: "q", value: KicksDBClient.sanitizeQuery(query)),
             .init(name: "limit", value: String(limit)),
             .init(name: "filter", value: filter),
             .init(name: "sort", value: "price"),
@@ -5307,6 +5320,44 @@ final class PriceAlertStore: ObservableObject {
         guard let i = alerts.firstIndex(where: { $0.id == a.id }) else { return }
         alerts[i] = a; save()
     }
+}
+
+// MARK: - Watchlist (favoritos para seguir su precio sin tenerlos en stock)
+
+struct WatchItem: Codable, Identifiable, Equatable {
+    var id: String { query.lowercased() }
+    var query: String
+    var displayName: String
+    var addedAt: Date = Date()
+}
+
+@MainActor
+final class WatchlistStore: ObservableObject {
+    static let shared = WatchlistStore()
+    @Published private(set) var items: [WatchItem] = []
+    private let key = "upsoled.watchlist.v1"
+
+    init() { load() }
+    func load() {
+        guard let d = UserDefaults.standard.data(forKey: key),
+              let arr = try? JSONDecoder().decode([WatchItem].self, from: d) else { return }
+        items = arr
+    }
+    private func save() {
+        if let d = try? JSONEncoder().encode(items) { UserDefaults.standard.set(d, forKey: key) }
+    }
+    func contains(_ query: String) -> Bool {
+        items.contains { $0.query.lowercased() == query.lowercased() }
+    }
+    func toggle(query: String, displayName: String) {
+        if let i = items.firstIndex(where: { $0.query.lowercased() == query.lowercased() }) {
+            items.remove(at: i)
+        } else {
+            items.insert(WatchItem(query: query, displayName: displayName), at: 0)
+        }
+        save()
+    }
+    func remove(_ item: WatchItem) { items.removeAll { $0.id == item.id }; save() }
 }
 
 enum PriceAlertNotifications {
