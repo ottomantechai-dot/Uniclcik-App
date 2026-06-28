@@ -594,6 +594,12 @@ struct DashboardMarketSizeTableSection: View {
     }
 
     private func sizeLabel(_ size: String) -> String {
-        size.uppercased().hasPrefix("US") ? size : "US \(size)"
+        let up = size.uppercased()
+        if up.hasPrefix("US") || up.hasPrefix("EU") || up.hasPrefix("UK") { return size }
+        // Tallas > 17 no existen en US (la US llega ~18): son europeas → etiquetar EU, no US.
+        if let n = Double(size.replacingOccurrences(of: ",", with: ".")), n >= 27 {
+            return "EU \(size)"
+        }
+        return "US \(size)"
     }
 }

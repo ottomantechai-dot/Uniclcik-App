@@ -312,6 +312,63 @@ actor GeminiService {
         )
     }
 
+    // MARK: - Identificar zapato por foto (escáner)
+
+    /// Identifica el sneaker de una foto y devuelve (modelo, SKU) para buscar su precio.
+    func identifySneaker(in image: UIImage) async throws -> (model: String, sku: String) {
+        guard !apiKey.isEmpty else { throw GeminiError.apiError("Falta GeminiAPIKey.") }
+        let bitmap = image.closetBitmapForVision()
+        guard let jpeg = bitmap.jpegData(compressionQuality: 0.9) else { throw GeminiError.encodingFailed }
+        let base64 = jpeg.base64EncodedString()
+
+        let prompt = """
+        You are a sneaker identification expert. Identify the EXACT sneaker in this photo.
+        - "model": brand + model + colorway (e.g. "Jordan 4 Retro Bred", "New Balance 990v3 Grey").
+        - "sku": the official style code if visible/known (e.g. DZ5485-612). Empty string if unsure.
+        Always give your single best guess for "model" even if you are not 100% certain.
+        """
+        let responseSchema: [String: Any] = [
+            "type": "OBJECT",
+            "properties": [
+                "model": ["type": "STRING"],
+                "sku": ["type": "STRING"],
+            ],
+            "required": ["model", "sku"],
+        ]
+        let body: [String: Any] = [
+            "contents": [[
+                "role": "user",
+                "parts": [
+                    ["inline_data": ["mime_type": "image/jpeg", "data": base64]],
+                    ["text": prompt],
+                ],
+            ]],
+            "generationConfig": [
+                "temperature": 0.2,
+                "responseMimeType": "application/json",
+                "responseSchema": responseSchema,
+            ],
+        ]
+        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(apiKey)")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
+            let bodyStr = String(data: data, encoding: .utf8) ?? ""
+            throw GeminiError.apiError(Self.humanGeminiHTTPError(statusCode: (response as? HTTPURLResponse)?.statusCode, body: bodyStr))
+        }
+        let jsonText = try Self.extractAllTextFromGeminiData(data)
+        guard let jsonData = jsonText.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+        else { throw GeminiError.parsingFailed }
+        let model = (root["model"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let sku = (root["sku"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return (model, sku)
+    }
+
     // MARK: - Prettify (imagen producto, fondo blanco)
 
     func prettify(cropRelativePath: String, category: String, itemName: String) async throws -> String {

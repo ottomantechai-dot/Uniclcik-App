@@ -40,9 +40,11 @@ struct HomeSneakerHighlight: Identifiable {
             if !sku.isEmpty, Self.isRealStyleCode(sku) {
                 return (sku, name.isEmpty ? (displayName.isEmpty ? nil : displayName) : name)
             }
-            let q = name.isEmpty ? displayName : name
+            // SKU no real (código interno tipo "SPL-HE-1"): buscamos por el NOMBRE del modelo,
+            // nunca por ese código falso (que confunde a KicksDB y trae el zapato equivocado).
+            let q = displayName.isEmpty ? name : displayName
             guard !q.isEmpty else { return nil }
-            return (q, nil)
+            return (q, displayName.isEmpty ? nil : (name.isEmpty || name == q ? nil : name))
         }
         if let product = catalogProduct {
             let sku = product.sku?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -261,6 +263,7 @@ struct DashboardHomeScreen: View {
     @State private var showMarketComparator = false
     @State private var showPortfolio = false
     @State private var showWatchlist = false
+    @State private var showSearch = false
     @ObservedObject private var watchlist = WatchlistStore.shared
 
     private var trending: [HomeSneakerHighlight] {
@@ -274,6 +277,28 @@ struct DashboardHomeScreen: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            // Buscador de cualquier zapato: precio real por talla en todas las plataformas.
+            Button { showSearch = true } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(DashboardHomePalette.accentBlue)
+                    Text("Buscar cualquier zapato y su precio")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(DashboardHomePalette.labelMuted)
+                    Spacer()
+                }
+                .padding(.horizontal, 14).padding(.vertical, 13)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.white)
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(DashboardHomePalette.cardBorder, lineWidth: 1))
+                        .shadow(color: DashboardHomePalette.cardShadow, radius: 8, x: 0, y: 3)
+                )
+            }
+            .buttonStyle(.plain)
+
             if !trending.isEmpty {
                 DashboardTrendingSneakersSection(
                     items: trending,
@@ -330,6 +355,9 @@ struct DashboardHomeScreen: View {
         }
         .sheet(isPresented: $showWatchlist) {
             WatchlistView()
+        }
+        .sheet(isPresented: $showSearch) {
+            MarketComparatorView()
         }
         .onAppear {
             if selectedTrendingID == nil, let first = trending.first {
@@ -455,13 +483,16 @@ struct ShoeMarketDetailView: View {
             if let sku = comparison?.matchedSKU {
                 Text("SKU \(sku)").font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(.white.opacity(0.6))
             }
-            if let last = sales.last {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(Self.usd(last.avg)).font(.system(size: 32, weight: .heavy, design: .rounded)).foregroundStyle(.white)
-                    Text("valor de mercado").font(.system(size: 11)).foregroundStyle(.white.opacity(0.65))
+            // Los DOS precios reales que de verdad importan, lado a lado (sin promedios que confunden).
+            HStack(alignment: .top, spacing: 28) {
+                if let ask = comparison?.bestBuyOverall {
+                    headerPrice(label: "ASK MÁS BAJO", value: Self.usd(ask.price), sub: "comprar ya · \(ask.platform)")
                 }
-                .padding(.top, 2)
+                if let last = sales.last {
+                    headerPrice(label: "ÚLTIMA VENTA", value: Self.usd(last.avg), sub: "venta real")
+                }
             }
+            .padding(.top, 4)
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -476,6 +507,15 @@ struct ShoeMarketDetailView: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: Color.black.opacity(0.18), radius: 18, x: 0, y: 10)
+    }
+
+    /// Columna de precio del header (texto claro sobre fondo oscuro).
+    private func headerPrice(label: String, value: String, sub: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label).font(.system(size: 9, weight: .heavy)).tracking(0.6).foregroundStyle(.white.opacity(0.55))
+            Text(value).font(.system(size: 28, weight: .heavy, design: .rounded)).foregroundStyle(.white)
+            Text(sub).font(.system(size: 10)).foregroundStyle(.white.opacity(0.6))
+        }
     }
 
     @ViewBuilder
@@ -1013,6 +1053,179 @@ enum HomeFeaturedDataBuilder {
     }
 }
 
+// MARK: - Precios reales de cartas Pokémon (pokemontcg.io: TCGplayer + Cardmarket)
+
+struct PokemonCardData: Identifiable {
+    let id: String
+    let name: String
+    let setName: String
+    let rarity: String
+    let tcgMarketUSD: Double?      // precio de mercado real TCGplayer
+    let cardmarketEUR: Double?     // tendencia real Cardmarket (EUR)
+    let changePercent: Double      // tendencia real (avg7 vs avg30 de Cardmarket)
+    let imageURL: URL?
+}
+
+enum PokemonTCGClient {
+    private struct Env: Decodable { let data: [Card] }
+    private struct Card: Decodable {
+        let id: String?
+        let name: String
+        let rarity: String?
+        let set: CardSet
+        let images: Imgs?
+        let tcgplayer: Tcg?
+        let cardmarket: Cm?
+    }
+    private struct CardSet: Decodable { let name: String }
+    private struct Imgs: Decodable { let small: String?; let large: String? }
+    private struct Tcg: Decodable { let prices: [String: Block]? }
+    private struct Block: Decodable { let market: Double? }
+    private struct Cm: Decodable { let prices: CmPrices? }
+    private struct CmPrices: Decodable {
+        let trendPrice: Double?; let averageSellPrice: Double?
+        let avg7: Double?; let avg30: Double?
+    }
+
+    /// Busca una carta y devuelve sus precios REALES (TCGplayer market + Cardmarket trend).
+    static func fetchCard(query: String) async -> PokemonCardData? {
+        guard var comps = URLComponents(string: "https://api.pokemontcg.io/v2/cards") else { return nil }
+        comps.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "pageSize", value: "1"),
+        ]
+        guard let url = comps.url else { print("[Pokemon] URL inválida"); return nil }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 15
+        let data: Data
+        do {
+            let (d, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { print("[Pokemon] sin HTTPURLResponse"); return nil }
+            guard (200..<300).contains(http.statusCode) else {
+                print("[Pokemon] HTTP \(http.statusCode) · \(String(data: d, encoding: .utf8)?.prefix(160) ?? "")")
+                return nil
+            }
+            data = d
+        } catch {
+            print("[Pokemon] error de red: \(error.localizedDescription)")
+            return nil
+        }
+        guard let env = try? JSONDecoder().decode(Env.self, from: data) else {
+            print("[Pokemon] fallo al decodificar JSON")
+            return nil
+        }
+        guard let c = env.data.first else { print("[Pokemon] sin resultados para: \(query)"); return nil }
+        print("[Pokemon] OK \(c.name)")
+        return map(c)
+    }
+
+    /// Trae VARIAS cartas reales (con precio de TCGplayer), ordenadas por precio descendente.
+    static func fetchCards(query: String, limit: Int = 16) async -> [PokemonCardData] {
+        guard var comps = URLComponents(string: "https://api.pokemontcg.io/v2/cards") else { return [] }
+        comps.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "pageSize", value: String(limit)),
+        ]
+        guard let url = comps.url else { return [] }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 15
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let env = try? JSONDecoder().decode(Env.self, from: data) else {
+            print("[Pokemon] fetchCards falló")
+            return []
+        }
+        let cards = env.data.map(map)
+            .filter { ($0.tcgMarketUSD ?? 0) > 0 }
+            .sorted { ($0.tcgMarketUSD ?? 0) > ($1.tcgMarketUSD ?? 0) }
+        print("[Pokemon] fetchCards: \(cards.count) cartas con precio")
+        return cards
+    }
+
+    private static func map(_ c: Card) -> PokemonCardData {
+        let market = (c.tcgplayer?.prices ?? [:]).values.compactMap(\.market).max()
+        let cm = c.cardmarket?.prices?.trendPrice ?? c.cardmarket?.prices?.averageSellPrice
+        var change = 0.0
+        if let a7 = c.cardmarket?.prices?.avg7, let a30 = c.cardmarket?.prices?.avg30, a30 > 0 {
+            change = (a7 - a30) / a30 * 100
+        }
+        return PokemonCardData(
+            id: c.id ?? UUID().uuidString,
+            name: c.name,
+            setName: c.set.name,
+            rarity: c.rarity ?? "",
+            tcgMarketUSD: market,
+            cardmarketEUR: cm,
+            changePercent: change,
+            imageURL: (c.images?.large ?? c.images?.small).flatMap { URL(string: $0) }
+        )
+    }
+}
+
+// MARK: - Carrusel de cartas Pokémon reales (precios TCGplayer en vivo)
+
+struct PokemonCardsStrip: View {
+    @State private var cards: [PokemonCardData] = []
+    @State private var loaded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "bolt.fill").font(.system(size: 13))
+                    .foregroundStyle(Color(red: 0.95, green: 0.78, blue: 0.12))
+                Text("POKÉMON · CARTAS")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(DashboardHomePalette.textPrimary)
+                Spacer()
+                HStack(spacing: 4) {
+                    Circle().fill(DashboardHomePalette.accentGreen).frame(width: 6, height: 6)
+                    Text("precios reales").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
+                }
+            }
+
+            if cards.isEmpty {
+                Text(loaded ? "No disponible ahora" : "Cargando cartas…")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 150)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(cards) { card in cardCell(card) }
+                    }
+                    .padding(.horizontal, 2)
+                }
+            }
+        }
+        .padding(16)
+        .background(homeCardBackground)
+        .task {
+            guard cards.isEmpty else { return }
+            cards = await PokemonTCGClient.fetchCards(query: "set.id:base1 rarity:\"Rare Holo\"", limit: 16)
+            loaded = true
+        }
+    }
+
+    private func cardCell(_ card: PokemonCardData) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let url = card.imageURL {
+                StockCachedRemoteImage(url: url)
+                    .frame(width: 96, height: 134)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            } else {
+                RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemBackground))
+                    .frame(width: 96, height: 134)
+            }
+            Text(card.name)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(DashboardHomePalette.textPrimary)
+                .lineLimit(1).frame(width: 96, alignment: .leading)
+            Text(PieceMarketPrice.formatUSD(Int((card.tcgMarketUSD ?? 0).rounded())))
+                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                .foregroundStyle(DashboardHomePalette.textPrimary)
+        }
+    }
+}
+
 private enum AccarLogoAssets {
     static let oddishGIFName = "3d-pokemon-card-oddish"
     static let imagesetFolder = "AccarLogo.imageset"
@@ -1033,38 +1246,18 @@ private struct DashboardHomeBottomGrid: View {
         HomeFeaturedDataBuilder.streetwearFeature(from: closetItems, catalog: catalogProducts)
     }
 
-    private var pokemon: HomeFeaturedProduct {
-        HomeFeaturedDataBuilder.pokemonFeature
-    }
-
     var body: some View {
-        Grid(horizontalSpacing: 10) {
-            GridRow(alignment: .top) {
-                DashboardHomeCategoryCard(
-                    icon: "bolt.fill",
-                    iconColor: Color(red: 0.95, green: 0.78, blue: 0.12),
-                    title: "POKÉMON",
-                    product: pokemon,
-                    actionColor: DashboardHomePalette.accentPurple,
-                    onViewAll: onViewStock
-                ) {
-                    GIFAnimatedView(
-                        resourceName: AccarLogoAssets.oddishGIFName,
-                        subdirectory: AccarLogoAssets.imagesetFolder,
-                        contentMode: .scaleAspectFit
-                    )
-                }
-
-                DashboardHomeCategoryCard(
-                    icon: "tshirt.fill",
-                    iconColor: DashboardHomePalette.accentGreen,
-                    title: "STREETWEAR & APPAREL",
-                    product: streetwear,
-                    actionColor: DashboardHomePalette.accentGreen,
-                    onViewAll: onViewStock
-                ) {
-                    streetwearImage(streetwear)
-                }
+        VStack(spacing: 16) {
+            PokemonCardsStrip()
+            DashboardHomeCategoryCard(
+                icon: "tshirt.fill",
+                iconColor: DashboardHomePalette.accentGreen,
+                title: "STREETWEAR & APPAREL",
+                product: streetwear,
+                actionColor: DashboardHomePalette.accentGreen,
+                onViewAll: onViewStock
+            ) {
+                streetwearImage(streetwear)
             }
         }
     }
@@ -1565,6 +1758,7 @@ struct DashboardMarketPricesSection: View {
 
     private let platforms = HomeMarketTableBuilder.homePlatforms
     private let rowHeight: CGFloat = 52
+    @State private var lastSale: Double?
 
     private var tableRows: [MarketSizeRow] {
         if let maxVisibleRows {
@@ -1583,6 +1777,10 @@ struct DashboardMarketPricesSection: View {
                     .foregroundStyle(DashboardHomePalette.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
+            }
+
+            if comparison?.bestBuyOverall != nil || lastSale != nil {
+                priceSummary
             }
 
             if tableRows.isEmpty {
@@ -1622,6 +1820,48 @@ struct DashboardMarketPricesSection: View {
         .padding(.top, 18)
         .padding(.bottom, 16)
         .background(homeCardBackground)
+        .task(id: comparison?.matchedSKU ?? comparison?.query ?? "") { await loadLastSale() }
+    }
+
+    /// Los dos precios reales que importan, lado a lado (sin promedios que confunden).
+    private var priceSummary: some View {
+        HStack(spacing: 0) {
+            if let ask = comparison?.bestBuyOverall {
+                summaryCol(label: "ASK MÁS BAJO",
+                           value: PieceMarketPrice.formatUSD(Int(ask.price.rounded())),
+                           sub: "comprar ya · \(ask.platform)",
+                           color: DashboardHomePalette.accentGreen)
+            }
+            if let ls = lastSale {
+                Divider().frame(height: 36)
+                summaryCol(label: "ÚLTIMA VENTA",
+                           value: PieceMarketPrice.formatUSD(Int(ls.rounded())),
+                           sub: "venta real",
+                           color: DashboardHomePalette.accentBlue)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func summaryCol(label: String, value: String, sub: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label).font(.system(size: 9, weight: .heavy)).tracking(0.5)
+                .foregroundStyle(DashboardHomePalette.labelMuted)
+            Text(value).font(.system(size: 22, weight: .heavy, design: .rounded))
+                .foregroundStyle(color)
+            Text(sub).font(.system(size: 9)).foregroundStyle(DashboardHomePalette.labelMuted).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Trae la última venta real (KicksDB) usando el productID del producto emparejado.
+    private func loadLastSale() async {
+        guard let comp = comparison,
+              let q = comp.platforms.first(where: { $0.platformKey == "stockx" && $0.productID != nil })
+                ?? comp.platforms.first(where: { $0.productID != nil }),
+              let pid = q.productID else { lastSale = nil; return }
+        let sales = await KicksDBClient.dailySales(platformKey: q.platformKey, productID: pid)
+        lastSale = sales.last?.avg
     }
 
     private var tableHeader: some View {
@@ -1801,6 +2041,10 @@ private struct HomeMarketPriceGridTable: View {
     private func sizeLabel(_ size: String) -> String {
         let normalized = HomeMarketTableBuilder.normalizeSizeKey(size)
         if normalized == "Avg" { return "Avg" }
+        // Tallas ≥ 27 no existen en US (la US llega ~18): son europeas → etiquetar EU.
+        if let n = Double(normalized.replacingOccurrences(of: ",", with: ".")), n >= 27 {
+            return "EU \(normalized)"
+        }
         return "US \(normalized)"
     }
 }
@@ -1919,9 +2163,18 @@ struct PortfolioStats {
     var estNetPayout: Double = 0       // payout estimado tras comisiones (~12%)
     var realizedPL: Double = 0         // ganancia ya materializada (vendidos)
     var soldCount: Int = 0
+    var soldRevenue: Double = 0        // ingresos brutos de lo vendido
+    var daysToSellSum: Int = 0
+    var daysToSellCount: Int = 0
 
     var unrealizedPL: Double { valueOfCosted - totalCost }
     var unrealizedPct: Double? { totalCost > 0 ? (unrealizedPL / totalCost) * 100 : nil }
+    var avgDaysToSell: Int? { daysToSellCount > 0 ? daysToSellSum / daysToSellCount : nil }
+    /// % de tu inventario (histórico) que se ha vendido.
+    var sellThroughPct: Double? {
+        let total = soldCount + count
+        return total > 0 ? Double(soldCount) / Double(total) * 100 : nil
+    }
 
     static func compute(_ items: [ClosetItem]) -> PortfolioStats {
         var s = PortfolioStats()
@@ -1940,6 +2193,13 @@ struct PortfolioStats {
         for item in items where item.isExplicitlySold {
             let cost = item.purchaseValueUSD
             let sell = item.effectiveSellValueUSD
+            if sell > 0 {
+                s.soldRevenue += sell
+                if let d = Calendar.current.dateComponents([.day], from: item.createdAt, to: item.soldOnDate).day, d >= 0 {
+                    s.daysToSellSum += d
+                    s.daysToSellCount += 1
+                }
+            }
             if cost > 0, sell > 0 {
                 s.soldCount += 1
                 s.realizedPL += (sell - cost)
@@ -2077,6 +2337,7 @@ struct PortfolioDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     summaryCard(s)
+                    if s.soldCount > 0 || s.soldRevenue > 0 { salesReportCard(s) }
                     if active.isEmpty {
                         emptyState
                     } else {
@@ -2145,6 +2406,35 @@ struct PortfolioDetailView: View {
             Text(value).font(.system(size: 15, weight: .bold, design: .rounded)).foregroundStyle(color)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// Reporte de ventas REALES (lo ya vendido): ingresos, beneficio, velocidad y sell-through.
+    private func salesReportCard(_ s: PortfolioStats) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("VENTAS (REALIZADO)")
+                .font(.system(size: 10, weight: .heavy)).tracking(0.6)
+                .foregroundStyle(DashboardHomePalette.labelMuted)
+            HStack {
+                summaryStat("Ingresos", PortfolioPalette.money(s.soldRevenue))
+                Divider().frame(height: 34)
+                summaryStat("Beneficio", PortfolioPalette.signed(s.realizedPL),
+                            color: s.realizedPL >= 0 ? PortfolioPalette.green : PortfolioPalette.red)
+                Divider().frame(height: 34)
+                summaryStat("Vendidos", "\(s.soldCount)")
+            }
+            Divider().opacity(0.5)
+            HStack {
+                summaryStat("Días para vender", s.avgDaysToSell.map { "\($0)d" } ?? "—")
+                Divider().frame(height: 34)
+                summaryStat("Sell-through", s.sellThroughPct.map { String(format: "%.0f%%", $0) } ?? "—")
+                Divider().frame(height: 34)
+                summaryStat("Margen medio",
+                            s.soldRevenue > 0 ? String(format: "%.0f%%", s.realizedPL / max(s.soldRevenue - s.realizedPL, 1) * 100) : "—",
+                            color: PortfolioPalette.green)
+            }
+        }
+        .padding(18)
+        .background(homeCardBackground)
     }
 
     private var emptyState: some View {

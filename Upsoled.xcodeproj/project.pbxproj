@@ -77,7 +77,6 @@
 		AA000073 /* DashboardLocationHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000074 /* DashboardLocationHub.swift */; };
 		AA000074 /* DashboardCommunityViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000075 /* DashboardCommunityViewModel.swift */; };
 		AA000075 /* DashboardHomeRevolutSections.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000076 /* DashboardHomeRevolutSections.swift */; };
-		AA000210 /* DashboardHomeScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000210 /* DashboardHomeScreen.swift */; };
 		AA000077 /* InvoiceHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000078 /* InvoiceHistoryStore.swift */; };
 		AA000078 /* DashboardHubScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000079 /* DashboardHubScreens.swift */; };
 		AA000080 /* TeamLocationMapViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000080 /* TeamLocationMapViews.swift */; };
@@ -88,7 +87,6 @@
 		AA000087 /* LoopingMutedBundledVideoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000087 /* LoopingMutedBundledVideoView.swift */; };
 		AA000088 /* AIBuddyFondo.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = AB000088 /* AIBuddyFondo.mp4 */; };
 		AA000089 /* AIAssistantOrb.gif in Resources */ = {isa = PBXBuildFile; fileRef = AB000089 /* AIAssistantOrb.gif */; };
-		AA000211 /* 3d-pokemon-card-oddish.gif in Resources */ = {isa = PBXBuildFile; fileRef = AB000211 /* 3d-pokemon-card-oddish.gif */; };
 		AA000091 /* TeamDirectMessagesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000091 /* TeamDirectMessagesService.swift */; };
 		AA000092 /* TeamGroupMessagesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000092 /* TeamGroupMessagesService.swift */; };
 		AA000093 /* AudioWaveformMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000093 /* AudioWaveformMonitor.swift */; };
@@ -128,6 +126,8 @@
 		AA000201 /* UpsoledProductsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000201 /* UpsoledProductsService.swift */; };
 		AA000202 /* UpsoledProductsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000202 /* UpsoledProductsViewModel.swift */; };
 		AA000203 /* UpsoledProductsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000203 /* UpsoledProductsView.swift */; };
+		AA000210 /* DashboardHomeScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000210 /* DashboardHomeScreen.swift */; };
+		AA000211 /* Assets.xcassets/AccarLogo.imageset/3d-pokemon-card-oddish.gif in Resources */ = {isa = PBXBuildFile; fileRef = AB000211 /* Assets.xcassets/AccarLogo.imageset/3d-pokemon-card-oddish.gif */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -203,7 +203,6 @@
 		AB000074 /* DashboardLocationHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardLocationHub.swift; sourceTree = "<group>"; };
 		AB000075 /* DashboardCommunityViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCommunityViewModel.swift; sourceTree = "<group>"; };
 		AB000076 /* DashboardHomeRevolutSections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHomeRevolutSections.swift; sourceTree = "<group>"; };
-		AB000210 /* DashboardHomeScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHomeScreen.swift; sourceTree = "<group>"; };
 		AB000078 /* InvoiceHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InvoiceHistoryStore.swift; sourceTree = "<group>"; };
 		AB000079 /* DashboardHubScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHubScreens.swift; sourceTree = "<group>"; };
 		AB000080 /* TeamLocationMapViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamLocationMapViews.swift; sourceTree = "<group>"; };
@@ -216,7 +215,6 @@
 		AB000087 /* LoopingMutedBundledVideoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoopingMutedBundledVideoView.swift; sourceTree = "<group>"; };
 		AB000088 /* AIBuddyFondo.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = AIBuddyFondo.mp4; sourceTree = "<group>"; };
 		AB000089 /* AIAssistantOrb.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = AIAssistantOrb.gif; sourceTree = "<group>"; };
-		AB000211 /* 3d-pokemon-card-oddish.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = "Assets.xcassets/AccarLogo.imageset/3d-pokemon-card-oddish.gif"; sourceTree = "<group>"; };
 		AB000091 /* TeamDirectMessagesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamDirectMessagesService.swift; sourceTree = "<group>"; };
 		AB000092 /* TeamGroupMessagesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamGroupMessagesService.swift; sourceTree = "<group>"; };
 		AB000093 /* AudioWaveformMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioWaveformMonitor.swift; sourceTree = "<group>"; };
@@ -256,6 +254,8 @@
 		AB000201 /* UpsoledProductsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpsoledProductsService.swift; sourceTree = "<group>"; };
 		AB000202 /* UpsoledProductsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpsoledProductsViewModel.swift; sourceTree = "<group>"; };
 		AB000203 /* UpsoledProductsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpsoledProductsView.swift; sourceTree = "<group>"; };
+		AB000210 /* DashboardHomeScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHomeScreen.swift; sourceTree = "<group>"; };
+		AB000211 /* Assets.xcassets/AccarLogo.imageset/3d-pokemon-card-oddish.gif */ = {isa = PBXFileReference; lastKnownFileType = image.gif; path = "Assets.xcassets/AccarLogo.imageset/3d-pokemon-card-oddish.gif"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -295,7 +295,7 @@
 				AD000010 /* Design */,
 				AD000008 /* Resources */,
 				AB000022 /* Assets.xcassets */,
-				AB000211 /* 3d-pokemon-card-oddish.gif */,
+				AB000211 /* Assets.xcassets/AccarLogo.imageset/3d-pokemon-card-oddish.gif */,
 			);
 			path = CarDashboardApp;
 			sourceTree = "<group>";
@@ -554,7 +554,7 @@
 				AA000123 /* video-portada.mp4 in Resources */,
 				AA000129 /* Vidos-zapatos.mp4 in Resources */,
 				AA000089 /* AIAssistantOrb.gif in Resources */,
-				AA000211 /* 3d-pokemon-card-oddish.gif in Resources */,
+				AA000211 /* Assets.xcassets/AccarLogo.imageset/3d-pokemon-card-oddish.gif in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -812,7 +812,7 @@
 				CODE_SIGN_ENTITLEMENTS = CarDashboardApp/CarDashboardApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 12;
 				DEVELOPMENT_TEAM = T6PX988URP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;
@@ -852,7 +852,7 @@
 				CODE_SIGN_ENTITLEMENTS = "CarDashboardApp/CarDashboardApp-Release.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 12;
 				DEVELOPMENT_TEAM = T6PX988URP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = CarDashboardApp/ExtraInfo.plist;

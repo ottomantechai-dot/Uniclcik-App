@@ -76,6 +76,31 @@ private struct ClosetDiskThumbnail: View {
 
 // MARK: - Cámara
 
+/// Picker para escanear un zapato: usa la cámara si está disponible; si no (simulador), la galería.
+struct SneakerCameraPicker: UIViewControllerRepresentable {
+    @Binding var image: UIImage?
+    @Environment(\.dismiss) private var dismiss
+
+    final class Delegate: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let parent: SneakerCameraPicker
+        init(_ parent: SneakerCameraPicker) { self.parent = parent }
+        func imagePickerController(_ _: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            parent.image = (info[.originalImage] as? UIImage)?.closetFlattenedOrientation()
+            parent.dismiss()
+        }
+        func imagePickerControllerDidCancel(_ _: UIImagePickerController) { parent.dismiss() }
+    }
+
+    func makeCoordinator() -> Delegate { Delegate(self) }
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = UIImagePickerController.isSourceTypeAvailable(.camera) ? .camera : .photoLibrary
+        picker.delegate = context.coordinator
+        return picker
+    }
+    func updateUIViewController(_ _: UIImagePickerController, context _: Context) {}
+}
+
 struct ClosetUIImagePickerBridge: UIViewControllerRepresentable {
     @Binding var image: UIImage?
     @Environment(\.dismiss) private var dismiss
@@ -3218,6 +3243,73 @@ extension PieceMarketPrice {
         ])
     }
 
+    /// Identifica un zapato O prenda de una foto con OpenAI (ChatGPT, gpt-4o visión).
+    /// `corrections` son ejemplos de correcciones previas del usuario para que la IA aprenda.
+    static func identifySneaker(in image: UIImage, corrections: String = "") async throws -> (model: String, sku: String) {
+        guard let key = resolvedAPIKey, key.hasPrefix("sk-") else {
+            throw NSError(domain: "OpenAI", code: 401, userInfo: [
+                NSLocalizedDescriptionKey: "Falta la API key de OpenAI. Añádela en Ajustes (API key) o en DeveloperSettings.local.xcconfig."
+            ])
+        }
+        // Reducimos la imagen para no enviar payloads enormes.
+        let maxSide: CGFloat = 1024
+        let scale = Swift.min(1, maxSide / Swift.max(image.size.width, image.size.height))
+        let target = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: target)
+        let resized = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: target)) }
+        guard let jpeg = resized.jpegData(compressionQuality: 0.7) else {
+            throw NSError(domain: "OpenAI", code: 400, userInfo: [NSLocalizedDescriptionKey: "No se pudo procesar la foto"])
+        }
+        let dataURL = "data:image/jpeg;base64," + jpeg.base64EncodedString()
+        var prompt = """
+        You are a world-class expert in sneakers AND streetwear/clothing identification (StockX/GOAT/Grailed level).
+        Identify the EXACT item in this photo. It can be a SNEAKER or a CLOTHING item (tee, hoodie, jacket, pants, etc.).
+        - For sneakers: "model" = brand + silhouette + colorway (e.g. "Nike Dunk Low Viotech"); "sku" = official style code if visible/known (e.g. DH6927-100), else "".
+        - For clothing: "model" = brand + item + colorway/collection (e.g. "Supreme Box Logo Hoodie Black FW23"); "sku" = "".
+        Look carefully at logos, shape, materials, colorway and any tags. Be confident and ALWAYS return your single best guess — never refuse or say "unknown".
+        Respond ONLY with JSON: {"model":"...","sku":"..."}.
+        """
+        if !corrections.isEmpty {
+            prompt += "\n\n" + corrections
+        }
+
+        let body: [String: Any] = [
+            "model": "gpt-4o",
+            "messages": [[
+                "role": "user",
+                "content": [
+                    ["type": "text", "text": prompt],
+                    ["type": "image_url", "image_url": ["url": dataURL]],
+                ],
+            ]],
+            "response_format": ["type": "json_object"],
+            "temperature": 0.2,
+            "max_tokens": 200,
+        ]
+        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 30
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
+            throw openAIError(statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1, data: data)
+        }
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = root["choices"] as? [[String: Any]],
+              let msg = choices.first?["message"] as? [String: Any],
+              let content = msg["content"] as? String,
+              let cdata = content.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: cdata) as? [String: Any]
+        else { throw NSError(domain: "OpenAI", code: 502, userInfo: [NSLocalizedDescriptionKey: "Respuesta no válida de OpenAI"]) }
+        let model = (obj["model"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let sku = (obj["sku"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return (model, sku)
+    }
+
     private static var priceInstructions: String {
         """
         You are a resale pricing analyst for sneakers and fashion. Search StockX, GOAT, and eBay \
@@ -3721,20 +3813,64 @@ enum KicksDBClient {
         if words.isEmpty { return relevant.first }
         func score(_ h: ProductHit) -> Int {
             let t = ((h.title ?? "") + " " + (h.name ?? "") + " " + (h.slug ?? "")).lowercased()
-            return words.filter { t.contains($0) }.count
+            var s = words.filter { t.contains($0) }.count * 2
+            // Penaliza variantes de niño (GS/PS/TD) para preferir la talla de hombre.
+            if t.range(of: #"\b(gs|ps|td|toddler|infant|youth|kids?)\b"#, options: .regularExpression) != nil { s -= 3 }
+            return s
         }
         return relevant.max { score($0) < score($1) }
     }
 
-    /// Busca y devuelve el MEJOR hit relevante (no solo el primero que devuelva la API).
-    static func search(platform: Platform, query: String) async throws -> ProductHit? {
-        let cleaned = sanitizeQuery(query)
-        let encoded = cleaned.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+    /// Quita palabras de relleno que confunden la búsqueda de KicksDB ("Air", "Retro", años).
+    /// Ej.: "Air Jordan 3 Retro Wolf Grey" → "Jordan 3 Wolf Grey" (que SÍ encuentra el producto).
+    static func simplifyQuery(_ q: String) -> String {
+        let filler: Set<String> = ["air", "retro", "og", "mid", "low", "high", "shoes"]
+        let words = q.split(separator: " ").map(String.init).filter { w in
+            if filler.contains(w.lowercased()) { return false }
+            if w.count == 4, let y = Int(w), y > 1980, y < 2035 { return false }
+            return true
+        }
+        let out = words.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        return out.isEmpty ? q : out
+    }
+
+    private static func searchOnce(platform: Platform, query: String) async throws -> ProductHit? {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let hits = try await getAll(at: "/\(platform.rawValue)/products?limit=20&query=" + encoded)
         if hits.isEmpty { return nil }
-        // Si la query es un SKU o no tiene palabras distintivas, confiamos en el primero.
-        if significantWords(cleaned).isEmpty { return hits.first }
-        return bestMatch(hits, to: cleaned)
+        if significantWords(query).isEmpty { return hits.first } // SKU o query genérica
+        return bestMatch(hits, to: query)
+    }
+
+    /// Busca el MEJOR hit relevante; si la query completa falla, reintenta simplificada.
+    static func search(platform: Platform, query: String) async throws -> ProductHit? {
+        let cleaned = sanitizeQuery(query)
+        if let hit = try await searchOnce(platform: platform, query: cleaned) { return hit }
+        let simplified = simplifyQuery(cleaned)
+        if simplified != cleaned, !simplified.isEmpty {
+            return try await searchOnce(platform: platform, query: simplified)
+        }
+        return nil
+    }
+
+    /// Sugerencias para autocompletar mientras se escribe (lista ligera de modelos que coinciden).
+    static func suggest(_ query: String, limit: Int = 6) async -> [ComparatorSuggestion] {
+        let cleaned = sanitizeQuery(query)
+        guard cleaned.count >= 2 else { return [] }
+        let encoded = cleaned.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let hits = (try? await getAll(at: "/stockx/products?limit=\(limit)&query=" + encoded)) ?? []
+        var seen = Set<String>()
+        return hits.compactMap { h in
+            let title = [h.displayName, h.title, h.name].compactMap { $0 }.first { !$0.isEmpty } ?? ""
+            guard !title.isEmpty, seen.insert(title.lowercased()).inserted else { return nil }
+            return ComparatorSuggestion(
+                id: h.id ?? h.slug ?? title,
+                title: title,
+                sku: h.resolvedSKU,
+                imageURL: h.image.flatMap { URL(string: $0) },
+                query: h.resolvedSKU ?? title
+            )
+        }
     }
 
     /// Para GOAT necesitamos llamar al endpoint de detalle (`/products/{slug}`)
@@ -4203,6 +4339,7 @@ struct MarketPlatformQuote: Identifiable {
     var platformKey: String = ""
     var slug: String?
     var productID: String?
+    var imageURL: URL?
     var id: String { platform }
 }
 
@@ -4251,6 +4388,8 @@ struct MarketComparison {
 
     var matchedTitle: String? { platforms.compactMap(\.matchedTitle).first }
     var matchedSKU: String? { platforms.compactMap(\.matchedSKU).first }
+    /// Imagen del producto (la primera plataforma que la traiga).
+    var imageURL: URL? { platforms.compactMap(\.imageURL).first }
 
     /// SKUs normalizados distintos detectados entre plataformas (para avisar de posible mismatch).
     var distinctSKUs: [String] {
@@ -4536,7 +4675,8 @@ extension KicksDBClient {
                 highestAsk: askValues.last ?? stats?.max,
                 platformKey: platform.rawValue,
                 slug: found.slug ?? found.id,
-                productID: found.id
+                productID: found.id,
+                imageURL: found.image.flatMap { URL(string: $0) }
             )
         } catch {
             print("[Comparador] \(platform.rawValue) error: \(error.localizedDescription)")
@@ -4546,6 +4686,43 @@ extension KicksDBClient {
 }
 
 // MARK: - Vista del comparador por talla
+
+struct ComparatorSuggestion: Identifiable {
+    let id: String
+    let title: String
+    let sku: String?
+    let imageURL: URL?
+    let query: String   // lo que se manda a comparar (SKU si existe, si no el nombre)
+}
+
+/// Esquinas tipo visor de escáner (4 marcas en L).
+private struct ScannerCorners: View {
+    var color: Color
+    var body: some View {
+        GeometryReader { geo in
+            let len: CGFloat = 30
+            let w = geo.size.width, h = geo.size.height
+            Path { p in
+                p.move(to: CGPoint(x: 0, y: len)); p.addLine(to: .zero); p.addLine(to: CGPoint(x: len, y: 0))
+                p.move(to: CGPoint(x: w - len, y: 0)); p.addLine(to: CGPoint(x: w, y: 0)); p.addLine(to: CGPoint(x: w, y: len))
+                p.move(to: CGPoint(x: w, y: h - len)); p.addLine(to: CGPoint(x: w, y: h)); p.addLine(to: CGPoint(x: w - len, y: h))
+                p.move(to: CGPoint(x: len, y: h)); p.addLine(to: CGPoint(x: 0, y: h)); p.addLine(to: CGPoint(x: 0, y: h - len))
+            }
+            .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+            .shadow(color: color.opacity(0.8), radius: 6)
+        }
+    }
+}
+
+/// Estilo de fila con feedback al pulsar (resalte + leve escala).
+private struct PressableRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? Color.black.opacity(0.05) : Color.clear)
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
 
 struct MarketComparatorView: View {
     @Environment(\.dismiss) private var dismiss
@@ -4567,6 +4744,22 @@ struct MarketComparatorView: View {
     // Sell / historial (KicksDB sales · Premium)
     @State private var sellPoints: [DailySalePoint] = []
     @State private var sellLoading = false
+    // Autocompletado mientras se escribe
+    @State private var suggestions: [ComparatorSuggestion] = []
+    @State private var suggestTask: Task<Void, Never>?
+    @State private var suppressSuggest = false
+    @State private var suggestLoading = false
+    @FocusState private var searchFocused: Bool
+    // Escáner de zapato por foto (Gemini Vision)
+    @State private var showScanner = false
+    @State private var scanImage: UIImage?
+    @State private var scanning = false
+    @State private var scanStatus = ""
+    @State private var scanLineDown = false
+    @State private var lastScanGuess = ""
+    @State private var showCorrection = false
+    @State private var correctionText = ""
+    @State private var showCorrections = false
 
     init(initialQuery: String = "", initialFallback: String? = nil, initialSizes: [String] = []) {
         self.initialFallback = initialFallback
@@ -4578,17 +4771,54 @@ struct MarketComparatorView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
-                    searchBar
-                    if isLoading {
-                        ProgressView("Consultando StockX y GOAT…")
-                            .padding(.top, 36)
-                    } else if let error = errorText {
-                        infoCard(error, system: "exclamationmark.triangle.fill", tint: .orange)
-                    } else if let comp = comparison {
-                        resultsSection(comp)
-                    } else {
-                        infoCard("Escribe un SKU (ej. DZ5485-100) o el nombre del modelo y pulsa Comparar.",
-                                 system: "magnifyingglass", tint: .secondary)
+                    VStack(spacing: 8) {
+                        searchBar
+                        if suggestLoading && suggestions.isEmpty {
+                            suggestionsSkeleton
+                                .transition(.opacity)
+                        } else if !suggestions.isEmpty {
+                            suggestionsList
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                    .animation(.easeOut(duration: 0.22), value: suggestions.count)
+                    .animation(.easeOut(duration: 0.2), value: suggestLoading)
+                    .onChange(of: queryText) { _, newValue in scheduleSuggest(newValue) }
+
+                    Group {
+                        if isLoading {
+                            ProgressView("Consultando StockX y GOAT…")
+                                .padding(.top, 36)
+                        } else if let error = errorText {
+                            infoCard(error, system: "exclamationmark.triangle.fill", tint: .orange)
+                        } else if let comp = comparison {
+                            resultsSection(comp)
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        } else {
+                            infoCard("Escribe un SKU (ej. DZ5485-100) o el nombre del modelo y pulsa Comparar.",
+                                     system: "magnifyingglass", tint: .secondary)
+                        }
+                    }
+                    .animation(.easeOut(duration: 0.25), value: comparison?.query)
+                    .animation(.easeOut(duration: 0.2), value: isLoading)
+
+                    if !lastScanGuess.isEmpty && comparison != nil && !scanning {
+                        Button {
+                            correctionText = ""
+                            showCorrection = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "xmark.circle")
+                                Text("No es este — corregir y enseñar a la IA")
+                            }
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .background(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.secondary.opacity(0.3), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.opacity)
                     }
                 }
                 .padding(16)
@@ -4607,10 +4837,17 @@ struct MarketComparatorView: View {
                         .accessibilityLabel("Crear alerta de precio")
                     }
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showCorrections = true } label: {
+                        Image(systemName: "brain.head.profile")
+                    }
+                    .accessibilityLabel("Lo que aprendió la IA")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Cerrar") { dismiss() }
                 }
             }
+            .sheet(isPresented: $showCorrections) { ScanCorrectionsView() }
             .sheet(isPresented: $showCreateAlert) {
                 if let comp = comparison {
                     CreatePriceAlertSheet(
@@ -4628,20 +4865,159 @@ struct MarketComparatorView: View {
                     await runSearch()
                 }
             }
+            .sheet(isPresented: $showScanner) {
+                SneakerCameraPicker(image: $scanImage).ignoresSafeArea()
+            }
+            .onChange(of: scanImage) { _, img in
+                guard img != nil else { return }
+                Task { await scanAndIdentify() }
+            }
+            .overlay { if scanning { scanOverlay } }
+            .alert("¿Cuál es el modelo correcto?", isPresented: $showCorrection) {
+                TextField("Ej. Nike Dunk Low Viotech", text: $correctionText)
+                    .textInputAutocapitalization(.words)
+                Button("Buscar y enseñar") { applyCorrection() }
+                Button("Cancelar", role: .cancel) {}
+            } message: {
+                Text("La IA guardará tu corrección y aprenderá para no repetir el error.")
+            }
         }
         .preferredColorScheme(.light)
+    }
+
+    /// Guarda la corrección (la IA aprende) y busca el modelo correcto.
+    private func applyCorrection() {
+        let right = correctionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !right.isEmpty else { return }
+        ScanCorrectionStore.shared.add(wrong: lastScanGuess, right: right)
+        lastScanGuess = ""
+        suppressSuggest = true
+        queryText = right
+        correctionText = ""
+        Task { await runSearch() }
+    }
+
+    /// Identifica el zapato de la foto con Gemini y lanza la búsqueda de precio.
+    @MainActor
+    private func scanAndIdentify() async {
+        guard let img = scanImage else { return }
+        scanning = true
+        scanLineDown = false
+        scanStatus = "Identificando el zapato…"
+        defer { scanning = false; scanImage = nil }
+        do {
+            let result = try await PieceMarketPrice.identifySneaker(in: img, corrections: ScanCorrectionStore.shared.promptHint)
+            let q = !result.sku.isEmpty && KicksDBClient.looksLikeSKU(result.sku) ? result.sku : result.model
+            guard !q.trimmingCharacters(in: .whitespaces).isEmpty else {
+                scanStatus = "No pude identificarlo"
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                return
+            }
+            lastScanGuess = result.model
+            scanStatus = "Encontrado: \(result.model)"
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            queryText = result.model.isEmpty ? q : result.model
+            suppressSuggest = true
+            await runSearch()
+        } catch {
+            scanStatus = "No se pudo identificar (\(error.localizedDescription))"
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+        }
+    }
+
+    /// Overlay con animación de escaneo mientras la IA identifica el zapato.
+    private var scanOverlay: some View {
+        let found = scanStatus.lowercased().hasPrefix("encontrado")
+        let failed = scanStatus.lowercased().hasPrefix("no ")
+        let accent: Color = failed ? .orange : .green
+        return ZStack {
+            Color.black.opacity(0.94).ignoresSafeArea()
+            VStack(spacing: 26) {
+                Text("ESCÁNER IA")
+                    .font(.system(size: 11, weight: .heavy)).tracking(2)
+                    .foregroundStyle(.white.opacity(0.45))
+
+                ZStack {
+                    if let img = scanImage {
+                        Image(uiImage: img)
+                            .resizable().scaledToFill()
+                            .frame(width: 260, height: 300)
+                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    }
+                    // Línea de escaneo (se oculta al terminar)
+                    if !found && !failed {
+                        Rectangle()
+                            .fill(LinearGradient(colors: [.clear, accent, .clear], startPoint: .leading, endPoint: .trailing))
+                            .frame(width: 260, height: 3)
+                            .shadow(color: accent, radius: 12)
+                            .offset(y: scanLineDown ? 148 : -148)
+                            .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: scanLineDown)
+                    }
+                    // Esquinas tipo visor de escáner
+                    ScannerCorners(color: accent)
+                        .frame(width: 278, height: 318)
+                        .opacity(scanLineDown ? 1 : 0.4)
+                        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: scanLineDown)
+                }
+                .frame(width: 260, height: 300)
+                .shadow(color: accent.opacity(0.45), radius: 26)
+
+                // Estado en píldora con check/spinner
+                HStack(spacing: 10) {
+                    if found {
+                        Image(systemName: "checkmark.circle.fill").font(.system(size: 16)).foregroundStyle(.green)
+                    } else if failed {
+                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 15)).foregroundStyle(.orange)
+                    } else {
+                        ProgressView().tint(.white)
+                    }
+                    Text(scanStatus.isEmpty ? "Identificando con IA…" : scanStatus)
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                        .multilineTextAlignment(.center).lineLimit(2)
+                }
+                .padding(.horizontal, 18).padding(.vertical, 12)
+                .background(Capsule().fill(.ultraThinMaterial))
+                .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 1))
+            }
+            .padding(32)
+        }
+        .transition(.opacity)
+        .onAppear { scanLineDown = true }
     }
 
     // MARK: Subvistas
 
     private var searchBar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(searchFocused ? Color.accentColor : .secondary)
             TextField("SKU o nombre del modelo", text: $queryText)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
+                .focused($searchFocused)
                 .onSubmit { Task { await runSearch() } }
+            if !queryText.isEmpty {
+                Button {
+                    queryText = ""
+                    suggestions = []
+                    suggestLoading = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .transition(.scale.combined(with: .opacity))
+            }
+            Button {
+                searchFocused = false
+                showScanner = true
+            } label: {
+                Image(systemName: "camera.viewfinder")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Escanear zapato")
             Button {
                 Task { await runSearch() }
             } label: {
@@ -4651,23 +5027,125 @@ struct MarketComparatorView: View {
             .disabled(queryText.trimmingCharacters(in: .whitespaces).isEmpty || isLoading)
         }
         .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(searchFocused ? Color.accentColor.opacity(0.55) : Color.clear, lineWidth: 1.5)
+                )
+        )
+        .animation(.easeOut(duration: 0.18), value: searchFocused)
+        .animation(.easeOut(duration: 0.18), value: queryText.isEmpty)
+    }
+
+    /// Lista de sugerencias (autocompletado) que aparece mientras escribes.
+    private var suggestionsList: some View {
+        VStack(spacing: 0) {
+            ForEach(suggestions) { s in
+                Button { pickSuggestion(s) } label: {
+                    HStack(spacing: 11) {
+                        StockCachedRemoteImage(url: s.imageURL)
+                            .frame(width: 44, height: 44)
+                            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white))
+                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .strokeBorder(Color.black.opacity(0.06), lineWidth: 1))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(s.title).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(.primary).lineLimit(1)
+                            if let sku = s.sku, !sku.isEmpty {
+                                Text(sku).font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer(minLength: 4)
+                        Image(systemName: "arrow.up.left")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.accentColor.opacity(0.7))
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 9)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PressableRowStyle())
+                if s.id != suggestions.last?.id { Divider().padding(.leading, 67) }
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.systemBackground))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.black.opacity(0.05), lineWidth: 1))
+                .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 5)
+        )
+    }
+
+    /// Pide sugerencias con un pequeño retardo (debounce) para no llamar a la API en cada letra.
+    private func scheduleSuggest(_ text: String) {
+        suggestTask?.cancel()
+        if suppressSuggest { suppressSuggest = false; suggestions = []; suggestLoading = false; return }
+        let q = text.trimmingCharacters(in: .whitespaces)
+        guard q.count >= 2 else { suggestions = []; suggestLoading = false; return }
+        suggestLoading = true
+        suggestTask = Task {
+            try? await Task.sleep(nanoseconds: 320_000_000)
+            guard !Task.isCancelled else { return }
+            let result = await KicksDBClient.suggest(q)
+            guard !Task.isCancelled else { return }
+            await MainActor.run { suggestions = result; suggestLoading = false }
+        }
+    }
+
+    /// Al tocar una sugerencia: rellena el campo y compara ese modelo exacto.
+    private func pickSuggestion(_ s: ComparatorSuggestion) {
+        suggestTask?.cancel()
+        searchFocused = false
+        suggestions = []
+        suggestLoading = false
+        suppressSuggest = true
+        queryText = s.query
+        Task { await runSearch() }
+    }
+
+    /// Skeleton mientras llegan las sugerencias.
+    private var suggestionsSkeleton: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<3, id: \.self) { i in
+                HStack(spacing: 10) {
+                    RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.06)).frame(width: 40, height: 40)
+                    VStack(alignment: .leading, spacing: 5) {
+                        RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.06)).frame(width: 160, height: 11)
+                        RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.04)).frame(width: 80, height: 9)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                if i < 2 { Divider().padding(.leading, 62) }
+            }
+        }
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.secondarySystemBackground)))
     }
 
     @ViewBuilder
     private func resultsSection(_ comp: MarketComparison) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(comp.matchedTitle ?? comp.query)
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(.primary)
-            if let sku = comp.matchedSKU {
-                Text("SKU \(sku)")
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+        HStack(alignment: .top, spacing: 12) {
+            if let img = comp.imageURL {
+                StockCachedRemoteImage(url: img)
+                    .frame(width: 88, height: 88)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(.secondarySystemBackground)))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(comp.matchedTitle ?? comp.query)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(.primary)
+                if let sku = comp.matchedSKU {
+                    Text("SKU \(sku)")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Text("\(comp.platforms.count) plataforma(s) · \(comp.sizes.count) tallas con stock · actualizado \(Self.freshness(comp.fetchedAt))")
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
-            Text("\(comp.platforms.count) plataforma(s) · \(comp.sizes.count) tallas con stock · actualizado \(Self.freshness(comp.fetchedAt))")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -5048,6 +5526,10 @@ struct MarketComparatorView: View {
     private func runSearch() async {
         let q = queryText.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return }
+        suggestTask?.cancel()
+        suggestions = []
+        suggestLoading = false
+        searchFocused = false
         isLoading = true
         errorText = nil
         defer { isLoading = false }
@@ -5235,6 +5717,49 @@ enum EbayPriceService {
         return listings.sorted { $0.price < $1.price }
     }
 
+    /// Filtra basura típica en cartas: proxys, reprints, códigos digitales, lotes, jumbo, custom…
+    static func isJunkCardTitle(_ title: String) -> Bool {
+        let t = " " + title.lowercased() + " "
+        let bad = ["proxy", "reprint", "custom", "jumbo", "oversized", "sticker", "metal card",
+                   "fake", "replica", "raffle", "break", "mystery", " lot ", "lot of", "playtest",
+                   "orica", "digital", "ptcgo", "online code", "code card", "not real", "repro"]
+        return bad.contains { t.contains($0) }
+    }
+
+    /// Precio representativo (mediana) de una CARTA en eBay. Filtra basura por título y acota a una
+    /// banda alrededor del precio de referencia (TCGplayer) para no contar $1 de proxys ni $9.999 de PSA10.
+    static func cardLowestPrice(query: String, keyword: String? = nil, anchor: Double? = nil) async -> Double? {
+        guard let token = try? await accessToken() else { return nil }
+        guard var comps = URLComponents(string: browseURL) else { return nil }
+        comps.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "limit", value: "50"),
+            URLQueryItem(name: "filter", value: "deliveryCountry:US,priceCurrency:USD"),
+            URLQueryItem(name: "sort", value: "price"),
+        ]
+        guard let url = comps.url else { return nil }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("EBAY_US", forHTTPHeaderField: "X-EBAY-C-MARKETPLACE-ID")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.timeoutInterval = 15
+        guard let (data, response) = try? await URLSession.shared.data(for: req),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let decoded = try? JSONDecoder().decode(SearchResponse.self, from: data) else { return nil }
+        var prices: [Double] = []
+        for s in decoded.itemSummaries ?? [] {
+            guard let v = Double(s.price?.value ?? ""), v >= 5 else { continue }
+            let title = (s.title ?? "").lowercased()
+            if let kw = keyword?.lowercased(), !kw.isEmpty, !title.contains(kw) { continue }
+            if isJunkCardTitle(title) { continue }
+            if let a = anchor, a > 0, (v < a * 0.25 || v > a * 4) { continue } // banda en torno al precio real
+            prices.append(v)
+        }
+        guard !prices.isEmpty else { return nil }
+        prices.sort()
+        return prices[prices.count / 2] // mediana
+    }
+
     /// Filtra listados de eBay que NO son el sneaker de adulto completo: zapatos sueltos,
     /// tallas de niño/bebé (TD/PS/GS/Y/youth/toddler/kids), reemplazos, cajas vacías, displays.
     static func isJunkTitle(_ title: String) -> Bool {
@@ -5395,6 +5920,99 @@ final class WatchlistStore: ObservableObject {
         save()
     }
     func remove(_ item: WatchItem) { items.removeAll { $0.id == item.id }; save() }
+}
+
+// MARK: - Correcciones del escáner (la IA aprende de tus "no es este")
+
+struct ScanCorrection: Codable, Identifiable {
+    var id = UUID()
+    var wrong: String
+    var right: String
+    var date: Date = Date()
+}
+
+@MainActor
+final class ScanCorrectionStore: ObservableObject {
+    static let shared = ScanCorrectionStore()
+    @Published private(set) var items: [ScanCorrection] = []
+    private let key = "upsoled.scanCorrections.v1"
+
+    init() { load() }
+    func load() {
+        guard let d = UserDefaults.standard.data(forKey: key),
+              let a = try? JSONDecoder().decode([ScanCorrection].self, from: d) else { return }
+        items = a
+    }
+    private func save() {
+        if let d = try? JSONEncoder().encode(items) { UserDefaults.standard.set(d, forKey: key) }
+    }
+    func add(wrong: String, right: String) {
+        let r = right.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !r.isEmpty, r.lowercased() != wrong.lowercased() else { return }
+        items.insert(ScanCorrection(wrong: wrong, right: r), at: 0)
+        if items.count > 40 { items = Array(items.prefix(40)) }
+        save()
+    }
+    func remove(_ c: ScanCorrection) { items.removeAll { $0.id == c.id }; save() }
+    func clearAll() { items.removeAll(); save() }
+    /// Texto que se inyecta al prompt para que la IA no repita errores pasados.
+    var promptHint: String {
+        let recent = items.prefix(8)
+        guard !recent.isEmpty else { return "" }
+        return "Learn from these past user corrections (do NOT repeat these mistakes):\n"
+            + recent.map { "- An item you might call '\($0.wrong)' was actually '\($0.right)'." }.joined(separator: "\n")
+    }
+}
+
+/// Pantalla "Lo que aprendió la IA": ver y borrar las correcciones del escáner.
+struct ScanCorrectionsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var store = ScanCorrectionStore.shared
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if store.items.isEmpty {
+                    ContentUnavailableView(
+                        "Sin correcciones",
+                        systemImage: "brain.head.profile",
+                        description: Text("Cuando uses «No es este» al escanear, lo que le enseñes a la IA aparecerá aquí.")
+                    )
+                } else {
+                    List {
+                        Section {
+                            ForEach(store.items) { c in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 11)).foregroundStyle(.green)
+                                        Text(c.right).font(.system(size: 14, weight: .semibold))
+                                    }
+                                    Text("La IA decía: \(c.wrong)")
+                                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                            .onDelete { idx in idx.map { store.items[$0] }.forEach(store.remove) }
+                        } footer: {
+                            Text("La IA usa estas correcciones para no repetir errores al escanear.")
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Lo que aprendió la IA")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Button("Cerrar") { dismiss() } }
+                if !store.items.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Borrar todo", role: .destructive) { store.clearAll() }
+                    }
+                }
+            }
+        }
+        .preferredColorScheme(.light)
+    }
 }
 
 enum PriceAlertNotifications {
