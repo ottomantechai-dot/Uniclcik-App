@@ -237,7 +237,7 @@ struct FaceSetupView: View {
             return
         }
 
-        var p = current
+        let p = current
         let flat = FaceImageCropHelper.flattenOrientation(image)
         let cropped = FaceImageCropHelper.croppedSquare(for: flat, scale: 1.65)
         guard let jpeg = cropped.jpegData(compressionQuality: 0.9) else { return }

@@ -879,8 +879,7 @@ struct ChatConversationView: View {
 
     /// ~mitad de pantalla: el texto hace scroll dentro si supera este alto.
     private var composerTextScrollMaxHeight: CGFloat {
-        let h = UIScreen.main.bounds.height
-        return max(120, h * 0.42)
+        max(120, 360)
     }
 
     private var messageInputBar: some View {
@@ -1017,11 +1016,7 @@ struct ChatConversationView: View {
     }
 
     private func requestMicPermissionForChat() async -> Bool {
-        await withCheckedContinuation { cont in
-            AVAudioSession.sharedInstance().requestRecordPermission { ok in
-                cont.resume(returning: ok)
-            }
-        }
+        await AVAudioApplication.requestRecordPermission()
     }
 
     private func mergeDictationIntoDraft(_ captured: String) {
@@ -2021,7 +2016,7 @@ private final class ComposerSizingTextView: UITextView {
 
     private var widthForFitting: CGFloat {
         if bounds.width > 2 { return bounds.width }
-        return max(120, UIScreen.main.bounds.width - 100)
+        return 320
     }
 
     override var intrinsicContentSize: CGSize {

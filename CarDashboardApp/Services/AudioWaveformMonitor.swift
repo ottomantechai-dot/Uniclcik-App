@@ -95,7 +95,7 @@ final class AudioWaveformMonitor: ObservableObject {
 
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetoothHFP])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
             await MainActor.run { lastError = .sessionSetupFailed(error) }
@@ -231,14 +231,7 @@ final class AudioWaveformMonitor: ObservableObject {
     }
 
     private static func requestRecordPermission() async -> Bool {
-        if #available(iOS 17.0, *) {
-            return await AVAudioApplication.requestRecordPermission()
-        }
-        await withCheckedContinuation { cont in
-            AVAudioSession.sharedInstance().requestRecordPermission { ok in
-                cont.resume(returning: ok)
-            }
-        }
+        await AVAudioApplication.requestRecordPermission()
     }
 
     private func resetProcessingStateLocked() {

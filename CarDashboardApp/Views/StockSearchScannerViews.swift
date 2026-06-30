@@ -496,13 +496,6 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
 
     private var trendUp: Bool { sparkBundle.isUp }
 
-    private var trendPercent: Double {
-        StockMarketRowMetrics.trendPercent(
-            from: marketPrice,
-            platform: StockMarketRowMetrics.resolvedPlatform(from: marketPrice, preferred: preferredPlatform)
-        )
-    }
-
     private var deltaUSD: Double {
         StockMarketRowMetrics.deltaUSD(
             from: marketPrice,
@@ -535,13 +528,15 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(alignment: .center, spacing: 10) {
+            HStack(alignment: .center, spacing: 6) {
                 thumbnailBlock
                 productInfoBlock
-                sparklineBlock
+                Spacer(minLength: 4)
                 priceBlock
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, 2)
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 if selectionMode && isSelected {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -562,13 +557,10 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
 
     private var thumbnailBlock: some View {
         ZStack(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white)
-                .frame(width: 76, height: 76)
-                .overlay {
-                    image()
-                        .frame(width: 64, height: 64)
-                }
+            image()
+                .frame(width: 58, height: 58)
+                .background(Color.white)
+                .clipped()
 
             if showProfitBadge, !selectionMode {
                 StockProfitCornerBadge(
@@ -576,29 +568,29 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
                     pctLabel: profitPct,
                     isLoss: isLoss
                 )
-                .scaleEffect(0.72)
-                .offset(x: 6, y: -6)
+                .scaleEffect(0.62)
+                .offset(x: 2, y: -2)
             }
 
             if selectionMode {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(isSelected ? Color.black : Color.black.opacity(0.25))
                     .background(Circle().fill(Color.white))
-                    .offset(x: 6, y: -6)
+                    .offset(x: 2, y: -2)
             }
         }
     }
 
     private var productInfoBlock: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 1) {
             Text(brandLine)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Color.black.opacity(0.48))
                 .lineLimit(1)
 
             Text(nameLine)
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(Color.black.opacity(0.92))
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
@@ -606,54 +598,18 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
 
             if let sizeLabel {
                 Text("Size \(sizeLabel)")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.42))
                     .lineLimit(1)
             }
         }
-        .frame(width: 108, alignment: .leading)
-    }
-
-    private var sparklineBlock: some View {
-        ZStack(alignment: .bottomTrailing) {
-            PriceTrendSparkline(points: sparkPoints, isUp: trendUp)
-                .frame(height: 54)
-
-            trendBadge
-                .offset(x: 2, y: 2)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var trendBadge: some View {
-        let pct: Double = {
-            if sparkPoints.count >= 2, let first = sparkPoints.first, first > 0, let last = sparkPoints.last {
-                return ((last - first) / first) * 100
-            }
-            return trendPercent
-        }()
-        let up = pct >= 0
-        let tint = up
-            ? Color(red: 0.20, green: 0.70, blue: 0.45)
-            : Color(red: 0.92, green: 0.30, blue: 0.30)
-
-        return HStack(spacing: 2) {
-            Image(systemName: up ? "arrow.up.right" : "arrow.down.right")
-                .font(.system(size: 7, weight: .heavy))
-            Text(String(format: "%@%.0f%%", up ? "+" : "", abs(pct)))
-                .font(.system(size: 9, weight: .heavy, design: .rounded))
-        }
-        .foregroundStyle(tint)
-        .padding(.horizontal, 5)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(Color.white.opacity(0.92)))
-        .overlay(Capsule().strokeBorder(tint.opacity(0.25), lineWidth: 0.8))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var priceBlock: some View {
-        VStack(alignment: .trailing, spacing: 4) {
+        VStack(alignment: .trailing, spacing: 2) {
             if !displayPlatforms.isEmpty {
-                VStack(alignment: .trailing, spacing: 4) {
+                VStack(alignment: .trailing, spacing: 2) {
                     ForEach(displayPlatforms.prefix(2)) { platform in
                         StockRowPlatformChip(
                             platform: platform,
@@ -668,24 +624,24 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
                 }
 
                 Text("Market price")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.40))
 
                 if sparkPoints.count >= 2 {
                     deltaLabel
                 }
             } else if let platform {
-                PlatformBrandBadge(name: platform.name, color: platform.color, size: 24)
+                PlatformBrandBadge(name: platform.name, color: platform.color, size: 20)
 
                 if displayPriceUSD > 0 {
                     Text(PieceMarketPrice.formatUSD(displayPriceUSD))
-                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .font(.system(size: 14, weight: .heavy, design: .rounded))
                         .foregroundStyle(Color.black.opacity(0.92))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
 
                     Text("Current price")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.system(size: 8, weight: .medium))
                         .foregroundStyle(Color.black.opacity(0.40))
 
                     if sparkPoints.count >= 2 {
@@ -694,13 +650,13 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
                 }
             } else if displayPriceUSD > 0 || stockValueUSD > 0 || askingUSD > 0 {
                 Text(PieceMarketPrice.formatUSD(Int((stockValueUSD > 0 ? stockValueUSD : askingUSD).rounded())))
-                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.black.opacity(0.92))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
 
                 Text(marketPrice == nil ? "Estimated value" : "Current price")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.40))
 
                 if sparkPoints.count >= 2 {
@@ -708,21 +664,21 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
                 }
             } else if let fallbackPrice {
                 Text(fallbackPrice)
-                    .font(.system(size: 16, weight: .heavy, design: .rounded))
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.black.opacity(0.92))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
 
                 Text("Your price")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.system(size: 8, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.40))
             } else {
                 Text("—")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Color.black.opacity(0.35))
             }
         }
-        .frame(minWidth: 96, maxWidth: 118, alignment: .trailing)
+        .frame(minWidth: 82, maxWidth: 98, alignment: .trailing)
     }
 
     private var deltaLabel: some View {
@@ -735,9 +691,9 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
             Image(systemName: trendUp ? "arrow.up" : "arrow.down")
                 .font(.system(size: 8, weight: .heavy))
             Text("\(trendUp ? "+" : "−")\(PieceMarketPrice.formatUSD(amount))")
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .font(.system(size: 8, weight: .semibold, design: .rounded))
             Text("(24h)")
-                .font(.system(size: 8, weight: .medium))
+                .font(.system(size: 7, weight: .medium))
         }
         .foregroundStyle(tint)
         .lineLimit(1)

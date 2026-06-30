@@ -72,43 +72,41 @@ struct LoginView: View {
     // MARK: - Fondo
 
     private var authBackground: some View {
-        ZStack {
-            GeometryReader { geo in
+        GeometryReader { geo in
+            ZStack {
                 Image("FondoLogin")
                     .resizable()
                     .scaledToFill()
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
+
+                // Degradado suave arriba (titular) y abajo (botones).
+                VStack(spacing: 0) {
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.88),
+                            Color.white.opacity(0.35),
+                            Color.clear,
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: min(geo.size.height * 0.32, 280))
+
+                    Spacer(minLength: 0)
+
+                    LinearGradient(
+                        colors: [
+                            Color.clear,
+                            Color.white.opacity(0.55),
+                            Color.white.opacity(0.92),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: min(geo.size.height * 0.42, 380))
+                }
             }
-            .ignoresSafeArea()
-
-            // Degradado suave arriba (titular) y abajo (botones).
-            VStack(spacing: 0) {
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.88),
-                        Color.white.opacity(0.35),
-                        Color.clear,
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: min(UIScreen.main.bounds.height * 0.32, 280))
-
-                Spacer(minLength: 0)
-
-                LinearGradient(
-                    colors: [
-                        Color.clear,
-                        Color.white.opacity(0.55),
-                        Color.white.opacity(0.92),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: min(UIScreen.main.bounds.height * 0.42, 380))
-            }
-            .ignoresSafeArea()
         }
         .ignoresSafeArea()
     }

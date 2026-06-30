@@ -186,6 +186,9 @@ struct ClosetView: View {
     @AppStorage("stockLayoutMode") private var stockLayoutModeRaw = StockLayoutMode.grid.rawValue
     @State private var scanLookupPayload: StockScanLookupPayload?
     @State private var scanLookupBusy = false
+    @State private var stockVisibleItemCount = 15
+
+    private static let stockPageSize = 15
 
     private var stockLayoutModeBinding: Binding<StockLayoutMode> {
         Binding(
@@ -288,6 +291,59 @@ struct ClosetView: View {
                 catalogProducts: catalog
             )
         }
+    }
+
+    private var totalFilteredStockItemCount: Int {
+        filteredUnifiedStockSections.reduce(0) { partial, section in
+            partial + section.closetItems.count + section.catalogProducts.count
+        }
+    }
+
+    private var hasMoreStockItems: Bool {
+        stockVisibleItemCount < totalFilteredStockItemCount
+    }
+
+    private var pagedUnifiedStockSections: [UnifiedStockSection] {
+        var remaining = stockVisibleItemCount
+        var pages: [UnifiedStockSection] = []
+
+        for section in filteredUnifiedStockSections {
+            guard remaining > 0 else { break }
+
+            let closetCount = min(section.closetItems.count, remaining)
+            let closetSlice = Array(section.closetItems.prefix(closetCount))
+            remaining -= closetCount
+
+            let catalogCount = min(section.catalogProducts.count, max(0, remaining))
+            let catalogSlice = Array(section.catalogProducts.prefix(catalogCount))
+            remaining -= catalogCount
+
+            guard !closetSlice.isEmpty || !catalogSlice.isEmpty else { continue }
+
+            pages.append(
+                UnifiedStockSection(
+                    key: section.key,
+                    emoji: section.emoji,
+                    title: section.title,
+                    closetItems: closetSlice,
+                    catalogProducts: catalogSlice
+                )
+            )
+        }
+
+        return pages
+    }
+
+    private func resetStockPagination() {
+        stockVisibleItemCount = Self.stockPageSize
+    }
+
+    private func loadMoreStockItemsIfNeeded() {
+        guard hasMoreStockItems else { return }
+        stockVisibleItemCount = min(
+            stockVisibleItemCount + Self.stockPageSize,
+            totalFilteredStockItemCount
+        )
     }
 
     private let gridColumns: [GridItem] = [
@@ -505,6 +561,15 @@ struct ClosetView: View {
         }
         .task(id: marketPrefetchKey) {
             await prefetchStockMarketPrices()
+        }
+        .onChange(of: stockSearchText) { _, _ in
+            resetStockPagination()
+        }
+        .onChange(of: stockFilters) { _, _ in
+            resetStockPagination()
+        }
+        .onChange(of: stockLayoutModeRaw) { _, _ in
+            resetStockPagination()
         }
         .onReceive(NotificationCenter.default.publisher(for: .closetInventoryDidChange)) { _ in
             Task { await catalogVM.reload() }
@@ -939,7 +1004,7 @@ struct ClosetView: View {
         }
     }
 
-    private func unifiedSectionHeader(_ section: UnifiedStockSection) -> some View {
+    private func unifiedSectionHeader(_ section: UnifiedStockSection, edgeToEdge: Bool = false) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(section.title)
                 .font(.system(size: 17, weight: .bold))
@@ -958,12 +1023,12 @@ struct ClosetView: View {
                         .stroke(Color.black.opacity(0.12), lineWidth: 1)
                 )
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, edgeToEdge ? 10 : 16)
     }
 
     private var unifiedStockGridContent: some View {
         LazyVStack(alignment: .leading, spacing: 24) {
-            ForEach(filteredUnifiedStockSections) { section in
+            ForEach(pagedUnifiedStockSections) { section in
                 VStack(alignment: .leading, spacing: 10) {
                     unifiedSectionHeader(section)
 
@@ -991,30 +1056,46 @@ struct ClosetView: View {
                     .padding(.horizontal, 8)
                 }
             }
+
+            stockPaginationFooter
         }
         .padding(.bottom, bottomInsetForClosetGrid)
     }
 
     private var unifiedStockListContent: some View {
-        LazyVStack(alignment: .leading, spacing: 22) {
-            ForEach(filteredUnifiedStockSections) { section in
-                VStack(alignment: .leading, spacing: 8) {
-                    unifiedSectionHeader(section)
+        LazyVStack(alignment: .leading, spacing: 12) {
+            ForEach(pagedUnifiedStockSections) { section in
+                VStack(alignment: .leading, spacing: 2) {
+                    unifiedSectionHeader(section, edgeToEdge: true)
 
                     ForEach(section.closetItems) { item in
                         closetListRow(item)
                             .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")-\(item.marketPriceJSON ?? "")")
-                            .padding(.horizontal, 16)
                     }
 
                     ForEach(section.catalogProducts) { product in
                         catalogListRow(product)
-                            .padding(.horizontal, 16)
                     }
                 }
             }
+
+            stockPaginationFooter
         }
         .padding(.bottom, bottomInsetForClosetGrid)
+    }
+
+    @ViewBuilder
+    private var stockPaginationFooter: some View {
+        if hasMoreStockItems {
+            HStack {
+                Spacer(minLength: 0)
+                ProgressView()
+                    .controlSize(.small)
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 10)
+            .onAppear { loadMoreStockItemsIfNeeded() }
+        }
     }
 
     private var stockSummaryCard: some View {
@@ -4041,7 +4122,7 @@ enum KicksDBClient {
             if cleaned != trimmed { add(cleaned) }
         }
         // Combinaciones (sin "Adidas " y sin "Boost")
-        var t3 = t2.replacingOccurrences(of: " Boost", with: "", options: .caseInsensitive)
+        let t3 = t2.replacingOccurrences(of: " Boost", with: "", options: .caseInsensitive)
         add(t3)
 
         // 5) Sólo lo de antes de la primera "x" (a menudo es el nombre del colaborador): "Nigel Sylvester"
@@ -6080,7 +6161,12 @@ enum PriceAlertChecker {
 
     /// Recorre alertas activas, notifica las que se cumplan (anti-spam: máx 1 cada 6h por alerta).
     @MainActor
-    static func checkAll(_ store: PriceAlertStore = .shared) async {
+    static func checkAll() async {
+        await checkAll(store: .shared)
+    }
+
+    @MainActor
+    static func checkAll(store: PriceAlertStore) async {
         for alert in store.alerts where alert.isActive {
             let r = await evaluate(alert)
             guard r.met else { continue }
@@ -6224,14 +6310,14 @@ struct PriceAlertsListView: View {
                 ToolbarItem(placement: .topBarLeading) { Button("Cerrar") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        Task { checking = true; await PriceAlertChecker.checkAll(store); checking = false }
+                        Task { checking = true; await PriceAlertChecker.checkAll(store: store); checking = false }
                     } label: {
                         if checking { ProgressView() } else { Text("Comprobar") }
                     }
                     .disabled(checking || store.alerts.isEmpty)
                 }
             }
-            .task { await PriceAlertChecker.checkAll(store) }
+            .task { await PriceAlertChecker.checkAll(store: store) }
         }
         .preferredColorScheme(.light)
     }

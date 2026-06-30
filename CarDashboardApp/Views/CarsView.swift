@@ -462,11 +462,7 @@ struct EditVehicleDictationSheet: View {
     }
 
     private func requestMicrophonePermission() async -> Bool {
-        await withCheckedContinuation { cont in
-            AVAudioSession.sharedInstance().requestRecordPermission { ok in
-                cont.resume(returning: ok)
-            }
-        }
+        await AVAudioApplication.requestRecordPermission()
     }
 }
 

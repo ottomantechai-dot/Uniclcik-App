@@ -1228,7 +1228,6 @@ struct PokemonCardsStrip: View {
 
 private enum AccarLogoAssets {
     static let oddishGIFName = "3d-pokemon-card-oddish"
-    static let imagesetFolder = "AccarLogo.imageset"
 }
 
 private enum HomeBottomGridMetrics {

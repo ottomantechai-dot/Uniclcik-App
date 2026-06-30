@@ -153,10 +153,11 @@ enum CoordinatorTaskPushActionHandler {
                 if try await store.requestWriteOnlyAccessToEvents() { return true }
             } catch {}
             return false
-        }
-        return await withCheckedContinuation { cont in
-            store.requestAccess(to: .event) { ok, _ in
-                cont.resume(returning: ok)
+        } else {
+            return await withCheckedContinuation { cont in
+                store.requestAccess(to: .event) { ok, _ in
+                    cont.resume(returning: ok)
+                }
             }
         }
     }

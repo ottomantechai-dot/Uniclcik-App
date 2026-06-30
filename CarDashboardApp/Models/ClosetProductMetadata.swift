@@ -141,7 +141,7 @@ extension ClosetItem {
 
     /// Product title without embedded style code when SKU is known.
     var catalogDisplayName: String {
-        guard let sku = resolvedSKU else { return name }
+        guard let xsku = resolvedSKU else { return name }
         let cleaned = SneakerSKU.splitNameAndSKU(from: name).name
         return cleaned.isEmpty ? name : cleaned
     }

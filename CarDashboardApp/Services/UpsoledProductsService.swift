@@ -22,7 +22,7 @@ enum UpsoledProductsService {
             query = query.eq("category", value: category)
         }
         if let brand = brand, !brand.isEmpty {
-            query = query.ilike("brand", value: brand)
+            query = query.ilike("brand", pattern: brand)
         }
         if onlyInStock {
             query = query.eq("in_stock", value: true)

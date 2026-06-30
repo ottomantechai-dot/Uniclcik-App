@@ -76,11 +76,6 @@ struct GIFAnimatedView: UIViewRepresentable {
             if let url = bundle.url(forResource: resourceName, withExtension: "gif") {
                 return url
             }
-            let imagesetPath = "Assets.xcassets/AccarLogo.imageset/\(resourceName).gif"
-            if let url = bundle.resourceURL?.appendingPathComponent(imagesetPath),
-               FileManager.default.fileExists(atPath: url.path) {
-                return url
-            }
             return nil
         }
     }

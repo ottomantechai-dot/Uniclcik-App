@@ -14,12 +14,8 @@ enum CarUIImageLoader {
     /// Timeout global por imagen (reintentos + CDN lentos)
     private static let imageTimeoutSeconds: TimeInterval = 72
 
-    /// Tamaño máximo al que se reduce la imagen (lado más largo en puntos × escala)
-    private static let maxPixelSize: CGFloat = {
-        let screen = UIScreen.main.bounds
-        let scale = UIScreen.main.scale
-        return max(screen.width, screen.height) * scale
-    }()
+    /// Tamaño máximo al que se reduce la imagen (lado más largo en píxeles).
+    private static let maxPixelSize: CGFloat = 1920
 
     // MARK: - Deduplicación de peticiones en vuelo
 
@@ -44,10 +40,10 @@ enum CarUIImageLoader {
             await acquire()
             do {
                 let out = try await work()
-                await release()
+                release()
                 return out
             } catch {
-                await release()
+                release()
                 throw error
             }
         }
@@ -292,8 +288,9 @@ enum CarUIImageLoader {
             }
 
             do {
+                let requestSnapshot = request
                 let (data, response) = try await HTTPImageDownloadGate.shared.run {
-                    try await imageSession.data(for: request)
+                    try await imageSession.data(for: requestSnapshot)
                 }
                 guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return nil }
                 return downsample(data: data)

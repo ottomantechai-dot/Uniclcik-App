@@ -108,7 +108,7 @@ final class DealershipStatsViewModel: ObservableObject {
     /// Bumps on each refresh so views can replay entrance animations.
     @Published var statsAnimationToken = UUID()
 
-    private static let locale = Locale(identifier: "en_US")
+    nonisolated private static let locale = Locale(identifier: "en_US")
 
     init() {
         periodDisplayLabel = Self.monthLabel(for: Date())

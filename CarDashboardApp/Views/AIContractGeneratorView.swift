@@ -707,7 +707,7 @@ private struct ContractShareSheet: UIViewControllerRepresentable {
         popover.sourceView = source
         let b = source.bounds
         popover.sourceRect = b.isEmpty
-            ? CGRect(x: UIScreen.main.bounds.midX, y: UIScreen.main.bounds.midY, width: 1, height: 1)
+            ? CGRect(x: 0, y: 0, width: 1, height: 1)
             : CGRect(x: b.midX, y: b.midY, width: 1, height: 1)
         popover.permittedArrowDirections = []
     }

@@ -177,9 +177,6 @@ final class ScrubbingBundledVideoUIView: UIView {
         resumeObserver = nil
 
         let asset = AVURLAsset(url: url)
-        let rawDuration = CMTimeGetSeconds(asset.duration)
-        videoDuration = rawDuration.isFinite && rawDuration > 0 ? rawDuration : 5
-
         let item = AVPlayerItem(asset: asset)
         let pl = AVPlayer(playerItem: item)
         pl.isMuted = true
@@ -189,10 +186,22 @@ final class ScrubbingBundledVideoUIView: UIView {
 
         player = pl
         playerLayer.player = pl
-        let initial = angle.guideVideoSeconds(duration: videoDuration)
-        displayedSeconds = initial
-        seekExact(to: initial)
         pl.pause()
+
+        let capturedAngle = angle
+        Task { [weak self] in
+            guard let self else { return }
+            let loadedDuration = (try? await asset.load(.duration)) ?? .zero
+            let rawDuration = CMTimeGetSeconds(loadedDuration)
+            let resolvedDuration = rawDuration.isFinite && rawDuration > 0 ? rawDuration : 5
+            let initial = capturedAngle.guideVideoSeconds(duration: resolvedDuration)
+            await MainActor.run {
+                self.videoDuration = resolvedDuration
+                self.displayedSeconds = initial
+                self.seekExact(to: initial)
+                self.player?.pause()
+            }
+        }
     }
 
     func moveTo(angle: ShoeAngle, animated: Bool) {

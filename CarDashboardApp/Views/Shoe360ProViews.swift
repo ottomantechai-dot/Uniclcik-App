@@ -558,6 +558,7 @@ struct Shoe360ProCaptureView: View {
             isApplyingStudio = false
         }
 
+        let itemName = item.name
         let batchSize = 2
         var orderedSlots = Array<String?>(repeating: nil, count: n)
 
@@ -572,7 +573,7 @@ struct Shoe360ProCaptureView: View {
                         do {
                             let saved = try await GeminiService.shared.prettifyShoeSpin360Frame(
                                 cropRelativePath: rawPaths[i],
-                                itemName: item.name,
+                                itemName: itemName,
                                 frameOneBasedIndex: i + 1,
                                 totalFrames: n
                             )

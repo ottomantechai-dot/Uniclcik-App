@@ -50,7 +50,7 @@ enum ClosetInventoryRepair {
     /// Moves every item in Sold back to active Your stock.
     @MainActor
     static func restoreAllSoldToStock(in context: ModelContext) {
-        var descriptor = FetchDescriptor<ClosetItem>(
+        let descriptor = FetchDescriptor<ClosetItem>(
             predicate: #Predicate { $0.isSold == true }
         )
         guard let sold = try? context.fetch(descriptor), !sold.isEmpty else { return }

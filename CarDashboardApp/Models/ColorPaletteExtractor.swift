@@ -5,7 +5,7 @@ enum ColorPaletteExtractor {
 
     /// Devuelve hasta `count` colores `#RRGGBB` ordenados por frecuencia aproximada.
     static func extract(from image: UIImage, count: Int = 5) -> [String] {
-        guard let cgImage = image.cgImage else { return [] }
+        guard image.cgImage != nil else { return [] }
 
         let size = CGSize(width: 100, height: 100)
         let format = UIGraphicsImageRendererFormat()
