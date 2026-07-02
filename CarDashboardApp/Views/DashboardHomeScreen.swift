@@ -1513,7 +1513,7 @@ enum HomeMarketTableBuilder {
         "4", "4.5", "5", "5.5", "6", "6.5", "7", "7.5", "8", "8.5",
         "9", "9.5", "10", "10.5", "11", "11.5", "12", "13", "14", "15",
     ]
-    static let homePlatforms = ["StockX", "GOAT", "eBay", "Flight Club"]
+    static let homePlatforms = ["StockX", "GOAT", "eBay"]
 
     static func displayRows(from comparison: MarketComparison?, maxRows: Int = 5) -> [MarketSizeRow] {
         Array(buildHomeRows(from: comparison).prefix(maxRows))

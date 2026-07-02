@@ -1,8 +1,10 @@
+import AudioToolbox
 import PhotosUI
 import SwiftData
 import SwiftUI
 import UIKit
 import UserNotifications
+import Vision
 
 // MARK: - Paleta modo claro
 
@@ -3744,6 +3746,8 @@ enum KicksDBClient {
             case id, slug, title, name, brand, model, image, sku, style_id
             case min_price, max_price, avg_price, variants
             case lowest_price_cents, retail_price_cents
+            // Variantes del campo de imagen según plataforma (StockX/GOAT/unified).
+            case image_url, main_picture_url, grid_picture_url, original_picture_url, picture_url, thumbnail_url
         }
 
         init(from decoder: Decoder) throws {
@@ -3761,7 +3765,9 @@ enum KicksDBClient {
             name = try? c.decode(String.self, forKey: .name)
             brand = try? c.decode(String.self, forKey: .brand)
             model = try? c.decode(String.self, forKey: .model)
-            image = try? c.decode(String.self, forKey: .image)
+            // Imagen: probamos varios nombres de campo (StockX/GOAT/unified usan distintos).
+            let imageKeys: [CodingKeys] = [.image, .image_url, .main_picture_url, .grid_picture_url, .original_picture_url, .picture_url, .thumbnail_url]
+            image = imageKeys.compactMap { try? c.decode(String.self, forKey: $0) }.first { !$0.isEmpty }
             sku = try? c.decode(String.self, forKey: .sku)
             style_id = try? c.decode(String.self, forKey: .style_id)
             min_price = try? c.decode(Double.self, forKey: .min_price)
@@ -4513,15 +4519,28 @@ struct MarketComparison {
     /// Mejor arbitraje cruzando plataformas: comprar barato en una y vender en la más cara
     /// (misma talla). Margen bruto y ROII (sin comisiones).
     var bestArbitrage: (size: String, buyPlatform: String, sellPlatform: String, buy: Double, sell: Double, margin: Double, roi: Double)? {
-        var best: (size: String, buyPlatform: String, sellPlatform: String, buy: Double, sell: Double, margin: Double, roi: Double)?
-        for row in rows {
-            guard let lo = row.cheapest, let hi = row.priciest, hi.price > lo.price, lo.price > 0 else { continue }
-            let margin = hi.price - lo.price
-            if best == nil || margin > best!.margin {
-                best = (row.size, lo.platform, hi.platform, lo.price, hi.price, margin, margin / lo.price * 100)
+        typealias Arb = (size: String, buyPlatform: String, sellPlatform: String, buy: Double, sell: Double, margin: Double, roi: Double)
+        // Mediana de precios para descartar tallas con asks disparados (tallas raras/extremas).
+        let lows = rows.compactMap { $0.cheapest?.price }.filter { $0 > 0 }.sorted()
+        let median = lows.isEmpty ? 0 : lows[lows.count / 2]
+        func scan(strict: Bool) -> Arb? {
+            var best: Arb?
+            for row in rows {
+                guard let lo = row.cheapest, let hi = row.priciest, hi.price > lo.price, lo.price > 0 else { continue }
+                if strict, median > 0 {
+                    // Ignora precios disparados vs la mediana (no son oportunidades reales).
+                    if lo.price > median * 2.2 || hi.price > median * 2.5 { continue }
+                    // Ignora tallas raras grandes (US > 13.5), poco líquidas.
+                    if let n = Double(row.size), n > 13.5 { continue }
+                }
+                let margin = hi.price - lo.price
+                if best == nil || margin > best!.margin {
+                    best = (row.size, lo.platform, hi.platform, lo.price, hi.price, margin, margin / lo.price * 100)
+                }
             }
+            return best
         }
-        return best
+        return scan(strict: true) ?? scan(strict: false)
     }
 
     /// Normaliza una talla a su número US para poder cruzar plataformas
@@ -4589,25 +4608,10 @@ extension KicksDBClient {
             }
         }
 
-        // Flight Club (y demás tiendas) vía Unified API, usando el slug emparejado. Requiere Premium.
-        var fcQuote: MarketPlatformQuote?
-        if let slug = sQuote?.slug ?? gQuote?.slug,
-           let fcPrices = try? await unifiedShopPrices(slug: slug, shop: "flightclub"), !fcPrices.isEmpty {
-            let vals = fcPrices.values.sorted()
-            fcQuote = MarketPlatformQuote(
-                platform: brandDisplayName(.flightclub),
-                color: brandColor(.flightclub),
-                matchedTitle: sQuote?.matchedTitle ?? gQuote?.matchedTitle,
-                matchedSKU: sQuote?.matchedSKU ?? gQuote?.matchedSKU,
-                productURL: nil,
-                asksBySize: fcPrices,
-                avg: vals.isEmpty ? nil : vals.reduce(0, +) / Double(vals.count),
-                lowestAsk: vals.first,
-                highestAsk: vals.last,
-                platformKey: "flightclub",
-                slug: slug
-            )
-        }
+        // Flight Club DESACTIVADO: no tiene API propia y el feed agregado de KicksDB no es fiable
+        // (a veces no coincide con flightclub.com). Para garantizar 100% de fiabilidad, solo usamos
+        // StockX, GOAT y eBay (fuentes directas y exactas). Para reactivarlo, restaurar este bloque.
+        let fcQuote: MarketPlatformQuote? = nil
 
         let quotes = [sQuote, gQuote, fcQuote].compactMap { $0 }
         guard !quotes.isEmpty else { return nil }
@@ -4978,30 +4982,89 @@ struct MarketComparatorView: View {
         Task { await runSearch() }
     }
 
-    /// Identifica el zapato de la foto con Gemini y lanza la búsqueda de precio.
+    /// Feedback al escanear: "bip" + vibración (éxito) o tono suave + error.
+    private func scanFeedback(success: Bool) {
+        let gen = UINotificationFeedbackGenerator()
+        gen.notificationOccurred(success ? .success : .error)
+        AudioServicesPlaySystemSound(success ? 1057 : 1053) // 1057 = Tink, 1053 = tono suave
+    }
+
+    /// Lee con OCR (Vision, en el dispositivo) el STYLE CODE de la etiqueta de la caja.
+    /// Determinista: no "adivina" como la IA. Ej. devuelve "DZ5485-612" si está impreso.
+    private func recognizeStyleCode(in image: UIImage) async -> String? {
+        guard let cg = image.cgImage else { return nil }
+        return await withCheckedContinuation { (cont: CheckedContinuation<String?, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let request = VNRecognizeTextRequest { req, _ in
+                    let lines = (req.results as? [VNRecognizedTextObservation])?
+                        .compactMap { $0.topCandidates(1).first?.string } ?? []
+                    let text = lines.joined(separator: " ").uppercased()
+                    // Patrones de style code: letras+dígitos-3díg (DZ5485-612, CT8532-100) o 6díg-3díg (555088-063).
+                    let patterns = [
+                        #"\b[A-Z]{1,3}[A-Z0-9]{3,5}-[0-9]{3}\b"#,
+                        #"\b[0-9]{6}-[0-9]{3}\b"#,
+                        #"\b[A-Z0-9]{6}-[0-9]{3}\b"#,
+                    ]
+                    for p in patterns {
+                        if let r = text.range(of: p, options: .regularExpression) {
+                            cont.resume(returning: String(text[r])); return
+                        }
+                    }
+                    cont.resume(returning: nil)
+                }
+                request.recognitionLevel = .accurate
+                request.usesLanguageCorrection = false
+                do {
+                    try VNImageRequestHandler(cgImage: cg, options: [:]).perform([request])
+                } catch {
+                    cont.resume(returning: nil)
+                }
+            }
+        }
+    }
+
+    /// Identifica el zapato/prenda de la foto y lanza la búsqueda de precio.
     @MainActor
     private func scanAndIdentify() async {
         guard let img = scanImage else { return }
         scanning = true
         scanLineDown = false
-        scanStatus = "Identificando el zapato…"
+        scanStatus = "Leyendo código de la caja…"
         defer { scanning = false; scanImage = nil }
+
+        // 1) Si hay un STYLE CODE legible en la etiqueta (DZ5485-612), lo usamos: exacto, sin errores.
+        if let code = await recognizeStyleCode(in: img), KicksDBClient.looksLikeSKU(code) {
+            lastScanGuess = ""   // fue lectura exacta, no una suposición de IA
+            scanStatus = "Código leído: \(code)"
+            scanFeedback(success: true)
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            suppressSuggest = true
+            queryText = code
+            await runSearch()
+            return
+        }
+
+        // 2) Si no hay código legible, identificamos por imagen con la IA.
+        scanStatus = "Identificando con IA…"
         do {
             let result = try await PieceMarketPrice.identifySneaker(in: img, corrections: ScanCorrectionStore.shared.promptHint)
             let q = !result.sku.isEmpty && KicksDBClient.looksLikeSKU(result.sku) ? result.sku : result.model
             guard !q.trimmingCharacters(in: .whitespaces).isEmpty else {
                 scanStatus = "No pude identificarlo"
+                scanFeedback(success: false)
                 try? await Task.sleep(nanoseconds: 900_000_000)
                 return
             }
             lastScanGuess = result.model
             scanStatus = "Encontrado: \(result.model)"
+            scanFeedback(success: true)
             try? await Task.sleep(nanoseconds: 500_000_000)
             queryText = result.model.isEmpty ? q : result.model
             suppressSuggest = true
             await runSearch()
         } catch {
             scanStatus = "No se pudo identificar (\(error.localizedDescription))"
+            scanFeedback(success: false)
             try? await Task.sleep(nanoseconds: 1_200_000_000)
         }
     }
@@ -5206,29 +5269,39 @@ struct MarketComparatorView: View {
 
     @ViewBuilder
     private func resultsSection(_ comp: MarketComparison) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        VStack(spacing: 12) {
             if let img = comp.imageURL {
                 StockCachedRemoteImage(url: img)
-                    .frame(width: 88, height: 88)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(.secondarySystemBackground)))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .frame(height: 200)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(Color(.tertiarySystemBackground))
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(Color.black.opacity(0.05), lineWidth: 1)
+                    )
             }
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(spacing: 5) {
                 Text(comp.matchedTitle ?? comp.query)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let sku = comp.matchedSKU {
                     Text("SKU \(sku)")
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
-                Text("\(comp.platforms.count) plataforma(s) · \(comp.sizes.count) tallas con stock · actualizado \(Self.freshness(comp.fetchedAt))")
-                    .font(.system(size: 12))
+                Text("\(comp.platforms.count) plataforma(s) · \(comp.sizes.count) tallas con stock · \(Self.freshness(comp.fetchedAt))")
+                    .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
-            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
 
         skuStatusBanner(comp)
 
