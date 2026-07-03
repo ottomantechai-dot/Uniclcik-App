@@ -264,6 +264,7 @@ struct DashboardHomeScreen: View {
     @State private var showPortfolio = false
     @State private var showWatchlist = false
     @State private var showSearch = false
+    @State private var showOpportunities = false
     @ObservedObject private var watchlist = WatchlistStore.shared
 
     private var trending: [HomeSneakerHighlight] {
@@ -314,21 +315,37 @@ struct DashboardHomeScreen: View {
             )
 
             if !watchlist.items.isEmpty {
-                Button { showWatchlist = true } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "star.fill").font(.system(size: 13)).foregroundStyle(.yellow)
-                        Text("Mi watchlist").font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(DashboardHomePalette.textPrimary)
-                        Spacer()
-                        Text("\(watchlist.items.count)").font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(DashboardHomePalette.labelMuted)
-                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(DashboardHomePalette.labelMuted)
+                HStack(spacing: 10) {
+                    Button { showWatchlist = true } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "star.fill").font(.system(size: 13)).foregroundStyle(.yellow)
+                            Text("Watchlist").font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(DashboardHomePalette.textPrimary)
+                            Spacer(minLength: 2)
+                            Text("\(watchlist.items.count)").font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(DashboardHomePalette.labelMuted)
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity)
+                        .background(homeCardBackground)
                     }
-                    .padding(14)
-                    .background(homeCardBackground)
+                    .buttonStyle(.plain)
+
+                    Button { showOpportunities = true } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "target").font(.system(size: 13)).foregroundStyle(DashboardHomePalette.accentGreen)
+                            Text("Oportunidades").font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(DashboardHomePalette.textPrimary)
+                            Spacer(minLength: 2)
+                            Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(DashboardHomePalette.labelMuted)
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity)
+                        .background(homeCardBackground)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
 
             DashboardMarketPricesSection(
@@ -358,6 +375,9 @@ struct DashboardHomeScreen: View {
         }
         .sheet(isPresented: $showSearch) {
             MarketComparatorView()
+        }
+        .sheet(isPresented: $showOpportunities) {
+            OpportunitiesView()
         }
         .onAppear {
             if selectedTrendingID == nil, let first = trending.first {
@@ -1513,7 +1533,7 @@ enum HomeMarketTableBuilder {
         "4", "4.5", "5", "5.5", "6", "6.5", "7", "7.5", "8", "8.5",
         "9", "9.5", "10", "10.5", "11", "11.5", "12", "13", "14", "15",
     ]
-    static let homePlatforms = ["StockX", "GOAT", "eBay"]
+    static let homePlatforms = ["StockX", "GOAT", "eBay", "Flight Club"]
 
     static func displayRows(from comparison: MarketComparison?, maxRows: Int = 5) -> [MarketSizeRow] {
         Array(buildHomeRows(from: comparison).prefix(maxRows))
