@@ -1,6 +1,6 @@
-# Auditoría de rendimiento — Upsoled iOS (CarDashboardApp)
+# Auditoría de rendimiento — Upsoled iOS (UniclickApp)
 
-**Fecha:** 30 may 2026 · **Alcance:** app SwiftUI en `~/Downloads/Upsoled/CarDashboardApp` (~40k líneas, 135 archivos Swift).
+**Fecha:** 30 may 2026 · **Alcance:** app SwiftUI en `~/Downloads/Upsoled/UniclickApp` (~40k líneas, 135 archivos Swift).
 **Objetivo:** máxima fluidez (scroll, animaciones, batería) **sin cambiar ninguna funcionalidad ni el aspecto visual**.
 
 > Estado: **APLICADO** (30 may 2026). Se aplicaron C1, C2, C3, M1, M2, M3, M4 y verificaciones B4. Cambios sin alterar funcionalidad ni diseño visible. Pendiente compilar en Xcode (el entorno de auditoría no compila Swift). Detalle de lo aplicado al final del documento.

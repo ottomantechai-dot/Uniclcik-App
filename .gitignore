@@ -1,5 +1,11 @@
 # Claves locales (Anthropic, etc.)
-CarDashboardApp/DeveloperSettings.local.xcconfig
+UniclickApp/DeveloperSettings.local.xcconfig
+
+# Flutter / Dart (legacy — app nativa Swift en UniclickApp/)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
 
 # Xcode / Swift
 DerivedData/
@@ -20,7 +26,7 @@ playground.xcworkspace
 .swiftpm/
 Packages/
 # No ignorar el lock de SPM del proyecto Xcode (evita "Missing package product Supabase")
-!Upsoled.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+!UniclickApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 *.moved-aside
 *.xccheckout
 *.xcscmblueprint
