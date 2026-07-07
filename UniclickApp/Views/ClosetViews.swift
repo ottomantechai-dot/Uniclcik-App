@@ -45,13 +45,17 @@ private struct Shoe360DraftSheetPieceID: Identifiable, Hashable {
 
 private struct ClosetDiskThumbnail: View {
     let relativePath: String
+    var maxPixelSide: CGFloat = 296
+    var fillFrame: Bool = false
 
     @State private var image: UIImage?
+    @State private var loadFailed = false
 
-    init(relativePath: String) {
+    init(relativePath: String, maxPixelSide: CGFloat = 296, fillFrame: Bool = false) {
         self.relativePath = relativePath
-        // Hit de caché en memoria: si ya está, se muestra de inmediato (sin parpadeo).
-        let key = StockImageLoader.localCacheKey(relativePath)
+        self.maxPixelSide = maxPixelSide
+        self.fillFrame = fillFrame
+        let key = StockImageLoader.localCacheKey(relativePath, maxSide: maxPixelSide)
         _image = State(initialValue: ImageCacheService.shared.image(forKey: key))
     }
 
@@ -60,17 +64,37 @@ private struct ClosetDiskThumbnail: View {
             if let ui = image {
                 Image(uiImage: ui)
                     .resizable()
-                    .scaledToFit()
+                    .aspectRatio(contentMode: fillFrame ? .fill : .fit)
+            } else if loadFailed || relativePath.isEmpty {
+                Image(systemName: "photo")
+                    .font(.system(size: fillFrame ? 20 : 24))
+                    .foregroundStyle(Color.black.opacity(0.18))
             } else {
-                Color.white
+                ZStack {
+                    Color.white
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Color.black.opacity(0.35))
+                }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.white)
-        // En cache-miss, el decode/downsample ocurre fuera del hilo principal: no bloquea el scroll.
-        .task(id: relativePath) {
+        .clipped()
+        .task(id: "\(relativePath)-\(Int(maxPixelSide))") {
             guard image == nil else { return }
-            if let loaded = await StockImageLoader.cachedLocalImageAsync(relativePath: relativePath) {
+            guard !relativePath.isEmpty else {
+                loadFailed = true
+                return
+            }
+            if let loaded = await StockImageLoader.cachedLocalImageAsync(
+                relativePath: relativePath,
+                maxSide: maxPixelSide
+            ) {
                 image = loaded
+                loadFailed = false
+            } else {
+                loadFailed = true
             }
         }
     }
@@ -145,273 +169,6 @@ extension UIImage {
     }
 }
 
-// MARK: - Your Stock metrics strip (valor + tiendas + P&L)
-
-private struct StockMetricsSnapshot {
-    struct PlatformBucket {
-        let assetName: String
-        let label: String
-        var listedValueUSD: Double = 0
-        var itemCount: Int = 0
-    }
-
-    let totalValueUSD: Double
-    let itemCount: Int
-    let profitUSD: Double
-    let investedUSD: Double
-    let pricedItemCount: Int
-    let platforms: [PlatformBucket]
-
-    var hasProfitData: Bool { pricedItemCount > 0 }
-    var profitPercent: Double? {
-        guard investedUSD > 0 else { return nil }
-        return (profitUSD / investedUSD) * 100
-    }
-
-    static func compute(closetItems: [ClosetItem], catalogProducts: [UpsoledProduct]) -> StockMetricsSnapshot {
-        var buckets: [String: PlatformBucket] = [
-            "stockx": PlatformBucket(assetName: "stockx", label: "StockX"),
-            "goat": PlatformBucket(assetName: "goat", label: "GOAT"),
-            "ebay": PlatformBucket(assetName: "ebay", label: "eBay"),
-        ]
-
-        func absorbPlatform(_ rawName: String, avg: Int) {
-            let upper = rawName.uppercased()
-            let key: String?
-            if upper.contains("STOCKX") { key = "stockx" }
-            else if upper == "GOAT" || upper.contains("GOAT") { key = "goat" }
-            else if upper.contains("EBAY") { key = "ebay" }
-            else { key = nil }
-            guard let key, var bucket = buckets[key] else { return }
-            bucket.listedValueUSD += Double(max(0, avg))
-            bucket.itemCount += 1
-            buckets[key] = bucket
-        }
-
-        var totalValue = 0.0
-        var itemCount = 0
-        var profit = 0.0
-        var invested = 0.0
-        var pricedCount = 0
-
-        for item in closetItems {
-            totalValue += item.stockValueUSD
-            itemCount += 1
-            profit += item.projectedProfitUSD
-            invested += item.purchaseValueUSD
-            if item.hasPricingForProfit { pricedCount += 1 }
-            if let platforms = item.marketPrice?.platforms {
-                for p in platforms { absorbPlatform(p.name, avg: p.avg) }
-            } else if let avg = item.marketPrice?.avg {
-                absorbPlatform("StockX", avg: avg)
-            }
-        }
-
-        for product in catalogProducts {
-            let units = max(1, product.quantity ?? 1)
-            totalValue += product.stockValueUSD
-            itemCount += units
-            profit += product.projectedProfitUSD
-            invested += product.purchaseValueUSD
-            if product.purchaseCostUSD > 0, product.price > 0 { pricedCount += units }
-        }
-
-        return StockMetricsSnapshot(
-            totalValueUSD: totalValue,
-            itemCount: itemCount,
-            profitUSD: profit,
-            investedUSD: invested,
-            pricedItemCount: pricedCount,
-            platforms: ["stockx", "goat", "ebay"].compactMap { buckets[$0] }
-        )
-    }
-}
-
-private struct YourStockMetricsStrip: View {
-    let snapshot: StockMetricsSnapshot
-    var isFiltered: Bool = false
-
-    private static let profitGreen = Color(red: 0.20, green: 0.70, blue: 0.45)
-    private static let profitRed = Color(red: 0.92, green: 0.30, blue: 0.30)
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                valueCard
-                ForEach(snapshot.platforms, id: \.assetName) { platform in
-                    platformCard(platform)
-                }
-                profitCard
-            }
-        }
-    }
-
-    private var valueCard: some View {
-        YourStockMetricCard(title: "Valor stock", width: 118) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(PieceMarketPrice.formatUSD(Int(snapshot.totalValueUSD.rounded())))
-                    .font(.system(size: 18, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.black)
-                    .minimumScaleFactor(0.6)
-                    .lineLimit(1)
-                Text("\(snapshot.itemCount) \(isFiltered ? "resultados" : "en stock")")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.42))
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-    }
-
-    private func platformCard(_ platform: StockMetricsSnapshot.PlatformBucket) -> some View {
-        YourStockMetricCard(title: platform.label) {
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                StylizedMarketplaceLogo(brand: platform.label)
-                    .frame(height: 18)
-                    .frame(maxWidth: .infinity)
-                Spacer(minLength: 0)
-                if platform.itemCount > 0 {
-                    VStack(spacing: 1) {
-                        Text(PieceMarketPrice.formatUSD(Int(platform.listedValueUSD.rounded())))
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(Color.black)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.65)
-                        Text("\(platform.itemCount) precios")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(Color.black.opacity(0.40))
-                    }
-                    .frame(maxWidth: .infinity)
-                } else {
-                    Text("Sin datos")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Color.black.opacity(0.38))
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    private var profitCard: some View {
-        let positive = snapshot.profitUSD >= 0
-        let tint = snapshot.hasProfitData ? (positive ? Self.profitGreen : Self.profitRed) : Color.black.opacity(0.35)
-        return YourStockMetricCard(title: snapshot.hasProfitData ? (positive ? "Ganancia" : "Pérdida") : "Ganancia") {
-            HStack(spacing: 6) {
-                YourStockProfitGauge(
-                    progress: profitGaugeProgress,
-                    tint: tint
-                )
-                .frame(width: 36, height: 26)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    if snapshot.hasProfitData {
-                        Text(signedMoney(snapshot.profitUSD))
-                            .font(.system(size: 13, weight: .heavy, design: .rounded))
-                            .foregroundStyle(tint)
-                            .minimumScaleFactor(0.6)
-                            .lineLimit(1)
-                        if let pct = snapshot.profitPercent {
-                            Text(String(format: "%+.0f%%", pct))
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(tint.opacity(0.85))
-                        }
-                    } else {
-                        Text("Sin datos")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(Color.black.opacity(0.38))
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    private var profitGaugeProgress: Double {
-        guard let pct = snapshot.profitPercent else { return 0.5 }
-        let clamped = min(50, max(-50, pct))
-        return (clamped + 50) / 100
-    }
-
-    private func signedMoney(_ value: Double) -> String {
-        let amount = PieceMarketPrice.formatUSD(Int(abs(value).rounded()))
-        return value >= 0 ? "+\(amount)" : "−\(amount)"
-    }
-}
-
-private struct YourStockMetricCard<Content: View>: View {
-    let title: String
-    var width: CGFloat = 108
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title.uppercased())
-                .font(.system(size: 9, weight: .heavy))
-                .tracking(0.4)
-                .foregroundStyle(Color.black.opacity(0.45))
-                .lineLimit(1)
-            content
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(width: width, height: 78, alignment: .topLeading)
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color(white: 0.82), lineWidth: 1)
-        }
-    }
-}
-
-private struct YourStockProfitGauge: View {
-    let progress: Double
-    let tint: Color
-
-    var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            ZStack {
-                gaugeArc(in: geo.size)
-                    .stroke(Color.black.opacity(0.08), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                gaugeArc(in: geo.size)
-                    .trim(from: 0, to: max(0.08, min(1, progress)))
-                    .stroke(tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 6, height: 6)
-                    .overlay(Circle().stroke(Color.black.opacity(0.12), lineWidth: 1))
-                    .position(knobPoint(width: w, height: h))
-            }
-        }
-    }
-
-    private func gaugeArc(in size: CGSize) -> Path {
-        var path = Path()
-        path.addArc(
-            center: CGPoint(x: size.width / 2, y: size.height * 0.92),
-            radius: min(size.width, size.height) * 0.42,
-            startAngle: .degrees(200),
-            endAngle: .degrees(-20),
-            clockwise: true
-        )
-        return path
-    }
-
-    private func knobPoint(width: CGFloat, height: CGFloat) -> CGPoint {
-        let radius = min(width, height) * 0.42
-        let center = CGPoint(x: width / 2, y: height * 0.92)
-        let angle = Angle.degrees(200 + (340 - 200) * max(0, min(1, progress)))
-        let radians = CGFloat(angle.radians)
-        return CGPoint(
-            x: center.x + radius * cos(radians),
-            y: center.y + radius * sin(radians)
-        )
-    }
-}
-
 // MARK: - Pestaña clóset + sheet entrada
 
 struct ClosetView: View {
@@ -452,12 +209,10 @@ struct ClosetView: View {
     @State private var stockSearchText = ""
     @FocusState private var stockSearchFocused: Bool
     @State private var stockFilters = StockBrowseFilters()
-    @AppStorage("stockLayoutMode") private var stockLayoutModeRaw = StockLayoutMode.grid.rawValue
+    @State private var showStockFiltersSheet = false
+    @AppStorage("stockLayoutMode") private var stockLayoutModeRaw = StockLayoutMode.list.rawValue
     @State private var scanLookupPayload: StockScanLookupPayload?
     @State private var scanLookupBusy = false
-    @State private var stockVisibleItemCount = 15
-
-    private static let stockPageSize = 15
 
     private var stockLayoutModeBinding: Binding<StockLayoutMode> {
         Binding(
@@ -511,15 +266,71 @@ struct ClosetView: View {
         return StockFilterEngine.sortCatalogProducts(products, by: stockFilters.sort)
     }
 
+    /// Catálogo sin filas que ya están representadas por un `ClosetItem` activo enlazado.
+    private var stockCatalogProductsExcludingClosetDuplicates: [UpsoledProduct] {
+        let activeClosetIDs = Set(activeClosetItems.map(\.id))
+        let closetIdentityKeys = stockClosetIdentityKeys(from: filteredActiveClosetItems)
+
+        return filteredCatalogProducts.filter { product in
+            if let linkedClosetId = CatalogClosetBridge.closetItemId(forCatalogProduct: product.id),
+               activeClosetIDs.contains(linkedClosetId) {
+                return false
+            }
+            if let key = stockCatalogIdentityKey(for: product),
+               closetIdentityKeys.contains(key) {
+                return false
+            }
+            return true
+        }
+    }
+
+    private func stockClosetIdentityKey(for item: ClosetItem) -> String? {
+        let sku = (item.skuText ?? item.resolvedSKU ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !sku.isEmpty else { return nil }
+        let size = StockSizeDisplay.normalizedStorage(from: item.sizeText) ?? ""
+        return "\(sku)|\(size)"
+    }
+
+    private func stockCatalogIdentityKey(for product: UpsoledProduct) -> String? {
+        let sku = (product.sku ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !sku.isEmpty else { return nil }
+        let size = product.sizes
+            .compactMap { StockSizeDisplay.normalizedStorage(from: $0) }
+            .first ?? ""
+        return "\(sku)|\(size)"
+    }
+
+    private func stockClosetIdentityKeys(from items: [ClosetItem]) -> Set<String> {
+        Set(items.compactMap { stockClosetIdentityKey(for: $0) })
+    }
+
+    /// Closet sin entradas repetidas (mismo SKU+talla o mismo enlace de catálogo).
+    private var stockClosetItemsExcludingCatalogDuplicates: [ClosetItem] {
+        var seenCatalogLinks = Set<UUID>()
+        var seenIdentityKeys = Set<String>()
+        var unique: [ClosetItem] = []
+
+        for item in filteredActiveClosetItems {
+            if let catalogId = CatalogClosetBridge.catalogProductId(forClosetItem: item.id) {
+                guard !seenCatalogLinks.contains(catalogId) else { continue }
+                seenCatalogLinks.insert(catalogId)
+            }
+            if let identityKey = stockClosetIdentityKey(for: item) {
+                guard !seenIdentityKeys.contains(identityKey) else { continue }
+                seenIdentityKeys.insert(identityKey)
+            }
+            unique.append(item)
+        }
+
+        return unique
+    }
+
     private var hasCatalogStock: Bool { !catalogVM.products.isEmpty }
     private var hasAnyStockContent: Bool { !activeClosetItems.isEmpty || hasCatalogStock }
-
-    private var stockMetricsSnapshot: StockMetricsSnapshot {
-        StockMetricsSnapshot.compute(
-            closetItems: filteredActiveClosetItems,
-            catalogProducts: filteredCatalogProducts
-        )
-    }
 
     private struct UnifiedStockSection: Identifiable {
         let key: String
@@ -542,84 +353,31 @@ struct ClosetView: View {
     }
 
     private var filteredUnifiedStockSections: [UnifiedStockSection] {
-        let closetGrouped = Dictionary(grouping: filteredActiveClosetItems) {
-            StockFilterEngine.closetCategoryKey($0)
-        }
-        let catalogGrouped = Dictionary(grouping: filteredCatalogProducts) {
-            StockFilterEngine.catalogCategoryKey($0)
-        }
+        let closet = StockFilterEngine.sortClosetItems(
+            stockClosetItemsExcludingCatalogDuplicates,
+            by: stockFilters.sort
+        )
+        let catalog = StockFilterEngine.sortCatalogProducts(
+            stockCatalogProductsExcludingClosetDuplicates,
+            by: stockFilters.sort
+        )
+        guard !closet.isEmpty || !catalog.isEmpty else { return [] }
 
-        let allKeys = Set(closetGrouped.keys).union(catalogGrouped.keys)
-        let orderedKeys = Self.stockSummaryCategoryOrder.filter { allKeys.contains($0) }
-        let extraKeys = allKeys.subtracting(Set(orderedKeys)).sorted()
-
-        return (orderedKeys + extraKeys).compactMap { key in
-            guard !Self.stockHiddenCategoryKeys.contains(key) else { return nil }
-            let closet = StockFilterEngine.sortClosetItems(closetGrouped[key] ?? [], by: stockFilters.sort)
-            let catalog = StockFilterEngine.sortCatalogProducts(catalogGrouped[key] ?? [], by: stockFilters.sort)
-            guard !closet.isEmpty || !catalog.isEmpty else { return nil }
-            let meta = catalogCategoryPresentation(key)
-            return UnifiedStockSection(
-                key: key,
-                emoji: meta.emoji,
-                title: meta.title,
+        return [
+            UnifiedStockSection(
+                key: "all",
+                emoji: "👟",
+                title: "Your stock",
                 closetItems: closet,
                 catalogProducts: catalog
-            )
-        }
+            ),
+        ]
     }
 
-    private var totalFilteredStockItemCount: Int {
-        filteredUnifiedStockSections.reduce(0) { partial, section in
-            partial + section.closetItems.count + section.catalogProducts.count
-        }
-    }
-
-    private var hasMoreStockItems: Bool {
-        stockVisibleItemCount < totalFilteredStockItemCount
-    }
-
-    private var pagedUnifiedStockSections: [UnifiedStockSection] {
-        var remaining = stockVisibleItemCount
-        var pages: [UnifiedStockSection] = []
-
-        for section in filteredUnifiedStockSections {
-            guard remaining > 0 else { break }
-
-            let closetCount = min(section.closetItems.count, remaining)
-            let closetSlice = Array(section.closetItems.prefix(closetCount))
-            remaining -= closetCount
-
-            let catalogCount = min(section.catalogProducts.count, max(0, remaining))
-            let catalogSlice = Array(section.catalogProducts.prefix(catalogCount))
-            remaining -= catalogCount
-
-            guard !closetSlice.isEmpty || !catalogSlice.isEmpty else { continue }
-
-            pages.append(
-                UnifiedStockSection(
-                    key: section.key,
-                    emoji: section.emoji,
-                    title: section.title,
-                    closetItems: closetSlice,
-                    catalogProducts: catalogSlice
-                )
-            )
-        }
-
-        return pages
-    }
-
-    private func resetStockPagination() {
-        stockVisibleItemCount = Self.stockPageSize
-    }
-
-    private func loadMoreStockItemsIfNeeded() {
-        guard hasMoreStockItems else { return }
-        stockVisibleItemCount = min(
-            stockVisibleItemCount + Self.stockPageSize,
-            totalFilteredStockItemCount
-        )
+    private var stockImagePrefetchToken: String {
+        let closetPaths = stockClosetItemsExcludingCatalogDuplicates.map(\.id.uuidString).joined(separator: "|")
+        let catalogIDs = stockCatalogProductsExcludingClosetDuplicates.map(\.id.uuidString).joined(separator: "|")
+        return "\(stockLayoutModeRaw)#\(closetPaths)#\(catalogIDs)"
     }
 
     private let gridColumns: [GridItem] = [
@@ -707,31 +465,21 @@ struct ClosetView: View {
     }
 
     private var yourStockHeader: some View {
-        HStack {
-            Spacer(minLength: 0)
-            stockHeaderAddButton
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Hey, Sneakerhead 👋")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(Color.black)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            Text("Find the most exclusive sneakers.")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(Color.black.opacity(0.45))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 8)
         .padding(.bottom, 4)
-    }
-
-    private var stockHeaderAddButton: some View {
-        Button {
-            openAddStockFlow()
-        } label: {
-            VStack(spacing: 2) {
-                Image(systemName: "plus.circle.fill")
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(Color.white, Color.black)
-                    .font(.system(size: 26))
-                Text(L10n.tr("dashboard.quickAdd"))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.85))
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(L10n.tr("dashboard.quickAdd"))
     }
 
     private func openAddStockFlow(openPipeline: Bool = false) {
@@ -750,35 +498,43 @@ struct ClosetView: View {
                 VStack(spacing: 8) {
                     yourStockHeader
 
-                    YourStockMetricsStrip(
-                        snapshot: stockMetricsSnapshot,
-                        isFiltered: stockFilters.isActive || !stockSearchQuery.isEmpty
-                    )
-                    .fixedSize(horizontal: false, vertical: true)
-
                     if hasAnyStockContent {
-                        StockBrowseSearchBar(
-                            searchText: $stockSearchText,
-                            searchFocused: $stockSearchFocused
-                        )
+                        VStack(spacing: 10) {
+                            StockBrowseSearchBar(
+                                searchText: $stockSearchText,
+                                searchFocused: $stockSearchFocused
+                            )
 
-                        stockFilterSortToolbar
+                            stockFilterSortToolbar
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 6)
                 .background(Color.white)
 
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Color.clear
-                            .frame(height: 1)
-                            .id("stockScrollTop")
-                        productsTabContent
+                ScrollViewReader { scrollProxy in
+                    ScrollView(showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Color.clear
+                                .frame(height: 1)
+                                .id("stockScrollTop")
+                            productsTabContent
+                        }
                     }
-                }
-                .refreshable {
-                    await catalogVM.reload()
+                    .refreshable {
+                        await catalogVM.reload()
+                    }
+                    .onChange(of: stockFilters.quickCategory) { _, _ in
+                        withAnimation(.easeOut(duration: 0.28)) {
+                            scrollProxy.scrollTo("stockScrollTop", anchor: .top)
+                        }
+                    }
+                    .onChange(of: stockFilters.categoryKeys) { _, _ in
+                        withAnimation(.easeOut(duration: 0.28)) {
+                            scrollProxy.scrollTo("stockScrollTop", anchor: .top)
+                        }
+                    }
                 }
             }
 
@@ -803,14 +559,8 @@ struct ClosetView: View {
         .task(id: marketPrefetchKey) {
             await prefetchStockMarketPrices()
         }
-        .onChange(of: stockSearchText) { _, _ in
-            resetStockPagination()
-        }
-        .onChange(of: stockFilters) { _, _ in
-            resetStockPagination()
-        }
-        .onChange(of: stockLayoutModeRaw) { _, _ in
-            resetStockPagination()
+        .task(id: stockImagePrefetchToken) {
+            await prefetchStockImages()
         }
         .onReceive(NotificationCenter.default.publisher(for: .closetInventoryDidChange)) { _ in
             Task { await catalogVM.reload() }
@@ -848,6 +598,16 @@ struct ClosetView: View {
                 onApplyClothing: { applyBulkCategory($0) }
             )
             .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showStockFiltersSheet) {
+            StockBrowseFiltersSheet(
+                filters: $stockFilters,
+                layoutMode: stockLayoutModeBinding,
+                closetItems: activeClosetItems,
+                catalogProducts: catalogVM.products
+            )
+            .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
         .sheet(item: $scanLookupPayload) { payload in
@@ -1004,52 +764,62 @@ struct ClosetView: View {
     }
 
     private var stockFilterSortToolbar: some View {
-        HStack(spacing: 10) {
+        Group {
             if closetSelectionMode {
-                Button {
-                    closetSelectionMode = false
-                    closetSelectedIDs.removeAll()
-                    catalogSelectedIDs.removeAll()
-                } label: {
-                    Text("Done")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.black.opacity(0.72))
-                }
-                .buttonStyle(.plain)
-
-                Text("\(closetSelectedIDs.count + catalogSelectedIDs.count) selected")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.45))
-            }
-
-            Spacer(minLength: 0)
-
-            Menu {
-                ForEach(StockSortOrder.allCases) { order in
+                HStack(spacing: 10) {
                     Button {
-                        stockFilters.sort = order
+                        closetSelectionMode = false
+                        closetSelectedIDs.removeAll()
+                        catalogSelectedIDs.removeAll()
                     } label: {
-                        if stockFilters.sort == order {
-                            Label(order.menuLabel, systemImage: "checkmark")
-                        } else {
-                            Text(order.menuLabel)
-                        }
+                        Text("Done")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.black.opacity(0.72))
+                    }
+                    .buttonStyle(.plain)
+
+                    Text("\(closetSelectedIDs.count + catalogSelectedIDs.count) selected")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.45))
+
+                    Spacer(minLength: 0)
+
+                    stockSortMenu
+                }
+            } else {
+                StockBrowseFilterSortBar(filters: $stockFilters) {
+                    showStockFiltersSheet = true
+                }
+            }
+        }
+    }
+
+    private var stockSortMenu: some View {
+        Menu {
+            ForEach(StockSortOrder.allCases) { order in
+                Button {
+                    stockFilters.sort = order
+                } label: {
+                    if stockFilters.sort == order {
+                        Label(order.menuLabel, systemImage: "checkmark")
+                    } else {
+                        Text(order.menuLabel)
                     }
                 }
-            } label: {
-                HStack(spacing: 6) {
-                    Text("Sort by: \(stockFilters.sort.menuLabel)")
-                        .font(.system(size: 14, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .bold))
-                }
-                .foregroundStyle(Color.black.opacity(0.82))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(Capsule().fill(Color.black.opacity(0.06)))
             }
+        } label: {
+            HStack(spacing: 6) {
+                Text("Sort by: \(stockFilters.sort.menuLabel)")
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .foregroundStyle(Color.black.opacity(0.82))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(Color.black.opacity(0.06)))
         }
     }
 
@@ -1225,7 +995,9 @@ struct ClosetView: View {
             closetStarterProgressStrip
         }
 
-        if hasAnyStockContent, filteredActiveClosetItems.isEmpty, filteredCatalogProducts.isEmpty {
+        if hasAnyStockContent,
+           stockClosetItemsExcludingCatalogDuplicates.isEmpty,
+           stockCatalogProductsExcludingClosetDuplicates.isEmpty {
             Text(stockFilters.isActive || !stockSearchQuery.isEmpty
                 ? "No items match your filters."
                 : L10n.tr("closet.searchEmpty"))
@@ -1275,75 +1047,69 @@ struct ClosetView: View {
     }
 
     private var unifiedStockGridContent: some View {
-        LazyVStack(alignment: .leading, spacing: 24) {
-            ForEach(pagedUnifiedStockSections) { section in
-                VStack(alignment: .leading, spacing: 10) {
-                    unifiedSectionHeader(section)
-
-                    LazyVGrid(columns: gridColumns, spacing: 12) {
-                        ForEach(section.closetItems) { item in
-                            closetCell(item)
-                                .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")")
-                                .padding(.top, 10)
-                        }
-                        ForEach(section.catalogProducts) { product in
-                            UpsoledProductCard(
-                                product: product,
-                                selectionMode: closetSelectionMode,
-                                isSelected: catalogSelectedIDs.contains(product.id)
-                            ) {
-                                if closetSelectionMode {
-                                    toggleCatalogSelection(product)
-                                } else {
-                                    openCatalogDetail(product)
-                                }
-                            }
+        LazyVStack(alignment: .leading, spacing: 12) {
+            ForEach(filteredUnifiedStockSections) { section in
+                LazyVGrid(columns: gridColumns, spacing: 12) {
+                    ForEach(section.closetItems) { item in
+                        closetCell(item)
+                            .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")")
                             .padding(.top, 10)
-                        }
                     }
-                    .padding(.horizontal, 8)
+                    ForEach(section.catalogProducts) { product in
+                        UpsoledProductCard(
+                            product: product,
+                            selectionMode: closetSelectionMode,
+                            isSelected: catalogSelectedIDs.contains(product.id)
+                        ) {
+                            if closetSelectionMode {
+                                toggleCatalogSelection(product)
+                            } else {
+                                openCatalogDetail(product)
+                            }
+                        }
+                        .padding(.top, 10)
+                    }
                 }
             }
-
-            stockPaginationFooter
         }
         .padding(.bottom, bottomInsetForClosetGrid)
     }
 
     private var unifiedStockListContent: some View {
-        LazyVStack(alignment: .leading, spacing: 12) {
-            ForEach(pagedUnifiedStockSections) { section in
-                VStack(alignment: .leading, spacing: 2) {
-                    unifiedSectionHeader(section, edgeToEdge: true)
+        LazyVStack(alignment: .leading, spacing: 10) {
+            ForEach(filteredUnifiedStockSections) { section in
+                ForEach(section.closetItems) { item in
+                    closetListRow(item)
+                        .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")-\(item.marketPriceJSON ?? "")")
+                }
 
-                    ForEach(section.closetItems) { item in
-                        closetListRow(item)
-                            .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")-\(item.marketPriceJSON ?? "")")
-                    }
-
-                    ForEach(section.catalogProducts) { product in
-                        catalogListRow(product)
-                    }
+                ForEach(section.catalogProducts) { product in
+                    catalogListRow(product)
                 }
             }
 
-            stockPaginationFooter
+            StockMarketplaceListLiveFooter()
         }
         .padding(.bottom, bottomInsetForClosetGrid)
     }
 
-    @ViewBuilder
-    private var stockPaginationFooter: some View {
-        if hasMoreStockItems {
-            HStack {
-                Spacer(minLength: 0)
-                ProgressView()
-                    .controlSize(.small)
-                Spacer(minLength: 0)
-            }
-            .padding(.vertical, 10)
-            .onAppear { loadMoreStockItemsIfNeeded() }
-        }
+    @MainActor
+    private func prefetchStockImages() async {
+        let listMaxSide: CGFloat = stockLayoutModeBinding.wrappedValue == .list ? 168 : 296
+        let remoteMaxSide: CGFloat = stockLayoutModeBinding.wrappedValue == .list ? 168 : 296
+
+        let closetPaths = stockClosetItemsExcludingCatalogDuplicates.map { ImageStore.displayRelativePath(for: $0) }
+        let catalogURLs = stockCatalogProductsExcludingClosetDuplicates.compactMap(\.primaryImageURL)
+
+        async let localPrefetch = StockImageLoader.prefetchLocalImages(
+            relativePaths: closetPaths,
+            maxSide: listMaxSide
+        )
+        async let remotePrefetch = StockImageLoader.prefetchURLImages(
+            urls: catalogURLs,
+            maxSide: remoteMaxSide
+        )
+        _ = await (localPrefetch, remotePrefetch)
     }
 
     @MainActor
@@ -1413,7 +1179,11 @@ struct ClosetView: View {
                 ClosetAnalytics.named("closet_item_detail_open")
             }
         } image: {
-            ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
+            ClosetDiskThumbnail(
+                relativePath: ImageStore.displayRelativePath(for: item),
+                maxPixelSide: 168,
+                fillFrame: true
+            )
         }
     }
 
@@ -1442,7 +1212,11 @@ struct ClosetView: View {
                 openCatalogDetail(product)
             }
         } image: {
-            StockCachedRemoteImage(url: product.primaryImageURL)
+            StockCachedRemoteImage(
+                url: product.primaryImageURL,
+                maxPixelSide: 168,
+                fillFrame: true
+            )
         }
     }
 
@@ -1488,7 +1262,11 @@ struct ClosetView: View {
                 ZStack {
                     Color.white
 
-                    ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
+                    ClosetDiskThumbnail(
+                        relativePath: ImageStore.displayRelativePath(for: item),
+                        maxPixelSide: 296,
+                        fillFrame: true
+                    )
                         .padding(4)
 
                     VStack {
@@ -1576,8 +1354,6 @@ struct ClosetView: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .frame(minHeight: 36, alignment: .top)
-
-            closetCellSparkline(item)
         }
         .contentShape(Rectangle())
         .onTapGesture {
@@ -1602,22 +1378,6 @@ struct ClosetView: View {
                     Label(L10n.tr("closet.removeItem"), systemImage: "trash")
                 }
             }
-        }
-    }
-
-    @ViewBuilder
-    private func closetCellSparkline(_ item: ClosetItem) -> some View {
-        let spark = StockItemSparkline.resolve(
-            marketPrice: item.marketPrice,
-            preferredPlatform: stockFilters.preferredMarketplacePlatform,
-            stockValueUSD: item.stockValueUSD,
-            purchaseUSD: item.purchaseValueUSD,
-            askingUSD: ClosetItem.parsePriceUSD(from: item.priceText)
-        )
-        if spark.points.count >= 2 {
-            PriceTrendSparkline(points: spark.points, isUp: spark.isUp)
-                .frame(height: 34)
-                .padding(.top, 2)
         }
     }
 
@@ -2946,6 +2706,7 @@ struct PlatformPrice: Identifiable, Codable, Equatable {
         case "STOCKX":      return Color(red: 0.00, green: 0.60, blue: 0.30)
         case "GOAT":        return Color(red: 0.10, green: 0.10, blue: 0.10)
         case "FLIGHT CLUB": return Color(red: 0.85, green: 0.10, blue: 0.15)
+        case "EBAY":        return Color(red: 0.20, green: 0.45, blue: 0.85)
         default:            return Color.gray
         }
     }

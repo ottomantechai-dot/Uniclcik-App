@@ -879,7 +879,7 @@ struct ShoeMarketDetailView: View {
 
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Image("DanielSticker")
+            Image("AuthSneakerHero")
                 .resizable()
                 .scaledToFit()
                 .frame(width: 160, height: 160)
@@ -1786,7 +1786,7 @@ struct DashboardMarketPricesSection: View {
 
             if tableRows.isEmpty {
                 VStack(spacing: 10) {
-                    Image("DanielSticker")
+                    Image("AuthSneakerHero")
                         .resizable()
                         .scaledToFit()
                         .frame(width: 160, height: 160)

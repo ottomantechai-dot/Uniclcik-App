@@ -72,6 +72,9 @@ struct ClosetGarmentDetailView: View {
 
     @Bindable var item: ClosetItem
 
+    @Query(sort: \ClosetItem.createdAt, order: .reverse)
+    private var closetStockItems: [ClosetItem]
+
     @State private var priceDraft: String = ""
     @State private var purchasePriceDraft: String = ""
     @State private var sizeDraft: String = ""
@@ -87,10 +90,16 @@ struct ClosetGarmentDetailView: View {
     @State private var marketPriceBusy = false
     @State private var shoeMarketComparison: MarketComparison?
     @State private var shoeMarketLoading = false
-    @State private var showShoeItemDetails = false
     @State private var showRemoveItemDialog = false
     @State private var detailSection: GarmentDetailSection
     @State private var savingChanges = false
+    @State private var shoeLastSale: Double?
+    @State private var showShoeMarketData = false
+    @State private var shoeExpandedReturnPolicy = false
+    @State private var shoeExpandedBuyerPromise = false
+    @State private var showShoeFullscreenImage = false
+    @State private var showShoeEditDetails = false
+    @State private var showShoeAllDetails = false
 
     init(item: ClosetItem) {
         self.item = item
@@ -101,6 +110,19 @@ struct ClosetGarmentDetailView: View {
 
     private var isShoeProduct: Bool { item.category == .shoes }
 
+    private var activeStockItems: [ClosetItem] {
+        closetStockItems.filter(\.isActiveInStock)
+    }
+
+    private var similarStockItems: [ClosetItem] {
+        activeStockItems.filter { $0.id != item.id }
+    }
+
+    private let shoeStockGridColumns: [GridItem] = [
+        GridItem(.flexible(minimum: 148), spacing: 12),
+        GridItem(.flexible(minimum: 148), spacing: 12),
+    ]
+
     private var secondary: Color {
         Color.black.opacity(0.55)
     }
@@ -109,26 +131,28 @@ struct ClosetGarmentDetailView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(spacing: isShoeProduct ? 16 : 22) {
+            VStack(spacing: isShoeProduct ? 0 : 22) {
                 if isShoeProduct {
                     shoeDetailLayout
                 } else {
                     standardDetailLayout
                 }
             }
-            .padding(.top, 8)
+            .padding(.top, isShoeProduct ? 0 : 8)
             .padding(.bottom, 32)
         }
         .background(Color.white.ignoresSafeArea())
-        .navigationTitle("Item")
+        .navigationTitle(isShoeProduct ? "" : "Item")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") {
-                    saveAllChangesTapped()
+            if !isShoeProduct {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        saveAllChangesTapped()
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(savingChanges || prettifying)
                 }
-                .fontWeight(.semibold)
-                .disabled(savingChanges || prettifying)
             }
         }
         .preferredColorScheme(.light)
@@ -142,7 +166,7 @@ struct ClosetGarmentDetailView: View {
             ensureLocalPalette()
             if isShoeProduct {
                 detailSection = .marketPrice
-                Task { await loadShoeMarketTable() }
+                Task { await loadShoeMarketData(force: true) }
             } else if item.marketPriceNeedsRefresh, item.hasStyleForMarketLookup, !marketPriceBusy {
                 Task { await refreshMarketPrice() }
             }
@@ -188,45 +212,225 @@ struct ClosetGarmentDetailView: View {
             }
             .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showShoeMarketData) {
+            NavigationStack {
+                ScrollView(showsIndicators: false) {
+                    if shoeMarketLoading {
+                        ProgressView()
+                            .controlSize(.large)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                    } else {
+                        DashboardMarketPricesSection(
+                            comparison: shoeMarketComparison,
+                            maxVisibleRows: nil
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 24)
+                    }
+                }
+                .background(Color.white.ignoresSafeArea())
+                .navigationTitle("Datos del mercado")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Cerrar") { showShoeMarketData = false }
+                    }
+                }
+            }
+            .preferredColorScheme(.light)
+        }
         .sheet(isPresented: $showLookbookCapture) {
             NavigationStack {
                 GarmentLookbookCaptureView(item: item)
             }
             .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showShoeEditDetails) {
+            NavigationStack {
+                ScrollView(showsIndicators: false) {
+                    garmentItemInfoSection
+                        .padding(.bottom, 24)
+                }
+                .background(Color.white.ignoresSafeArea())
+                .navigationTitle("Editar")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Listo") { showShoeEditDetails = false }
+                    }
+                }
+            }
+            .preferredColorScheme(.light)
+        }
+        .sheet(isPresented: $showShoeAllDetails) {
+            NavigationStack {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("\(activeStockItems.count) artículos en tu stock")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Color.black.opacity(0.45))
+
+                        shoeStockGrid(items: activeStockItems)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 24)
+                }
+                .background(Color.white.ignoresSafeArea())
+                .navigationTitle("Muestra todo")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Cerrar") { showShoeAllDetails = false }
+                    }
+                }
+            }
+            .preferredColorScheme(.light)
+        }
+        .fullScreenCover(isPresented: $showShoeFullscreenImage) {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
+                    .padding(24)
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button {
+                            showShoeFullscreenImage = false
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 28))
+                                .foregroundStyle(Color.white.opacity(0.92))
+                        }
+                        .padding(20)
+                    }
+                    Spacer()
+                }
+            }
+        }
     }
 
     @ViewBuilder
     private var shoeDetailLayout: some View {
-        shoeDetailHero
+        VStack(alignment: .leading, spacing: 0) {
+            shoeDetailHero
 
-        shoeMarketPricesSection
-            .padding(.horizontal, 10)
+            Text(item.catalogDisplayName)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color.black.opacity(0.92))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
 
-        Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                showShoeItemDetails.toggle()
+            shoeSizeSelectorRow
+
+            shoeBuyMarketCard
+                .padding(.top, 4)
+
+            shoeInlineMarketPrices
+                .padding(.top, 12)
+
+            shoePolicyAccordions
+                .padding(.top, 8)
+
+            shoeSimilarStockSection
+                .padding(.top, 24)
+                .padding(.bottom, 16)
+        }
+        .padding(.horizontal, 16)
+        .task(id: shoeMarketComparison?.matchedSKU ?? shoeMarketComparison?.query ?? item.marketPriceJSON) {
+            await loadShoeLastSale()
+        }
+    }
+
+    @ViewBuilder
+    private var shoeInlineMarketPrices: some View {
+        if shoeMarketLoading || marketPriceBusy {
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text("Consultando precios en StockX y GOAT…")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.55))
             }
-        } label: {
-            HStack {
-                Text(showShoeItemDetails ? "Hide item details" : "Item details")
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.black.opacity(0.04))
+            }
+        } else if let comparison = shoeMarketComparison, !comparison.rows.isEmpty {
+            DashboardMarketPricesSection(
+                comparison: comparison,
+                maxVisibleRows: nil
+            )
+        } else if let estimate = item.marketPrice, estimate.avg > 0 {
+            shoeStoredMarketPricesCard(estimate)
+        } else if !item.hasStyleForMarketLookup {
+            Text("Añade un SKU o nombre de modelo para ver precios de mercado.")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.black.opacity(0.45))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.black.opacity(0.04))
+                }
+        } else {
+            Button {
+                Task { await loadShoeMarketData(force: true) }
+            } label: {
+                Label("Consultar precios de mercado", systemImage: "chart.line.uptrend.xyaxis")
                     .font(.system(size: 14, weight: .semibold))
-                Spacer(minLength: 0)
-                Image(systemName: showShoeItemDetails ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.black))
             }
-            .foregroundStyle(Color.black.opacity(0.55))
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
+    }
 
-        if showShoeItemDetails {
-            garmentItemInfoSection
-                .transition(.opacity.combined(with: .move(edge: .top)))
+    private func shoeStoredMarketPricesCard(_ estimate: PieceMarketPrice) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("PRECIOS DE MERCADO")
+                .font(.system(size: 10, weight: .heavy))
+                .tracking(0.8)
+                .foregroundStyle(Color.black.opacity(0.45))
+
+            Text(PieceMarketPrice.formatUSD(estimate.avg))
+                .font(.system(size: 28, weight: .heavy, design: .rounded))
+                .foregroundStyle(Color.black.opacity(0.92))
+
+            HStack(spacing: 10) {
+                Text("Desde \(PieceMarketPrice.formatUSD(estimate.min))")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.55))
+                Text("Hasta \(PieceMarketPrice.formatUSD(estimate.max))")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.45))
+            }
+
+            if !estimate.platforms.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(estimate.platforms) { platform in
+                        PlatformPriceTag(
+                            platform: platform,
+                            formatted: PieceMarketPrice.formatUSD(platform.avg)
+                        )
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
         }
-
-        detailActionButtons
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.black.opacity(0.10), lineWidth: 1)
+                }
+        }
     }
 
     @ViewBuilder
@@ -289,17 +493,414 @@ struct ClosetGarmentDetailView: View {
     }
 
     private var shoeDetailHero: some View {
-        ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
-            .padding(.vertical, 12)
-            .padding(.horizontal, 8)
+        ZStack(alignment: .top) {
+            Color.white
+            ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
+                .padding(.horizontal, 6)
+                .scaleEffect(1.14)
+                .offset(y: -10)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 210)
+        .clipped()
+    }
+
+    private var shoeDisplaySizeLabel: String {
+        if let core = StockSizeDisplay.normalizedStorage(from: sizeDraft), !core.isEmpty {
+            return "EU \(core)"
+        }
+        return "Seleccionar"
+    }
+
+    private var shoeAvailableSizes: [String] {
+        if let sizes = shoeMarketComparison?.sizes.filter({ !$0.isEmpty }), !sizes.isEmpty {
+            return sizes
+        }
+        if let core = StockSizeDisplay.normalizedStorage(from: sizeDraft) {
+            return [core]
+        }
+        return ["40", "41", "42", "42.5", "43", "44", "45"]
+    }
+
+    private var shoeBuyNowUSD: Int? {
+        if let row = shoePriceRowForSelectedSize, let ask = row.cheapest?.price, ask > 0 {
+            return Int(ask.rounded())
+        }
+        if let ask = shoeLowestAskUSD { return ask }
+        if let min = item.marketPrice?.min, min > 0 { return min }
+        return nil
+    }
+
+    private var shoeLowestAskUSD: Int? {
+        if let ask = shoeMarketComparison?.bestBuyOverall?.price, ask > 0 {
+            return Int(ask.rounded())
+        }
+        if let min = item.marketPrice?.min, min > 0 { return min }
+        return nil
+    }
+
+    private var shoePriceRowForSelectedSize: MarketSizeRow? {
+        guard let comparison = shoeMarketComparison else { return nil }
+        let selected = StockSizeDisplay.normalizedStorage(from: sizeDraft)
+        if let selected, let row = comparison.rows.first(where: { $0.size == selected }) {
+            return row
+        }
+        return comparison.rows.first
+    }
+
+    private var shoeSizeSelectorRow: some View {
+        Menu {
+            ForEach(shoeAvailableSizes, id: \.self) { size in
+                Button("EU \(size)") {
+                    sizeDraft = size
+                    item.sizeText = size
+                    saveSilently()
+                    Task { await loadShoeMarketData(force: true) }
+                }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Text("Talla (no.)")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(Color.black.opacity(0.55))
+                Spacer(minLength: 0)
+                Text(shoeDisplaySizeLabel)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.88))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.45))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.black.opacity(0.12), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var shoeBuyMarketCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Comprar ahora por")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(Color.black.opacity(0.55))
+                if let buy = shoeBuyNowUSD {
+                    Text("\(buy) US$")
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.92))
+                        .minimumScaleFactor(0.7)
+                        .lineLimit(1)
+                } else if shoeMarketLoading || marketPriceBusy {
+                    ProgressView().controlSize(.regular)
+                        .padding(.vertical, 8)
+                } else {
+                    Text("—")
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.black.opacity(0.35))
+                }
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Última venta")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                    if let last = shoeLastSale {
+                        Text("\(Int(last.rounded())) US$")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Color.black.opacity(0.88))
+                    } else if shoeMarketLoading {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("—")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Color.black.opacity(0.35))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Oferta más baja")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                    if let ask = shoeLowestAskUSD {
+                        Text("\(ask) US$")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Color.black.opacity(0.88))
+                    } else {
+                        Text("—")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Color.black.opacity(0.35))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                    showShoeMarketData = true
+                } label: {
+                    Text("Datos del\nmercado")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.13, green: 0.55, blue: 0.30))
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(2)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.black.opacity(0.12), lineWidth: 1)
+                }
+        }
+    }
+
+    private var shoePolicyAccordions: some View {
+        VStack(spacing: 0) {
+            shoeAccordionRow(
+                icon: "arrow.uturn.backward",
+                title: "Política de devolución",
+                subtitle: shoeExpandedReturnPolicy ? nil : "Plazo de 14 días para la devolución.",
+                subtitleColor: Color(red: 0.13, green: 0.55, blue: 0.30),
+                isExpanded: $shoeExpandedReturnPolicy
+            ) {
+                Text("Puedes solicitar la devolución en un plazo de 14 días desde la entrega, siempre que el artículo esté en las mismas condiciones en las que lo recibiste.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.black.opacity(0.62))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            shoeAccordionDivider
+
+            shoeAccordionRow(
+                icon: "shield.lefthalf.filled",
+                title: "Promesa del comprador",
+                isExpanded: $shoeExpandedBuyerPromise
+            ) {
+                Text("Verificamos la autenticidad y el estado del producto antes de que llegue a tus manos.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.black.opacity(0.62))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            shoeAccordionDivider
+
+            shoeDetailActionBar
+        }
+    }
+
+    private var shoeDetailActionBar: some View {
+        HStack(spacing: 0) {
+            shoeDetailActionButton(title: "Editar", icon: "pencil") {
+                showShoeEditDetails = true
+            }
+
+            Rectangle()
+                .fill(Color.black.opacity(0.10))
+                .frame(width: 1, height: 28)
+
+            shoeDetailActionButton(title: "Pantalla completa", icon: "arrow.up.left.and.arrow.down.right") {
+                showShoeFullscreenImage = true
+            }
+
+            Rectangle()
+                .fill(Color.black.opacity(0.10))
+                .frame(width: 1, height: 28)
+
+            shoeDetailActionButton(title: "Muestra todo", icon: "square.grid.2x2") {
+                showShoeAllDetails = true
+            }
+        }
+        .padding(.vertical, 10)
+    }
+
+    private func shoeDetailActionButton(title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+            }
+            .foregroundStyle(Color.black.opacity(0.82))
             .frame(maxWidth: .infinity)
-            .aspectRatio(0.72, contentMode: .fit)
-            .background(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color.white)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var shoeAccordionDivider: some View {
+        Rectangle()
+            .fill(Color.black.opacity(0.08))
+            .frame(height: 1)
+    }
+
+    private var shoeRelatedProductsHeader: some View {
+        Text("Productos similares")
+            .font(.system(size: 18, weight: .bold))
+            .foregroundStyle(Color.black.opacity(0.92))
+    }
+
+    private var shoeSimilarStockSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            shoeRelatedProductsHeader
+
+            if similarStockItems.isEmpty {
+                Text("No hay más artículos en tu stock.")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.45))
+            } else {
+                shoeStockGrid(items: similarStockItems)
+            }
+        }
+    }
+
+    private func shoeStockGrid(items: [ClosetItem]) -> some View {
+        LazyVGrid(columns: shoeStockGridColumns, spacing: 12) {
+            ForEach(items) { stockItem in
+                NavigationLink {
+                    ClosetGarmentDetailView(item: stockItem)
+                } label: {
+                    shoeStockGridCard(stockItem)
+                }
+                .buttonStyle(.plain)
+                .id("\(stockItem.id)-\(stockItem.priceText ?? "")")
+            }
+        }
+    }
+
+    private func shoeStockGridCard(_ stockItem: ClosetItem) -> some View {
+        VStack(spacing: 9) {
+            ZStack {
+                Color.white
+
+                ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: stockItem))
+                    .padding(4)
+
+                VStack {
+                    Spacer()
+                    HStack(alignment: .bottom) {
+                        if let size = stockItem.cardSizeLabel {
+                            Text(size)
+                                .font(.system(size: 10, weight: .heavy))
+                                .foregroundStyle(Color.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Capsule().fill(Color.black.opacity(0.78)))
+                        }
+                        Spacer(minLength: 4)
+                        if let price = stockItem.cardPriceLabel {
+                            Text(price)
+                                .font(.system(size: 10, weight: .heavy))
+                                .foregroundStyle(Color.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Capsule().fill(Color.black.opacity(0.78)))
+                        }
+                    }
+                    .padding(8)
+                }
+                .allowsHitTesting(false)
+            }
+            .aspectRatio(1, contentMode: .fit)
+
+            let brandLine = stockItem.brand?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            Text(brandLine.isEmpty ? "Unknown Brand" : brandLine)
+                .font(.system(size: 10, weight: .heavy))
+                .tracking(0.4)
+                .foregroundStyle(Color.black.opacity(0.55))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+
+            if let sku = stockItem.cardSKULabel {
+                Text(sku)
+                    .font(.system(size: 11, weight: .heavy, design: .monospaced))
+                    .foregroundStyle(Color.black.opacity(0.72))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+            }
+
+            Text(stockItem.catalogDisplayName)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Color.black.opacity(0.88))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(minHeight: 36, alignment: .top)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func shoeAccordionRow<Content: View>(
+        icon: String,
+        title: String,
+        subtitle: String? = nil,
+        subtitleColor: Color = Color.black.opacity(0.45),
+        isExpanded: Binding<Bool>,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                        .frame(width: 22)
+
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.88))
+                        .lineLimit(1)
+
+                    Spacer(minLength: 8)
+
+                    if let subtitle, !isExpanded.wrappedValue {
+                        Text(subtitle)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(subtitleColor)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+
+                    Image(systemName: isExpanded.wrappedValue ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.45))
+                }
+                .padding(.vertical, 14)
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded.wrappedValue {
+                content()
+                    .padding(.bottom, 14)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    @MainActor
+    private func loadShoeLastSale() async {
+        guard let comp = shoeMarketComparison,
+              let q = comp.platforms.first(where: { $0.platformKey == "stockx" && $0.productID != nil })
+                ?? comp.platforms.first(where: { $0.productID != nil }),
+              let pid = q.productID else {
+            shoeLastSale = nil
+            return
+        }
+        let sales = await KicksDBClient.dailySales(platformKey: q.platformKey, productID: pid)
+        shoeLastSale = sales.last?.avg
     }
 
     private var studioHero: some View {
@@ -969,9 +1570,20 @@ struct ClosetGarmentDetailView: View {
     }
 
     @MainActor
+    private func loadShoeMarketData(force: Bool = false) async {
+        guard isShoeProduct else { return }
+        async let table: Void = loadShoeMarketTable(force: force)
+        async let price: Void = refreshMarketPrice(
+            force: force || item.marketPrice == nil || item.marketPriceNeedsRefresh
+        )
+        _ = await (table, price)
+        await loadShoeLastSale()
+    }
+
+    @MainActor
     private func loadShoeMarketTable(force: Bool = false) async {
         guard isShoeProduct else { return }
-        if shoeMarketLoading { return }
+        if shoeMarketLoading, !force { return }
 
         shoeMarketLoading = true
         defer { shoeMarketLoading = false }

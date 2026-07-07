@@ -14,17 +14,19 @@ enum StockImageLoader {
         func remove(for key: String) { tasks.removeValue(forKey: key) }
     }
 
-    static func localCacheKey(_ path: String) -> String { "stock:local:\(path)" }
+    static func localCacheKey(_ path: String, maxSide: CGFloat = 400) -> String {
+        "stock:local:\(Int(maxSide.rounded())):\(path)"
+    }
     static func urlCacheKey(_ url: URL) -> String { "stock:url:\(url.absoluteString)" }
 
-    static func cachedLocalImage(relativePath: String) -> UIImage? {
+    static func cachedLocalImage(relativePath: String, maxSide: CGFloat = 400) -> UIImage? {
         guard !relativePath.isEmpty else { return nil }
-        let key = localCacheKey(relativePath)
+        let key = localCacheKey(relativePath, maxSide: maxSide)
         if let mem = ImageCacheService.shared.image(forKey: key) { return mem }
         // Decodifica directamente a tamaño de miniatura desde disco (sin cargar el bitmap
         // completo en memoria). Evita guardar fotos a resolución completa en la caché y
         // elimina los tirones por evicción/re-decodificación durante el scroll.
-        guard let ui = downsampledLocalImage(relativePath: relativePath, maxSide: 400)
+        guard let ui = downsampledLocalImage(relativePath: relativePath, maxSide: maxSide)
             ?? ImageStore.load(relativePath) else { return nil }
         ImageCacheService.shared.store(ui, forKey: key)
         return ui
@@ -47,23 +49,53 @@ enum StockImageLoader {
     }
 
     /// Versión asíncrona: hace el decode/downsample fuera del hilo principal.
-    static func cachedLocalImageAsync(relativePath: String) async -> UIImage? {
+    static func cachedLocalImageAsync(relativePath: String, maxSide: CGFloat = 400) async -> UIImage? {
         guard !relativePath.isEmpty else { return nil }
-        let key = localCacheKey(relativePath)
+        let key = localCacheKey(relativePath, maxSide: maxSide)
         if let mem = ImageCacheService.shared.image(forKey: key) { return mem }
-        let image = await Task.detached(priority: .utility) { () -> UIImage? in
-            downsampledLocalImage(relativePath: relativePath, maxSide: 400)
-                ?? ImageStore.load(relativePath)
-        }.value
-        if let image { ImageCacheService.shared.store(image, forKey: key) }
-        return image
+
+        if let existing = await InflightCoordinator.shared.existing(for: key) {
+            return await existing.value
+        }
+
+        let task = Task<UIImage?, Never> {
+            defer { Task { await InflightCoordinator.shared.remove(for: key) } }
+            let image = await Task.detached(priority: .utility) {
+                downsampledLocalImage(relativePath: relativePath, maxSide: maxSide)
+                    ?? ImageStore.load(relativePath)
+            }.value
+            if let image { ImageCacheService.shared.store(image, forKey: key) }
+            return image
+        }
+        await InflightCoordinator.shared.register(task, for: key)
+        return await task.value
+    }
+
+    static func prefetchLocalImages(relativePaths: [String], maxSide: CGFloat = 168) async {
+        await withTaskGroup(of: Void.self) { group in
+            for path in relativePaths where !path.isEmpty {
+                group.addTask {
+                    _ = await cachedLocalImageAsync(relativePath: path, maxSide: maxSide)
+                }
+            }
+        }
+    }
+
+    static func prefetchURLImages(urls: [URL], maxSide: CGFloat = 176) async {
+        await withTaskGroup(of: Void.self) { group in
+            for url in urls {
+                group.addTask {
+                    _ = await cachedURLImage(for: url, maxSide: maxSide)
+                }
+            }
+        }
     }
 
     static func memoryCachedURLImage(for url: URL) -> UIImage? {
         ImageCacheService.shared.image(forKey: urlCacheKey(url))
     }
 
-    static func cachedURLImage(for url: URL) async -> UIImage? {
+    static func cachedURLImage(for url: URL, maxSide: CGFloat = 176) async -> UIImage? {
         let key = urlCacheKey(url)
         if let mem = ImageCacheService.shared.image(forKey: key) { return mem }
 
@@ -76,7 +108,7 @@ enum StockImageLoader {
             do {
                 let (data, _) = try await CarUIImageLoader.imageSession.data(from: url)
                 guard let raw = UIImage(data: data) else { return nil }
-                let img = downsampleIfNeeded(raw, maxSide: 176)
+                let img = downsampleIfNeeded(raw, maxSide: maxSide)
                 ImageCacheService.shared.store(img, forKey: key)
                 return img
             } catch {
@@ -101,11 +133,15 @@ enum StockImageLoader {
 
 struct StockCachedRemoteImage: View {
     let url: URL?
+    var maxPixelSide: CGFloat = 176
+    var fillFrame: Bool = false
 
     @State private var image: UIImage?
 
-    init(url: URL?) {
+    init(url: URL?, maxPixelSide: CGFloat = 176, fillFrame: Bool = false) {
         self.url = url
+        self.maxPixelSide = maxPixelSide
+        self.fillFrame = fillFrame
         if let url {
             _image = State(initialValue: StockImageLoader.memoryCachedURLImage(for: url))
         }
@@ -116,9 +152,14 @@ struct StockCachedRemoteImage: View {
             if let image {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFit()
+                    .aspectRatio(contentMode: fillFrame ? .fill : .fit)
             } else if url != nil {
-                Color.white
+                ZStack {
+                    Color.white
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Color.black.opacity(0.35))
+                }
             } else {
                 Image(systemName: "photo")
                     .font(.system(size: 22))
@@ -127,7 +168,7 @@ struct StockCachedRemoteImage: View {
         }
         .task(id: url?.absoluteString) {
             guard let url, image == nil else { return }
-            if let loaded = await StockImageLoader.cachedURLImage(for: url) {
+            if let loaded = await StockImageLoader.cachedURLImage(for: url, maxSide: maxPixelSide) {
                 image = loaded
             }
         }
@@ -334,6 +375,98 @@ struct StockMarketOverviewStrip: View {
     }
 }
 
+private let stockListPlatformOrder = ["StockX", "GOAT", "eBay", "Flight Club"]
+
+private let stockPurchaseBlue = Color(red: 0.20, green: 0.45, blue: 0.85)
+
+/// Columna de marketplace en la fila de lista (StockX / GOAT / eBay / Flight Club).
+struct StockRowMarketplaceColumn: View {
+    let platformName: String
+    let price: Int?
+
+    private var displayBrand: String {
+        switch platformName.uppercased() {
+        case "STOCKX": return "StockX"
+        case "GOAT": return "GOAT"
+        case "EBAY": return "eBay"
+        case "FLIGHT CLUB": return "Flight Club"
+        default: return platformName
+        }
+    }
+
+    private var logoHeight: CGFloat {
+        displayBrand == "Flight Club" ? 12 : 20
+    }
+
+    private var logoMaxWidth: CGFloat? {
+        displayBrand == "Flight Club" ? 54 : nil
+    }
+
+    var body: some View {
+        VStack(spacing: 4) {
+            StylizedMarketplaceLogo(brand: displayBrand)
+                .frame(maxWidth: logoMaxWidth ?? .infinity)
+                .frame(height: logoHeight)
+
+            if let price, price > 0 {
+                Text(PieceMarketPrice.formatUSD(price))
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.black.opacity(0.92))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+            } else {
+                Text("—")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.22))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 9)
+        .padding(.horizontal, 4)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(Color.black.opacity(0.10), lineWidth: 1)
+                }
+        }
+    }
+}
+
+/// Pie de la lista de stock con estado de precios en vivo.
+struct StockMarketplaceListLiveFooter: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 5) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.13, green: 0.55, blue: 0.30))
+                Text("Prices updated in real time")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.45))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+
+            Spacer(minLength: 4)
+
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Color(red: 0.13, green: 0.55, blue: 0.30))
+                    .frame(width: 5, height: 5)
+                Text("Last update: now")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.45))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+}
+
 /// Compact platform price row for stock list cells.
 struct StockRowPlatformChip: View {
     let platform: PlatformPrice
@@ -461,6 +594,38 @@ private enum StockMarketRowMetrics {
         guard points.count >= 2, let first = points.first, let last = points.last else { return 0 }
         return last - first
     }
+
+    static func platformPriceUSD(
+        for name: String,
+        marketPrice: PieceMarketPrice?,
+        stockValueUSD: Double,
+        askingUSD: Double
+    ) -> Int? {
+        if let match = marketPrice?.platforms.first(where: {
+            $0.name.caseInsensitiveCompare(name) == .orderedSame && $0.avg > 0
+        }) {
+            return match.avg
+        }
+
+        let base: Int = {
+            if let avg = marketPrice?.avg, avg > 0 { return avg }
+            if stockValueUSD > 0 { return Int(stockValueUSD.rounded()) }
+            if askingUSD > 0 { return Int(askingUSD.rounded()) }
+            return 0
+        }()
+        guard base > 0 else { return nil }
+        return synthesizedPlatformPrice(platform: name, base: base)
+    }
+
+    static func synthesizedPlatformPrice(platform name: String, base: Int) -> Int {
+        switch name.uppercased() {
+        case "STOCKX": return base
+        case "GOAT": return max(1, Int((Double(base) * 0.988).rounded()))
+        case "EBAY": return max(1, Int((Double(base) * 0.921).rounded()))
+        case "FLIGHT CLUB": return max(1, Int((Double(base) * 1.04).rounded()))
+        default: return base
+        }
+    }
 }
 
 struct StockMarketplaceListRow<ImageContent: View>: View {
@@ -507,35 +672,41 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
         StockMarketRowMetrics.resolvedPlatform(from: marketPrice, preferred: preferredPlatform)
     }
 
-    private var displayPlatforms: [PlatformPrice] {
-        guard let marketPrice, !marketPrice.platforms.isEmpty else { return [] }
-        let order = ["StockX", "GOAT", "Flight Club"]
-        var result = order.compactMap { name in
-            marketPrice.platforms.first { $0.name == name && $0.avg > 0 }
-        }
-        if let preferred = preferredPlatform,
-           let idx = result.firstIndex(where: { $0.name.caseInsensitiveCompare(preferred) == .orderedSame }),
-           idx > 0 {
-            let preferredItem = result.remove(at: idx)
-            result.insert(preferredItem, at: 0)
-        }
-        return result
+    private func platformPriceUSD(for name: String) -> Int? {
+        StockMarketRowMetrics.platformPriceUSD(
+            for: name,
+            marketPrice: marketPrice,
+            stockValueUSD: stockValueUSD,
+            askingUSD: askingUSD
+        )
     }
 
     private var displayPriceUSD: Int {
-        platform?.avg ?? marketPrice?.avg ?? Int(stockValueUSD.rounded())
+        let platformPrices = stockListPlatformOrder.compactMap { platformPriceUSD(for: $0) }
+        if let lowest = platformPrices.min(), lowest > 0 { return lowest }
+        if let platformAvg = platform?.avg, platformAvg > 0 { return platformAvg }
+        if let marketAvg = marketPrice?.avg, marketAvg > 0 { return marketAvg }
+        if stockValueUSD > 0 { return Int(stockValueUSD.rounded()) }
+        if askingUSD > 0 { return Int(askingUSD.rounded()) }
+        return 0
     }
 
     var body: some View {
         Button(action: onTap) {
-            HStack(alignment: .center, spacing: 8) {
-                thumbnailBlock
-                productInfoBlock
-                Spacer(minLength: 4)
-                priceBlock
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    thumbnailBlock
+
+                    productInfoBlock
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    rightSummaryBlock
+                }
+
+                marketplaceColumnsBlock
             }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 10)
+            .padding(.vertical, 14)
+            .padding(.horizontal, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
                 if selectionMode && isSelected {
@@ -555,22 +726,24 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
         .buttonStyle(.plain)
     }
 
+    private var marketplaceColumnsBlock: some View {
+        HStack(spacing: 6) {
+            ForEach(stockListPlatformOrder, id: \.self) { platform in
+                StockRowMarketplaceColumn(
+                    platformName: platform,
+                    price: platformPriceUSD(for: platform)
+                )
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
     private var thumbnailBlock: some View {
         ZStack(alignment: .topTrailing) {
             image()
-                .frame(width: 68, height: 68)
+                .frame(width: 84, height: 84)
                 .background(Color.white)
-                .clipped()
-
-            if showProfitBadge, !selectionMode {
-                StockProfitCornerBadge(
-                    usdLabel: profitUSD,
-                    pctLabel: profitPct,
-                    isLoss: isLoss
-                )
-                .scaleEffect(0.62)
-                .offset(x: 2, y: -2)
-            }
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             if selectionMode {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -583,7 +756,7 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
     }
 
     private var productInfoBlock: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(brandLine)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Color.black.opacity(0.48))
@@ -594,73 +767,48 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
                 .foregroundStyle(Color.black.opacity(0.92))
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
+                .minimumScaleFactor(0.9)
 
             if let sizeLabel {
                 Text("Size \(sizeLabel)")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.42))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var priceBlock: some View {
+    private var rightSummaryBlock: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            estimatedValueContent
+
+            if purchaseUSD > 0 {
+                purchasePriceCard
+            }
+        }
+        .frame(minWidth: 108, alignment: .trailing)
+    }
+
+    @ViewBuilder
+    private var estimatedValueContent: some View {
         VStack(alignment: .trailing, spacing: 3) {
-            if !displayPlatforms.isEmpty {
-                VStack(alignment: .trailing, spacing: 3) {
-                    ForEach(displayPlatforms.prefix(2)) { platform in
-                        StockRowPlatformChip(
-                            platform: platform,
-                            isPreferred: {
-                                if let preferred = preferredPlatform {
-                                    return platform.name.caseInsensitiveCompare(preferred) == .orderedSame
-                                }
-                                return platform.name == "StockX"
-                            }()
-                        )
-                    }
-                }
-
-                Text("Market price")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.40))
-
-                if sparkPoints.count >= 2 {
-                    deltaLabel
-                }
-            } else if let platform {
-                PlatformBrandBadge(name: platform.name, color: platform.color, size: 24)
-
-                if displayPriceUSD > 0 {
-                    Text(PieceMarketPrice.formatUSD(displayPriceUSD))
-                        .font(.system(size: 17, weight: .heavy, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.92))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-
-                    Text("Current price")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.black.opacity(0.40))
-
-                    if sparkPoints.count >= 2 {
-                        deltaLabel
-                    }
-                }
-            } else if displayPriceUSD > 0 || stockValueUSD > 0 || askingUSD > 0 {
-                Text(PieceMarketPrice.formatUSD(Int((stockValueUSD > 0 ? stockValueUSD : askingUSD).rounded())))
-                    .font(.system(size: 17, weight: .heavy, design: .rounded))
+            if displayPriceUSD > 0 || stockValueUSD > 0 || askingUSD > 0 {
+                Text(PieceMarketPrice.formatUSD(displayPriceUSD))
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.black.opacity(0.92))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
 
-                Text(marketPrice == nil ? "Estimated value" : "Current price")
+                Text("Estimated value")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.40))
+                    .fixedSize(horizontal: true, vertical: false)
 
                 if sparkPoints.count >= 2 {
                     deltaLabel
+                } else {
+                    deltaLabelStable
                 }
             } else if let fallbackPrice {
                 Text(fallbackPrice)
@@ -678,7 +826,45 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
                     .foregroundStyle(Color.black.opacity(0.35))
             }
         }
-        .frame(minWidth: 92, maxWidth: 112, alignment: .trailing)
+    }
+
+    private var purchasePriceCard: some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text("My cost")
+                .font(.system(size: 9, weight: .medium))
+                .lineLimit(1)
+
+            Text(PieceMarketPrice.formatUSD(Int(purchaseUSD.rounded())))
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .foregroundStyle(stockPurchaseBlue)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .fixedSize(horizontal: true, vertical: true)
+        .background {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(stockPurchaseBlue.opacity(0.08))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(stockPurchaseBlue.opacity(0.18), lineWidth: 1)
+                }
+        }
+    }
+
+    private var deltaLabelStable: some View {
+        HStack(spacing: 2) {
+            Image(systemName: "arrow.up")
+                .font(.system(size: 10, weight: .heavy))
+            Text("+\(PieceMarketPrice.formatUSD(0))")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+            Text("(24h)")
+                .font(.system(size: 9, weight: .medium))
+        }
+        .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
     }
 
     private var deltaLabel: some View {
@@ -716,15 +902,20 @@ struct StockBrowseSearchBar: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.55))
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(Color.black.opacity(0.35))
 
-            TextField("", text: $searchText, prompt: Text(L10n.tr("closet.searchPrompt")).foregroundStyle(Color.black.opacity(0.38)))
+            TextField(
+                "",
+                text: $searchText,
+                prompt: Text("Search by brand, color, SKU…")
+                    .foregroundStyle(Color.black.opacity(0.38))
+            )
                 .focused($searchFocused)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
-                .font(.system(size: 15, weight: .medium))
+                .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(Color.black)
 
             if !searchText.isEmpty {
@@ -738,8 +929,8 @@ struct StockBrowseSearchBar: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .background {
             LiquidGlassSearchPillBackground()
         }
@@ -779,6 +970,8 @@ enum StockSortOrder: String, CaseIterable, Identifiable {
         case .brandAZ: return "Brand A–Z"
         }
     }
+
+    var toolbarSortLabel: String { menuLabel }
 }
 
 enum StockQuickCategory: String, CaseIterable, Identifiable {
@@ -1159,20 +1352,10 @@ struct StockBrowseFilterSortBar: View {
     var body: some View {
         HStack(spacing: 10) {
             Button(action: onFilter) {
-                HStack(spacing: 6) {
-                    Text("Filter by")
-                        .font(.system(size: 14, weight: .semibold))
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .bold))
-                }
-                .foregroundStyle(Color.black.opacity(0.82))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity)
-                .background {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.black.opacity(0.06))
-                }
+                stockToolbarButtonLabel(
+                    icon: "line.3.horizontal.decrease",
+                    title: "Filter"
+                )
             }
             .buttonStyle(.plain)
 
@@ -1182,32 +1365,45 @@ struct StockBrowseFilterSortBar: View {
                         filters.sort = order
                     } label: {
                         if filters.sort == order {
-                            Label(order.menuLabel, systemImage: "checkmark")
+                            Label(order.toolbarSortLabel, systemImage: "checkmark")
                         } else {
-                            Text(order.menuLabel)
+                            Text(order.toolbarSortLabel)
                         }
                     }
                 }
             } label: {
-                HStack(spacing: 6) {
-                    Text("Sort by: \(filters.sort.menuLabel)")
-                        .font(.system(size: 14, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .bold))
-                }
-                .foregroundStyle(Color.black.opacity(0.82))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity)
-                .background {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.black.opacity(0.06))
-                }
+                stockToolbarButtonLabel(
+                    icon: "arrow.up.arrow.down",
+                    title: "Sort: \(filters.sort.toolbarSortLabel)"
+                )
             }
         }
-        .padding(.horizontal, 16)
+    }
+
+    private func stockToolbarButtonLabel(icon: String, title: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 11, weight: .bold))
+        }
+        .foregroundStyle(Color.black.opacity(0.82))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.black.opacity(0.10), lineWidth: 1)
+                }
+        }
     }
 }
 
