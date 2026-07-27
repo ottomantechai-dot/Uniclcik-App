@@ -128,6 +128,8 @@
 		AA000203 /* UpsoledProductsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000203 /* UpsoledProductsView.swift */; };
 		AA000210 /* DashboardHomeScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000210 /* DashboardHomeScreen.swift */; };
 		AA000211 /* 3d-pokemon-card-oddish.gif in Resources */ = {isa = PBXBuildFile; fileRef = AB000211 /* 3d-pokemon-card-oddish.gif */; };
+		AA000212 /* StockCategoryMarketplaceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000212 /* StockCategoryMarketplaceCatalog.swift */; };
+		AA000213 /* StockMarketplaceConnectionsDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000213 /* StockMarketplaceConnectionsDemoView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -256,6 +258,8 @@
 		AB000202 /* UpsoledProductsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpsoledProductsViewModel.swift; sourceTree = "<group>"; };
 		AB000203 /* UpsoledProductsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpsoledProductsView.swift; sourceTree = "<group>"; };
 		AB000210 /* DashboardHomeScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHomeScreen.swift; sourceTree = "<group>"; };
+		AB000212 /* StockCategoryMarketplaceCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockCategoryMarketplaceCatalog.swift; sourceTree = "<group>"; };
+		AB000213 /* StockMarketplaceConnectionsDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockMarketplaceConnectionsDemoView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -322,6 +326,7 @@
 				AB000117 /* ColorPaletteExtractor.swift */,
 				AB000113 /* ImageStore.swift */,
 				AB000200 /* UpsoledProduct.swift */,
+				AB000212 /* StockCategoryMarketplaceCatalog.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -405,6 +410,7 @@
 				AB000097 /* VieraChatRichContent.swift */,
 				AB000111 /* ClosetViews.swift */,
 				AB000131 /* StockSearchScannerViews.swift */,
+				AB000213 /* StockMarketplaceConnectionsDemoView.swift */,
 				AB000100 /* ClosetDetailAndLooksViews.swift */,
 				AB000122 /* Shoe360ProViews.swift */,
 				AB000119 /* FaceSetupView.swift */,
@@ -666,6 +672,8 @@
 				AA000110 /* ClosetViewModels.swift in Sources */,
 				AA000111 /* ClosetViews.swift in Sources */,
 				AA000131 /* StockSearchScannerViews.swift in Sources */,
+				AA000212 /* StockCategoryMarketplaceCatalog.swift in Sources */,
+				AA000213 /* StockMarketplaceConnectionsDemoView.swift in Sources */,
 				AA000200 /* UpsoledProduct.swift in Sources */,
 				AA000201 /* UpsoledProductsService.swift in Sources */,
 				AA000202 /* UpsoledProductsViewModel.swift in Sources */,

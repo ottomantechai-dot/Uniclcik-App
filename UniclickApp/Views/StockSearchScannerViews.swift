@@ -375,14 +375,13 @@ struct StockMarketOverviewStrip: View {
     }
 }
 
-private let stockListPlatformOrder = ["StockX", "GOAT", "eBay", "Flight Club"]
-
 private let stockPurchaseBlue = Color(red: 0.20, green: 0.45, blue: 0.85)
 
-/// Columna de marketplace en la fila de lista (StockX / GOAT / eBay / Flight Club).
+/// Columna de marketplace en la fila de lista (plataformas según categoría).
 struct StockRowMarketplaceColumn: View {
     let platformName: String
     let price: Int?
+    var trendDeltaUSD: Double? = nil
 
     private var displayBrand: String {
         switch platformName.uppercased() {
@@ -390,16 +389,33 @@ struct StockRowMarketplaceColumn: View {
         case "GOAT": return "GOAT"
         case "EBAY": return "eBay"
         case "FLIGHT CLUB": return "Flight Club"
+        case "TCG COLLECTOR": return "TCG Collector"
+        case "GRAILED": return "Grailed"
+        case "POSHMARK": return "Poshmark"
         default: return platformName
         }
     }
 
     private var logoHeight: CGFloat {
-        displayBrand == "Flight Club" ? 12 : 20
+        switch displayBrand.uppercased() {
+        case "FLIGHT CLUB", "TCG COLLECTOR", "POSHMARK":
+            return 12
+        default:
+            return 20
+        }
     }
 
     private var logoMaxWidth: CGFloat? {
-        displayBrand == "Flight Club" ? 54 : nil
+        switch displayBrand.uppercased() {
+        case "FLIGHT CLUB":
+            return 54
+        case "TCG COLLECTOR":
+            return 58
+        case "POSHMARK":
+            return 52
+        default:
+            return nil
+        }
     }
 
     var body: some View {
@@ -414,6 +430,8 @@ struct StockRowMarketplaceColumn: View {
                     .foregroundStyle(Color.black.opacity(0.92))
                     .lineLimit(1)
                     .minimumScaleFactor(0.65)
+
+                platformTrendLabel
             } else {
                 Text("—")
                     .font(.system(size: 13, weight: .bold))
@@ -431,6 +449,34 @@ struct StockRowMarketplaceColumn: View {
                         .strokeBorder(Color.black.opacity(0.10), lineWidth: 1)
                 }
         }
+    }
+
+    @ViewBuilder
+    private var platformTrendLabel: some View {
+        let delta = trendDeltaUSD ?? 0
+        let trendUp = delta >= 0
+        let tint = trendDeltaUSD == nil
+            ? Color.black.opacity(0.35)
+            : (trendUp
+                ? Color(red: 0.20, green: 0.70, blue: 0.45)
+                : Color(red: 0.92, green: 0.30, blue: 0.30))
+        let amount = Int(abs(delta).rounded())
+
+        HStack(spacing: 1) {
+            Image(systemName: trendUp ? "arrow.up" : "arrow.down")
+                .font(.system(size: 7, weight: .heavy))
+            if delta > 0 {
+                Text("+\(PieceMarketPrice.formatUSD(amount))")
+            } else if delta < 0 {
+                Text("−\(PieceMarketPrice.formatUSD(amount))")
+            } else {
+                Text("+\(PieceMarketPrice.formatUSD(0))")
+            }
+        }
+        .font(.system(size: 8, weight: .semibold, design: .rounded))
+        .foregroundStyle(tint)
+        .lineLimit(1)
+        .minimumScaleFactor(0.65)
     }
 }
 
@@ -595,6 +641,26 @@ private enum StockMarketRowMetrics {
         return last - first
     }
 
+    static func platform(from name: String, in estimate: PieceMarketPrice?) -> PlatformPrice? {
+        estimate?.platforms.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
+    static func platformDeltaUSD(for name: String, marketPrice: PieceMarketPrice?) -> Double? {
+        if let platform = platform(from: name, in: marketPrice),
+           platform.history.count >= 2,
+           let first = platform.history.first,
+           let last = platform.history.last {
+            return last - first
+        }
+        if let estimate = marketPrice,
+           estimate.history.count >= 2,
+           let first = estimate.history.first,
+           let last = estimate.history.last {
+            return last - first
+        }
+        return nil
+    }
+
     static func platformPriceUSD(
         for name: String,
         marketPrice: PieceMarketPrice?,
@@ -618,13 +684,7 @@ private enum StockMarketRowMetrics {
     }
 
     static func synthesizedPlatformPrice(platform name: String, base: Int) -> Int {
-        switch name.uppercased() {
-        case "STOCKX": return base
-        case "GOAT": return max(1, Int((Double(base) * 0.988).rounded()))
-        case "EBAY": return max(1, Int((Double(base) * 0.921).rounded()))
-        case "FLIGHT CLUB": return max(1, Int((Double(base) * 1.04).rounded()))
-        default: return base
-        }
+        StockCategoryMarketplaceCatalog.synthesizedPlatformPrice(platform: name, base: base)
     }
 }
 
@@ -634,6 +694,7 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
     var sizeLabel: String? = nil
     var fallbackPrice: String? = nil
     var marketPrice: PieceMarketPrice? = nil
+    var marketplaceSegment: StockMarketplaceSegment = .shoes
     var preferredPlatform: String? = nil
     var stockValueUSD: Double = 0
     var purchaseUSD: Double = 0
@@ -682,7 +743,7 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
     }
 
     private var displayPriceUSD: Int {
-        let platformPrices = stockListPlatformOrder.compactMap { platformPriceUSD(for: $0) }
+        let platformPrices = marketplaceSegment.platforms.compactMap { platformPriceUSD(for: $0) }
         if let lowest = platformPrices.min(), lowest > 0 { return lowest }
         if let platformAvg = platform?.avg, platformAvg > 0 { return platformAvg }
         if let marketAvg = marketPrice?.avg, marketAvg > 0 { return marketAvg }
@@ -726,14 +787,32 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
         .buttonStyle(.plain)
     }
 
+    private func platformTrendDeltaUSD(for name: String) -> Double? {
+        StockMarketRowMetrics.platformDeltaUSD(for: name, marketPrice: marketPrice)
+    }
+
     private var marketplaceColumnsBlock: some View {
+        Group {
+            if marketplaceSegment.platforms.count > 4 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    marketplaceColumnsRow(compact: true)
+                }
+            } else {
+                marketplaceColumnsRow(compact: false)
+            }
+        }
+    }
+
+    private func marketplaceColumnsRow(compact: Bool) -> some View {
         HStack(spacing: 6) {
-            ForEach(stockListPlatformOrder, id: \.self) { platform in
+            ForEach(marketplaceSegment.platforms, id: \.self) { platform in
                 StockRowMarketplaceColumn(
                     platformName: platform,
-                    price: platformPriceUSD(for: platform)
+                    price: platformPriceUSD(for: platform),
+                    trendDeltaUSD: platformTrendDeltaUSD(for: platform)
                 )
-                .frame(maxWidth: .infinity)
+                .frame(width: compact ? 72 : nil)
+                .frame(maxWidth: compact ? 72 : .infinity)
             }
         }
     }
@@ -741,6 +820,7 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
     private var thumbnailBlock: some View {
         ZStack(alignment: .topTrailing) {
             image()
+                .padding(4)
                 .frame(width: 84, height: 84)
                 .background(Color.white)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -898,6 +978,7 @@ struct StockMarketplaceListDivider: View {
 struct StockBrowseSearchBar: View {
     @Binding var searchText: String
     @FocusState.Binding var searchFocused: Bool
+    var onScanBarcode: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -927,6 +1008,19 @@ struct StockBrowseSearchBar: View {
                         .foregroundStyle(Color.black.opacity(0.35))
                 }
                 .buttonStyle(.plain)
+            }
+
+            if let onScanBarcode {
+                Button {
+                    searchFocused = false
+                    onScanBarcode()
+                } label: {
+                    Image(systemName: "barcode.viewfinder")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.tr("closet.scanBarcode"))
             }
         }
         .padding(.horizontal, 16)
@@ -1420,6 +1514,7 @@ struct StockBrowseFiltersSheet: View {
     @State private var brandsExpanded = false
     @State private var shoeHeightExpanded = false
     @State private var activityExpanded = false
+    @State private var showConnectionsDemo = false
 
     private var brands: [String] {
         StockFilterEngine.availableBrands(closet: closetItems, catalog: catalogProducts)
@@ -1546,6 +1641,8 @@ struct StockBrowseFiltersSheet: View {
                         }
                         .padding(.bottom, 8)
                     }
+
+                    marketplaceConnectionsDemoRow
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 24)
@@ -1555,6 +1652,40 @@ struct StockBrowseFiltersSheet: View {
         }
         .background(Color.white)
         .preferredColorScheme(.light)
+        .sheet(isPresented: $showConnectionsDemo) {
+            StockMarketplaceConnectionsDemoView()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var marketplaceConnectionsDemoRow: some View {
+        Button {
+            showConnectionsDemo = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "link.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("My seller account")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.88))
+                    Text("Conecta StockX, GOAT, eBay y más")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.black.opacity(0.45))
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.28))
+            }
+            .padding(.vertical, 14)
+        }
+        .buttonStyle(.plain)
     }
 
     private var headerBar: some View {
@@ -1894,6 +2025,7 @@ struct StockBarcodeScannerScreen: View {
     var onCode: (String) -> Void
     var onCancel: () -> Void
 
+    @Environment(\.dismiss) private var dismiss
     @State private var torchOn = false
     @State private var didScan = false
 
@@ -1905,6 +2037,7 @@ struct StockBarcodeScannerScreen: View {
                 onCode(code)
             }
             .ignoresSafeArea()
+            .allowsHitTesting(false)
 
             Color.black.opacity(0.45)
                 .ignoresSafeArea()
@@ -1920,13 +2053,15 @@ struct StockBarcodeScannerScreen: View {
 
             VStack {
                 HStack {
-                    Button(action: onCancel) {
+                    Button(action: closeScanner) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 20, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Back")
 
                     Spacer()
 
@@ -1937,8 +2072,10 @@ struct StockBarcodeScannerScreen: View {
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(torchOn ? "Turn flash off" : "Turn flash on")
                 }
                 .padding(.horizontal, 8)
                 .padding(.top, 8)
@@ -1948,6 +2085,7 @@ struct StockBarcodeScannerScreen: View {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(Color.white, lineWidth: 2)
                     .frame(width: 280, height: 170)
+                    .allowsHitTesting(false)
                     .overlay(alignment: .topLeading) {
                         scanCorner(rotation: 0)
                     }
@@ -1969,9 +2107,18 @@ struct StockBarcodeScannerScreen: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 28)
                     .padding(.bottom, 40)
+                    .allowsHitTesting(false)
             }
+            .zIndex(1)
         }
         .background(Color.black.ignoresSafeArea())
+    }
+
+    private func closeScanner() {
+        guard !didScan else { return }
+        torchOn = false
+        onCancel()
+        dismiss()
     }
 
     private func scanCorner(rotation: Double) -> some View {

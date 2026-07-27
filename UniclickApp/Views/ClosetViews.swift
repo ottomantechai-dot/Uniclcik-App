@@ -213,6 +213,7 @@ struct ClosetView: View {
     @AppStorage("stockLayoutMode") private var stockLayoutModeRaw = StockLayoutMode.list.rawValue
     @State private var scanLookupPayload: StockScanLookupPayload?
     @State private var scanLookupBusy = false
+    @State private var showStockBarcodeScanner = false
 
     private var stockLayoutModeBinding: Binding<StockLayoutMode> {
         Binding(
@@ -502,7 +503,8 @@ struct ClosetView: View {
                         VStack(spacing: 10) {
                             StockBrowseSearchBar(
                                 searchText: $stockSearchText,
-                                searchFocused: $stockSearchFocused
+                                searchFocused: $stockSearchFocused,
+                                onScanBarcode: { showStockBarcodeScanner = true }
                             )
 
                             stockFilterSortToolbar
@@ -623,6 +625,15 @@ struct ClosetView: View {
             )
             .presentationDetents([.height(340), .medium])
             .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(isPresented: $showStockBarcodeScanner) {
+            StockBarcodeScannerScreen(
+                onCode: { code in
+                    showStockBarcodeScanner = false
+                    Task { await handleScannedCode(code) }
+                },
+                onCancel: { showStockBarcodeScanner = false }
+            )
         }
         .overlay {
             if scanLookupBusy || catalogDetailBusy {
@@ -1161,6 +1172,7 @@ struct ClosetView: View {
             sizeLabel: item.cardSizeLabel,
             fallbackPrice: item.cardPriceLabel,
             marketPrice: item.marketPrice,
+            marketplaceSegment: StockCategoryMarketplaceCatalog.segment(for: item),
             preferredPlatform: stockFilters.preferredMarketplacePlatform,
             stockValueUSD: item.stockValueUSD,
             purchaseUSD: item.purchaseValueUSD,
@@ -1182,7 +1194,7 @@ struct ClosetView: View {
             ClosetDiskThumbnail(
                 relativePath: ImageStore.displayRelativePath(for: item),
                 maxPixelSide: 168,
-                fillFrame: true
+                fillFrame: false
             )
         }
     }
@@ -1195,6 +1207,7 @@ struct ClosetView: View {
             sizeLabel: product.cardSizeLabel,
             fallbackPrice: product.cardPriceLabel,
             marketPrice: nil,
+            marketplaceSegment: StockCategoryMarketplaceCatalog.segment(for: product),
             preferredPlatform: stockFilters.preferredMarketplacePlatform,
             stockValueUSD: product.stockValueUSD,
             purchaseUSD: product.purchaseCostUSD,
@@ -1215,7 +1228,7 @@ struct ClosetView: View {
             StockCachedRemoteImage(
                 url: product.primaryImageURL,
                 maxPixelSide: 168,
-                fillFrame: true
+                fillFrame: false
             )
         }
     }
@@ -1265,7 +1278,7 @@ struct ClosetView: View {
                     ClosetDiskThumbnail(
                         relativePath: ImageStore.displayRelativePath(for: item),
                         maxPixelSide: 296,
-                        fillFrame: true
+                        fillFrame: false
                     )
                         .padding(4)
 
@@ -2703,11 +2716,14 @@ struct PlatformPrice: Identifiable, Codable, Equatable {
 
     static func brandColor(for name: String) -> Color {
         switch name.uppercased() {
-        case "STOCKX":      return Color(red: 0.00, green: 0.60, blue: 0.30)
-        case "GOAT":        return Color(red: 0.10, green: 0.10, blue: 0.10)
-        case "FLIGHT CLUB": return Color(red: 0.85, green: 0.10, blue: 0.15)
-        case "EBAY":        return Color(red: 0.20, green: 0.45, blue: 0.85)
-        default:            return Color.gray
+        case "STOCKX":        return Color(red: 0.00, green: 0.60, blue: 0.30)
+        case "GOAT", "ALIAS": return Color(red: 0.10, green: 0.10, blue: 0.10)
+        case "FLIGHT CLUB":   return Color(red: 0.85, green: 0.10, blue: 0.15)
+        case "EBAY":          return Color(red: 0.20, green: 0.45, blue: 0.85)
+        case "GRAILED":       return Color.black
+        case "TCG COLLECTOR": return Color(red: 0.12, green: 0.22, blue: 0.48)
+        case "POSHMARK":      return Color(red: 0.47, green: 0.09, blue: 0.20)
+        default:              return Color.gray
         }
     }
 }

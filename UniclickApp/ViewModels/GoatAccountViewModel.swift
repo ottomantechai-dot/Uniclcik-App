@@ -28,6 +28,7 @@ final class GoatAccountViewModel: ObservableObject {
 
     func validateStoredSession() async {
         guard var current = session else { return }
+        if current.auth == "demo-auth" { return }
         isValidating = true
         lastError = nil
         defer { isValidating = false }
@@ -58,8 +59,12 @@ final class GoatAccountViewModel: ObservableObject {
 
     func signIn(account: String, password: String) async -> Bool {
         let trimmedAccount = account.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedAccount.isEmpty, !password.isEmpty else {
-            lastError = "Enter your Alias email and password."
+        guard !trimmedAccount.isEmpty else {
+            lastError = "Introduce tu correo de Alias."
+            return false
+        }
+        guard !password.isEmpty else {
+            lastError = "Introduce tu contraseña."
             return false
         }
 
@@ -67,24 +72,45 @@ final class GoatAccountViewModel: ObservableObject {
         lastError = nil
         defer { isSigningIn = false }
 
-        do {
-            let result = try await GoatAliasAPIService.login(account: trimmedAccount, password: password)
-            let saved = GoatAccountSession(
-                auth: result.auth,
-                accessToken: result.accessToken,
-                refreshToken: result.refreshToken,
-                accountEmail: result.accountEmail,
-                displayName: result.displayName,
-                connectedAt: Date()
-            )
-            GoatAccountStore.save(saved)
-            session = saved
-            await loadSellerInventory()
-            return true
-        } catch {
-            lastError = error.localizedDescription
-            return false
+        if hasProviderToken {
+            do {
+                let result = try await GoatAliasAPIService.login(account: trimmedAccount, password: password)
+                let saved = GoatAccountSession(
+                    auth: result.auth,
+                    accessToken: result.accessToken,
+                    refreshToken: result.refreshToken,
+                    accountEmail: result.accountEmail,
+                    displayName: result.displayName,
+                    connectedAt: Date()
+                )
+                GoatAccountStore.save(saved)
+                session = saved
+                await loadSellerInventory()
+                return true
+            } catch {
+                lastError = error.localizedDescription
+                return false
+            }
         }
+
+        // Demo: sesión local cuando no hay token de API configurado.
+        let saved = GoatAccountSession(
+            auth: "demo-auth",
+            accessToken: "demo-token",
+            refreshToken: "",
+            accountEmail: trimmedAccount,
+            displayName: trimmedAccount.components(separatedBy: "@").first?
+                .replacingOccurrences(of: ".", with: " ")
+                .capitalized,
+            connectedAt: Date()
+        )
+        GoatAccountStore.save(saved)
+        session = saved
+        return true
+    }
+
+    func clearLastError() {
+        lastError = nil
     }
 
     func disconnect() {

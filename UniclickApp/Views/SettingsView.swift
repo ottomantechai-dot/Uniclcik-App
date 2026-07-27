@@ -49,7 +49,10 @@ enum L10n {
         "settings.logout": "Log out",
         "settings.version": "Version",
         "settings.connected": "Connected",
+        "settings.approved": "Aprobado",
         "settings.connect": "Connect",
+        "settings.approveConnection": "Aprobar",
+        "settings.approveConnectionSubtitle": "Aprueba la conexión para sincronizar precios e inventario.",
         "settings.noSession": "No session",
         "settings.profilePhoto": "Profile photo",
         "settings.profilePhotoPrompt": "Update your profile picture",
@@ -276,7 +279,6 @@ struct SettingsView: View {
     @EnvironmentObject var auth: AuthViewModel
     @EnvironmentObject var goatVM: GoatAccountViewModel
 
-    @State private var showGoatConnect = false
     @State private var showProfilePhotoSheet = false
 
     var body: some View {
@@ -295,7 +297,7 @@ struct SettingsView: View {
 
                     Group {
                         sectionTitle(L10n.tr("settings.sellerAccounts"))
-                        sellerAccountsSection
+                        MarketplaceSellerAccountsCard()
                     }
 
                     Group {
@@ -316,10 +318,6 @@ struct SettingsView: View {
         .preferredColorScheme(.light)
         .environment(\.dashboardLightSurface, true)
         .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showGoatConnect) {
-            GoatConnectSheetView(goatVM: goatVM)
-                .presentationDragIndicator(Visibility.visible)
-        }
         .sheet(isPresented: $showProfilePhotoSheet) {
             ProfilePhotoUploadSheet { image in
                 Task { await auth.uploadProfileAvatar(image) }
@@ -331,8 +329,6 @@ struct SettingsView: View {
             await goatVM.validateStoredSession()
         }
     }
-
-    // MARK: - Profile
 
     // Profile hero — avatar grande centrado + nombre + email
     private var profileHeroSection: some View {
@@ -496,26 +492,7 @@ struct SettingsView: View {
         .padding(.vertical, 12)
     }
 
-    // Cuentas de vendedor — lista de plataformas con insignia estilizada y estado
-    private var sellerAccountsSection: some View {
-        ChromeSettingsCard(cornerRadius: 22, padding: 0) {
-            VStack(spacing: 0) {
-                sellerRow(name: "StockX", connected: false)
-                infoDivider
-                Button {
-                    showGoatConnect = true
-                } label: {
-                    sellerRow(name: "GOAT", connected: goatVM.isConnected, subtitle: goatVM.session?.connectedLabel)
-                }
-                .buttonStyle(.plain)
-                infoDivider
-                sellerRow(name: "eBay", connected: false)
-                infoDivider
-                sellerRow(name: "Flight Club", connected: false)
-            }
-            .padding(.vertical, 4)
-        }
-    }
+    // MARK: - Plataformas
 
     /// Todas las referencias visuales de marketplace en rejilla (mismo estilo que en la lista anterior).
     private var marketplaceLogosGallerySection: some View {
@@ -558,43 +535,6 @@ struct SettingsView: View {
                 }
             }
         }
-    }
-
-    private func sellerRow(name: String, connected: Bool, subtitle: String? = nil) -> some View {
-        HStack(spacing: 14) {
-            StylizedMarketplaceLogo(brand: name)
-                .frame(width: 36, height: 36)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.85))
-                if let subtitle, connected {
-                    Text(subtitle)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.black.opacity(0.45))
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer(minLength: 8)
-
-            if connected {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 12, weight: .bold))
-                    Text(L10n.tr("settings.connected"))
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
-            } else {
-                Text(L10n.tr("settings.connect"))
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
     }
 
     // MARK: - Cuenta
