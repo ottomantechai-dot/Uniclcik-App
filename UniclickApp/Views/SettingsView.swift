@@ -65,13 +65,6 @@ enum L10n {
         "settings.myFaceDesc": "Optional: improves how the avatar looks like you when generating outfits (only on this device).",
         "settings.notificationsTitle": "Notifications",
         "settings.marketplacesGalleryDesc": "Available brands to connect.",
-        "settings.goatSignIn": "Sign in",
-        "settings.goatSignInTitle": "Connect your GOAT seller account",
-        "settings.goatSignInSubtitle": "Use your Alias seller email and password. Your session stays on this device.",
-        "settings.goatSigningIn": "Signing in…",
-        "settings.goatDisconnect": "Disconnect GOAT",
-        "settings.goatMissingToken": "Add GOAT_API_TOKEN in DeveloperSettings.local.xcconfig (CommercialGoatAPI provider token).",
-        "settings.goatValidating": "Checking connection…",
         "settings.openAI": "OpenAI API",
         "settings.openAIKeyTitle": "API key",
         "settings.openAIKeyMissing": "Not configured · using simulated data",
@@ -277,7 +270,6 @@ enum L10n {
 struct SettingsView: View {
     @EnvironmentObject var settingsVM: SettingsViewModel
     @EnvironmentObject var auth: AuthViewModel
-    @EnvironmentObject var goatVM: GoatAccountViewModel
 
     @State private var showProfilePhotoSheet = false
 
@@ -296,7 +288,7 @@ struct SettingsView: View {
                     }
 
                     Group {
-                        sectionTitle(L10n.tr("settings.sellerAccounts"))
+                        sectionTitle("Marketplaces")
                         MarketplaceSellerAccountsCard()
                     }
 
@@ -324,9 +316,6 @@ struct SettingsView: View {
             }
             .presentationDragIndicator(Visibility.visible)
             .presentationDetents([.medium])
-        }
-        .task {
-            await goatVM.validateStoredSession()
         }
     }
 
@@ -712,5 +701,4 @@ private struct ProfilePhotoUploadSheet: View {
     SettingsView()
         .environmentObject(SettingsViewModel())
         .environmentObject(AuthViewModel())
-        .environmentObject(GoatAccountViewModel())
 }

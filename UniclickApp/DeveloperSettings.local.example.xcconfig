@@ -3,7 +3,7 @@
 // 3) Pega tu clave real solo en .local, nunca en este .example.
 
 // Clóset local — Gemini desde el dispositivo (opcional si usas pestaña Closet)
-// Valor válido (ejemplo ficticio): AIzaSyDxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   ← solo ese texto después del igual
+// Formato válido (ejemplo abreviado): AIza...   ← solo ese texto después del igual
 // Incorrecto: rutas como UniclickApp/DeveloperSettings.xcconfig (Gemini responderá API_KEY_INVALID)
 // GEMINI_API_KEY =
 // --- OpenAI ---
@@ -15,21 +15,9 @@ OPENAI_CLOSET_IMAGE_MODEL = gpt-image-1
 // Calidad edits gpt-image-1: low | medium | high (medium ≈ $0.042 / 1024 según tabla OpenAI).
 OPENAI_CLOSET_IMAGE_QUALITY = medium
 OPENAI_CLOSET_IMAGE_SIZE = 1024x1024
-// --- KicksDB (StockX + GOAT market prices) ---
-// Get a key at https://kicks.dev — paste only in DeveloperSettings.local.xcconfig
-// KICKSDB_API_KEY = KICKS-XXXX-XXXX-XXXX-XXXXXXXXXXXX
-
-// --- eBay Browse API (listados Authenticity Guaranteed) ---
-// developer.ebay.com/my/keys → keyset de PRODUCTION.
-// EBAY_CLIENT_ID  = App ID (Client ID), ej: JesusCas-Upsoled-PRD-xxxxxxxx-xxxxxxxx
-// EBAY_CLIENT_SECRET = Cert ID (Client Secret), ej: PRD-xxxxxxxxxxxx-xxxx-xxxx-xxxx
-// EBAY_CLIENT_ID =
-// EBAY_CLIENT_SECRET =
-
-// --- GOAT / Alias (CommercialGoatAPI) ---
-// Provider token from https://github.com/Sting-Lee/CommercialGoatAPI (not your Alias password).
-// GOAT_API_TOKEN = your_commercial_api_token_here
-// GOAT_API_BASE_URL = https://goatapi.dataspiderhub.com
+// Las credenciales de KicksDB/eBay NO van en este archivo ni en el bundle iOS.
+// Se configuran como secrets de Supabase para la función `marketplace-gateway`;
+// consulta `supabase/MARKETPLACE_GATEWAY.md`.
 // Recomendado visión (foto del vehículo): gpt-4o · Barato: gpt-4o-mini
 // OPENAI_MODEL = gpt-4o
 

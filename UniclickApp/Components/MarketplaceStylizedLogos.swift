@@ -126,11 +126,9 @@ struct StylizedMarketplaceLogo: View {
 struct MarketplaceSellerAccountsCard: View {
     var platforms: [String] = ["StockX", "GOAT", "eBay", "Flight Club"]
 
-    @EnvironmentObject private var goatVM: GoatAccountViewModel
-    @AppStorage("demo.marketplace.connectedCSV") private var connectedCSV = ""
-    @State private var showGoatConnect = false
-    @State private var pendingApprovalPlatform: String?
-    @State private var showApprovalSheet = false
+    @State private var gatewayStatus: MarketplaceGatewayService.Status?
+    @State private var isLoading = true
+    @State private var statusError: String?
 
     var body: some View {
         ChromeSettingsCard(cornerRadius: 22, padding: 0) {
@@ -141,22 +139,24 @@ struct MarketplaceSellerAccountsCard: View {
                     }
                     platformRow(name: name)
                 }
+                if let statusError {
+                    Divider().padding(.leading, 56).padding(.trailing, 16)
+                    Button {
+                        Task { await refreshStatus() }
+                    } label: {
+                        Label(statusError, systemImage: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.orange)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.vertical, 4)
         }
-        .sheet(isPresented: $showGoatConnect) {
-            GoatConnectSheetView(goatVM: goatVM)
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showApprovalSheet) {
-            if let platform = pendingApprovalPlatform {
-                MarketplaceConnectApprovalSheet(platformName: platform) {
-                    approveConnection(platform)
-                }
-                .presentationDetents([.height(320)])
-                .presentationDragIndicator(.visible)
-            }
-        }
+        .task { await refreshStatus() }
     }
 
     private var rowDivider: some View {
@@ -165,57 +165,38 @@ struct MarketplaceSellerAccountsCard: View {
             .padding(.trailing, 16)
     }
 
-    @ViewBuilder
     private func platformRow(name: String) -> some View {
-        let connected = isConnected(name)
-        let content = sellerRow(
+        sellerRow(
             name: name,
-            connected: connected,
-            subtitle: name == "GOAT" ? goatVM.session?.connectedLabel : nil
+            connected: gatewayStatus?.isConnected(name) == true,
+            subtitle: sourceSubtitle(name)
         )
+    }
 
-        if connected || name == "GOAT" {
-            Button {
-                if name == "GOAT" { showGoatConnect = true }
-            } label: {
-                content
-            }
-            .buttonStyle(.plain)
-        } else {
-            Button {
-                beginConnect(name)
-            } label: {
-                content
-            }
-            .buttonStyle(.plain)
+    private func refreshStatus() async {
+        isLoading = true
+        statusError = nil
+        do {
+            gatewayStatus = try await MarketplaceGatewayService.fetchStatus()
+        } catch {
+            gatewayStatus = .unavailable
+            statusError = "Backend no disponible · toca para reintentar"
+        }
+        isLoading = false
+    }
+
+    private func sourceSubtitle(_ name: String) -> String {
+        switch name.lowercased() {
+        case "stockx", "goat", "alias", "flight club":
+            return "Datos de mercado vía KicksDB"
+        case "ebay":
+            return "Listados verificados vía Browse API"
+        default:
+            return "Conector pendiente"
         }
     }
 
-    private func beginConnect(_ name: String) {
-        if name == "GOAT" {
-            showGoatConnect = true
-            return
-        }
-        pendingApprovalPlatform = name
-        showApprovalSheet = true
-    }
-
-    private func approveConnection(_ name: String) {
-        guard !isConnected(name) else { return }
-        connectedCSV = connectedCSV.isEmpty ? name : "\(connectedCSV),\(name)"
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        pendingApprovalPlatform = nil
-    }
-
-    private func isConnected(_ name: String) -> Bool {
-        if name == "GOAT" { return goatVM.isConnected }
-        return connectedCSV
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .contains(name)
-    }
-
-    private func sellerRow(name: String, connected: Bool, subtitle: String?) -> some View {
+    private func sellerRow(name: String, connected: Bool, subtitle: String) -> some View {
         HStack(spacing: 14) {
             StylizedMarketplaceLogo(brand: name)
                 .frame(width: 36, height: 36)
@@ -224,21 +205,22 @@ struct MarketplaceSellerAccountsCard: View {
                 Text(name)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color.black.opacity(0.85))
-                if let subtitle, connected {
-                    Text(subtitle)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.black.opacity(0.45))
-                        .lineLimit(1)
-                }
+                Text(subtitle)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.45))
+                    .lineLimit(1)
             }
 
             Spacer(minLength: 8)
 
-            if connected {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            } else if connected {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark.seal.fill")
                         .font(.system(size: 12, weight: .bold))
-                    Text(L10n.tr("settings.approved"))
+                    Text("Activo")
                         .font(.system(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(Color(red: 0.20, green: 0.70, blue: 0.45))
@@ -249,9 +231,9 @@ struct MarketplaceSellerAccountsCard: View {
                         .fill(Color(red: 0.20, green: 0.70, blue: 0.45).opacity(0.12))
                 }
             } else {
-                Text(L10n.tr("settings.connect"))
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
+                Text("Pendiente")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.orange)
             }
         }
         .padding(.horizontal, 16)

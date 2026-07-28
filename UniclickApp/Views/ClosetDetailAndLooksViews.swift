@@ -68,7 +68,6 @@ private enum GarmentDetailSection: String, CaseIterable, Identifiable {
 struct ClosetGarmentDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var goatVM: GoatAccountViewModel
 
     @Bindable var item: ClosetItem
 
@@ -1633,7 +1632,6 @@ struct ClosetGarmentDetailView: View {
         do {
             let est = try await PieceMarketPrice.lookupForItem(
                 item,
-                goatVM: goatVM,
                 useWebSearch: !preferKicksDB
             )
             item.applyMarketPrice(est)
@@ -1645,7 +1643,7 @@ struct ClosetGarmentDetailView: View {
         } catch {
             let message = (error as NSError).localizedDescription
             if message.contains("429") || message.localizedCaseInsensitiveContains("quota") {
-                toast = "OpenAI quota exceeded. Add KICKSDB_API_KEY for StockX & GOAT prices."
+                toast = "Límite temporal del proveedor. Inténtalo de nuevo en un minuto."
             } else if item.marketPrice == nil {
                 toast = message
             }

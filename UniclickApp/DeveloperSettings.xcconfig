@@ -1,22 +1,13 @@
 // Valores por defecto; opcionalmente sobrescribe con DeveloperSettings.local.xcconfig (no versionado).
-GEMINI_API_KEY =AIzaSyBNMJAjWvjtFSgmWC_k9lCq5r2q5Akd7rU
+GEMINI_API_KEY =
 ANTHROPIC_API_KEY =
 ANTHROPIC_MODEL =
 OPENAI_API_KEY =
 OPENAI_MODEL =
-// KicksDB (https://kicks.dev) — datos reales de StockX/GOAT
-KICKSDB_API_KEY =
-// eBay Browse API (precios de listados Authenticity Guaranteed). Pon los valores reales en
-// DeveloperSettings.local.xcconfig (no versionado). App ID = Client ID, Cert ID = Client Secret.
-EBAY_CLIENT_ID =
-EBAY_CLIENT_SECRET =
 // Modelo Image API para «Prettify» del clóset (dejar vacío = gpt-image-1 por código)
 OPENAI_CLOSET_IMAGE_MODEL = gpt-image-1
 OPENAI_CLOSET_IMAGE_QUALITY = medium
 OPENAI_CLOSET_IMAGE_SIZE = 1024x1024
-// Commercial GOAT / Alias proxy (CommercialGoatAPI). Request trial token from provider.
-GOAT_API_TOKEN =
-GOAT_API_BASE_URL = https://goatapi.dataspiderhub.com
 // Mapeo columnas INSERT en `vehicles` (vacío = defaults en código; ver VehiclesInsertColumnMap).
 VEHICLES_COL_ID =
 VEHICLES_COL_USER_ID =

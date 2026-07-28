@@ -58,6 +58,6 @@
 ## Para que la web pase el punto 2
 Añade en `~/Downloads/sneakpeekmiami/.env.local`:
 ```
-KICKSDB_API_KEY=KICKS-E33A-7354-986F-5F2277D19CC0
+KICKSDB_API_KEY=KICKS-REEMPLAZAR-CON-CLAVE-NUEVA
 ```
 y `npm run dev`.

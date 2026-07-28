@@ -175,7 +175,6 @@ struct ClosetView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var addFlow: AddToClosetFlowViewModel
     @EnvironmentObject private var tabRouter: MainTabRouter
-    @EnvironmentObject private var goatVM: GoatAccountViewModel
     @Query(sort: \ClosetItem.createdAt, order: .reverse) private var closetItems: [ClosetItem]
     /// Catálogo Supabase (`upsoled_products`): mismos productos que la pestaña Marketplace/Sold.
     @StateObject private var catalogVM = UpsoledProductsViewModel()
@@ -1131,8 +1130,7 @@ struct ClosetView: View {
         defer { scanLookupBusy = false }
         scanLookupPayload = await StockScanLookupService.lookup(
             code: trimmed,
-            stock: activeClosetItems,
-            goatVM: goatVM
+            stock: activeClosetItems
         )
     }
 
@@ -1410,7 +1408,6 @@ struct ClosetView: View {
             do {
                 let estimate = try await PieceMarketPrice.lookupForItem(
                     item,
-                    goatVM: goatVM,
                     useWebSearch: false
                 )
                 item.applyMarketPrice(estimate)
@@ -3103,11 +3100,10 @@ extension PieceMarketPrice {
     /// Live web lookups work more reliably on gpt-4o than mini.
     private static var webSearchModel: String { "gpt-4o" }
 
-    /// Tries KicksDB (StockX + GOAT), then GOAT account, then OpenAI web search.
+    /// Tries the secure marketplace gateway, then OpenAI web search.
     @MainActor
     static func lookupForItem(
         _ item: ClosetItem,
-        goatVM: GoatAccountViewModel,
         useWebSearch: Bool = true
     ) async throws -> PieceMarketPrice {
         let queries = item.marketLookupQueries
@@ -3129,14 +3125,6 @@ extension PieceMarketPrice {
                 sizeQuery: sizeFilter
             ) {
                 return estimate
-            }
-        }
-
-        if goatVM.hasProviderToken {
-            for query in queries {
-                if let est = await goatVM.fetchMarketPriceEstimate(query: query) {
-                    return est
-                }
             }
         }
 
@@ -3588,8 +3576,6 @@ struct PriceTrendSparkline: View {
 /// paralelo y agrega el resultado. En el plan free obtenemos precios reales
 /// (avg/min/max); el histórico es premium y se sintetiza alrededor del avg.
 enum KicksDBClient {
-    private static let baseURL = "https://api.kicks.dev/v3"
-
     /// Plataformas soportadas en el plan free (mapeo a path de KicksDB).
     enum Platform: String, CaseIterable {
         case stockx
@@ -3597,14 +3583,8 @@ enum KicksDBClient {
         case flightclub
     }
 
-    /// Lee la key del Info.plist (inyectada por xcconfig).
-    static var apiKey: String? {
-        guard let raw = Bundle.main.object(forInfoDictionaryKey: "KICKSDB_API_KEY") as? String else { return nil }
-        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? nil : t
-    }
-
-    static var isConfigured: Bool { apiKey != nil }
+    /// Las credenciales se resuelven exclusivamente en Supabase.
+    static var isConfigured: Bool { MarketplaceGatewayService.isAvailable }
 
     private struct SearchEnvelope: Decodable {
         let data: [ProductHit]?
@@ -3866,8 +3846,11 @@ enum KicksDBClient {
     }
 
     private static func searchOnce(platform: Platform, query: String) async throws -> ProductHit? {
-        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let hits = try await getAll(at: "/\(platform.rawValue)/products?limit=20&query=" + encoded)
+        let hits = try await MarketplaceGatewayService.kicksSearch(
+            platform: platform,
+            query: query,
+            limit: 20
+        )
         if hits.isEmpty { return nil }
         if significantWords(query).isEmpty { return hits.first } // SKU o query genérica
         return bestMatch(hits, to: query)
@@ -3888,8 +3871,11 @@ enum KicksDBClient {
     static func suggest(_ query: String, limit: Int = 6) async -> [ComparatorSuggestion] {
         let cleaned = sanitizeQuery(query)
         guard cleaned.count >= 2 else { return [] }
-        let encoded = cleaned.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let hits = (try? await getAll(at: "/stockx/products?limit=\(limit)&query=" + encoded)) ?? []
+        let hits = (try? await MarketplaceGatewayService.kicksSearch(
+            platform: .stockx,
+            query: cleaned,
+            limit: limit
+        )) ?? []
         var seen = Set<String>()
         return hits.compactMap { h in
             let title = [h.displayName, h.title, h.name].compactMap { $0 }.first { !$0.isEmpty } ?? ""
@@ -3908,79 +3894,10 @@ enum KicksDBClient {
     /// porque el search no incluye `variants[].lowest_ask`. Para StockX, las variants
     /// requieren `?display[variants]=true`.
     static func detail(platform: Platform, slugOrID: String) async throws -> ProductHit? {
-        let needsVariantsParam = (platform == .stockx)
-        let path = "/\(platform.rawValue)/products/\(slugOrID)" + (needsVariantsParam ? "?display[variants]=true" : "")
-        struct DetailEnvelope: Decodable { let data: ProductHit? }
-        guard let key = apiKey else {
-            throw NSError(domain: "KicksDB", code: 401, userInfo: [
-                NSLocalizedDescriptionKey: "Falta KICKSDB_API_KEY"
-            ])
-        }
-        guard let url = URL(string: "\(baseURL)\(path)") else { throw URLError(.badURL) }
-
-        var req = URLRequest(url: url)
-        req.httpMethod = "GET"
-        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.timeoutInterval = 15
-
-        let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            return nil
-        }
-        let envelope = try JSONDecoder().decode(DetailEnvelope.self, from: data)
-        return envelope.data
-    }
-
-    private static func getFirst(at path: String) async throws -> ProductHit? {
-        try await getAll(at: path).first
-    }
-
-    /// Devuelve TODOS los hits de una búsqueda (con reintentos), para poder elegir el correcto.
-    private static func getAll(at path: String) async throws -> [ProductHit] {
-        guard let key = apiKey else {
-            throw NSError(domain: "KicksDB", code: 401, userInfo: [
-                NSLocalizedDescriptionKey: "Falta KICKSDB_API_KEY"
-            ])
-        }
-        guard let url = URL(string: "\(baseURL)\(path)") else { throw URLError(.badURL) }
-
-        var req = URLRequest(url: url)
-        req.httpMethod = "GET"
-        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.timeoutInterval = 15
-
-        // KicksDB devuelve 500/502/503 de forma intermitente. Reintentamos hasta 3 veces
-        // con backoff corto antes de rendirnos, para no dejar la tabla vacía por un fallo pasajero.
-        var data = Data()
-        var http: HTTPURLResponse?
-        for attempt in 0..<3 {
-            try Task.checkCancellation()
-            let (d, response) = try await URLSession.shared.data(for: req)
-            guard let h = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
-            data = d; http = h
-            if (200..<300).contains(h.statusCode) { break }
-            let transient = [500, 502, 503, 504, 429].contains(h.statusCode)
-            if transient, attempt < 2 {
-                try? await Task.sleep(nanoseconds: UInt64((attempt + 1) * 400) * 1_000_000) // 0.4s, 0.8s
-                continue
-            }
-            let body = String(data: d, encoding: .utf8) ?? ""
-            print("[KicksDB] HTTP \(h.statusCode) en \(path) · body: \(body.prefix(200))")
-            throw NSError(domain: "KicksDB", code: h.statusCode, userInfo: [
-                NSLocalizedDescriptionKey: "KicksDB HTTP \(h.statusCode) · \(body.prefix(120))"
-            ])
-        }
-        guard http != nil else { throw URLError(.badServerResponse) }
-
-        let envelope = try JSONDecoder().decode(SearchEnvelope.self, from: data)
-        let result = envelope.data ?? []
-        if result.isEmpty {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            print("[KicksDB] 200 OK pero sin data en \(path) · body: \(body.prefix(240))")
-        }
-        return result
+        try await MarketplaceGatewayService.kicksDetail(
+            platform: platform,
+            productKey: slugOrID
+        )
     }
 
     /// Extrae avg/min/max de un hit. StockX viene con campos directos (avg_price);
@@ -4122,7 +4039,7 @@ enum KicksDBClient {
     static func fetchAggregated(query: String, fallbackQuery: String? = nil, sizeQuery: String? = nil) async throws -> PieceMarketPrice? {
         guard isConfigured else {
             throw NSError(domain: "KicksDB", code: 401, userInfo: [
-                NSLocalizedDescriptionKey: "Falta KICKSDB_API_KEY"
+                NSLocalizedDescriptionKey: "El gateway de marketplaces no está disponible."
             ])
         }
 
@@ -4524,7 +4441,7 @@ extension KicksDBClient {
     static func fetchComparison(query: String, fallbackQuery: String? = nil) async throws -> MarketComparison? {
         guard isConfigured else {
             throw NSError(domain: "KicksDB", code: 401, userInfo: [
-                NSLocalizedDescriptionKey: "Falta KICKSDB_API_KEY en DeveloperSettings.local.xcconfig"
+                NSLocalizedDescriptionKey: "El gateway de marketplaces no está disponible."
             ])
         }
 
@@ -4640,27 +4557,20 @@ extension KicksDBClient {
     /// activarse al subir a un plan con datos de ventas (Starter+).
     /// Historial de ventas diario. ⚠️ El endpoint exige el **product ID (UUID)**, no el slug (el slug da 422).
     static func dailySales(platformKey: String, productID: String) async -> [DailySalePoint] {
-        guard isConfigured, !platformKey.isEmpty, !productID.isEmpty,
-              let key = apiKey,
-              let url = URL(string: "\(baseURL)/\(platformKey)/products/\(productID)/sales/daily") else { return [] }
-
-        var req = URLRequest(url: url)
-        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.timeoutInterval = 15
-
-        struct DailyEnvelope: Decodable {
-            let data: [Row]?
-            struct Row: Decodable { let avg_amount: Double?; let orders: Int?; let date: String? }
-        }
+        guard isConfigured, !platformKey.isEmpty, !productID.isEmpty else { return [] }
         do {
-            let (data, response) = try await URLSession.shared.data(for: req)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return [] }
-            let decoded = try JSONDecoder().decode(DailyEnvelope.self, from: data)
+            let rows = try await MarketplaceGatewayService.kicksDailySales(
+                platform: platformKey,
+                productID: productID
+            )
             let iso = ISO8601DateFormatter()
-            let points: [DailySalePoint] = (decoded.data ?? []).compactMap { r in
-                guard let avg = r.avg_amount, avg > 0, let ds = r.date, let d = iso.date(from: ds) else { return nil }
-                return DailySalePoint(date: d, avg: avg, orders: r.orders ?? 0)
+            let points: [DailySalePoint] = rows.compactMap { row in
+                guard let avg = row.avgAmount,
+                      avg > 0,
+                      let dateString = row.date,
+                      let date = iso.date(from: dateString)
+                else { return nil }
+                return DailySalePoint(date: date, avg: avg, orders: row.orders ?? 0)
             }
             return points.sorted { $0.date < $1.date }
         } catch {
@@ -4671,27 +4581,13 @@ extension KicksDBClient {
     /// Precios por talla de una tienda concreta (ej. "flightclub") vía **Unified API** (Premium).
     /// Endpoint: `/v3/unified/products/{slug}` → entradas con `shop_name` y `prices` (talla→precio).
     static func unifiedShopPrices(slug: String, shop: String) async throws -> [String: Double] {
-        guard isConfigured, !slug.isEmpty, let key = apiKey,
-              let encoded = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "\(baseURL)/unified/products/\(encoded)") else { return [:] }
-
-        var req = URLRequest(url: url)
-        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.timeoutInterval = 15
-
-        struct UnifiedEnvelope: Decodable {
-            let data: [Entry]?
-            struct Entry: Decodable { let shop_name: String?; let prices: [String: Double]? }
-        }
-        let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return [:] }
-        let decoded = try JSONDecoder().decode(UnifiedEnvelope.self, from: data)
-        // Puede haber varias entradas del mismo shop (GS/TD…); tomamos la que tenga MÁS tallas (la principal).
-        let entries = (decoded.data ?? []).filter { ($0.shop_name ?? "").lowercased() == shop.lowercased() }
-        let best = entries.max { ($0.prices?.count ?? 0) < ($1.prices?.count ?? 0) }
+        guard isConfigured, !slug.isEmpty else { return [:] }
+        let prices = try await MarketplaceGatewayService.kicksUnifiedPrices(
+            slug: slug,
+            shop: shop
+        )
         var result: [String: Double] = [:]
-        for (size, price) in (best?.prices ?? [:]) where price > 0 {
+        for (size, price) in prices where price > 0 {
             result[MarketComparison.normalizeSize(size) ?? size] = price
         }
         return result
@@ -5899,140 +5795,31 @@ struct EbayListing: Identifiable {
     let sizeAspect: String?
 }
 
-/// Cliente de la **Browse API** de eBay con OAuth client-credentials (token de aplicación).
-/// Lee `EBAY_CLIENT_ID` (App ID) y `EBAY_CLIENT_SECRET` (Cert ID) del Info.plist (vía xcconfig).
-/// Si no están configuradas, `isConfigured == false` y el comparador simplemente no muestra eBay.
+/// Cliente de la Browse API de eBay a través del gateway autenticado de Supabase.
 enum EbayPriceService {
-    private static let oauthURL = "https://api.ebay.com/identity/v1/oauth2/token"
-    private static let browseURL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
-    private static let scope = "https://api.ebay.com/oauth/api_scope"
-
-    static var clientID: String? {
-        infoValue("EBAY_CLIENT_ID")
-    }
-    static var clientSecret: String? {
-        infoValue("EBAY_CLIENT_SECRET")
-    }
-    static var isConfigured: Bool { clientID != nil && clientSecret != nil }
-
-    private static func infoValue(_ key: String) -> String? {
-        guard let raw = Bundle.main.object(forInfoDictionaryKey: key) as? String else { return nil }
-        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? nil : t
-    }
-
-    // MARK: Token (cacheado en memoria con expiración)
-    private actor TokenStore {
-        static let shared = TokenStore()
-        var token: String?
-        var expiresAt: Date = .distantPast
-        func current() -> String? { (token != nil && Date() < expiresAt) ? token : nil }
-        func set(_ t: String, ttl: TimeInterval) {
-            token = t
-            expiresAt = Date().addingTimeInterval(max(ttl - 60, 30))
-        }
-    }
-
-    private struct TokenResponse: Decodable { let access_token: String; let expires_in: Int }
-
-    static func accessToken() async throws -> String {
-        if let cached = await TokenStore.shared.current() { return cached }
-        guard let id = clientID, let secret = clientSecret else {
-            throw NSError(domain: "eBay", code: 401, userInfo: [
-                NSLocalizedDescriptionKey: "Faltan EBAY_CLIENT_ID / EBAY_CLIENT_SECRET en DeveloperSettings.local.xcconfig"
-            ])
-        }
-        guard let url = URL(string: oauthURL),
-              let creds = "\(id):\(secret)".data(using: .utf8) else { throw URLError(.badURL) }
-
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("Basic \(creds.base64EncodedString())", forHTTPHeaderField: "Authorization")
-        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        let encodedScope = scope.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? scope
-        req.httpBody = "grant_type=client_credentials&scope=\(encodedScope)".data(using: .utf8)
-        req.timeoutInterval = 15
-
-        let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw NSError(domain: "eBay", code: (response as? HTTPURLResponse)?.statusCode ?? -1, userInfo: [
-                NSLocalizedDescriptionKey: "OAuth eBay falló · \(body.prefix(140))"
-            ])
-        }
-        let tr = try JSONDecoder().decode(TokenResponse.self, from: data)
-        await TokenStore.shared.set(tr.access_token, ttl: TimeInterval(tr.expires_in))
-        return tr.access_token
-    }
-
-    // MARK: Browse search
-    private struct SearchResponse: Decodable {
-        let itemSummaries: [ItemSummary]?
-        struct ItemSummary: Decodable {
-            let itemId: String?
-            let title: String?
-            let itemWebUrl: String?
-            let price: Money?
-            let condition: String?
-            let buyingOptions: [String]?
-            let localizedAspects: [Aspect]?
-            struct Money: Decodable { let value: String?; let currency: String? }
-            struct Aspect: Decodable { let name: String?; let value: String? }
-        }
-    }
+    static var isConfigured: Bool { MarketplaceGatewayService.isAvailable }
 
     /// Busca listados **nuevos**, **precio fijo** y con **Authenticity Guarantee**, ordenados por precio.
     static func lowestListings(query: String, limit: Int = 30) async throws -> [EbayListing] {
-        let token = try await accessToken()
-        guard var comps = URLComponents(string: browseURL) else { throw URLError(.badURL) }
-        // IMPORTANTE (doc oficial de filtros Browse):
-        //  • `qualifiedPrograms` es un FILTRO (va dentro de `filter`), no un parámetro suelto.
-        //  • `qualifiedPrograms` SOLO devuelve resultados si están presentes `deliveryCountry`
-        //    y `deliveryPostalCode`. Authenticity Guarantee solo aplica en eBay.com (US).
-        //  • No hace falta `buyingOptions:{FIXED_PRICE}`: el search ya devuelve solo precio fijo
-        //    por defecto (excluye subastas puras), y ese filtro falla sin categoría hoja.
-        let filter = [
-            "conditions:{NEW}",                            // solo nuevo (sin usados)
-            "qualifiedPrograms:{AUTHENTICITY_GUARANTEE}",  // solo listados verificados
-            "deliveryCountry:US",
-            "deliveryPostalCode:33101",                    // Miami — requerido por qualifiedPrograms
-        ].joined(separator: ",")
-        comps.queryItems = [
-            .init(name: "q", value: KicksDBClient.sanitizeQuery(query)),
-            .init(name: "limit", value: String(limit)),
-            .init(name: "filter", value: filter),
-            .init(name: "sort", value: "price"),
-        ]
-        guard let url = comps.url else { throw URLError(.badURL) }
-
-        var req = URLRequest(url: url)
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        req.setValue("EBAY_US", forHTTPHeaderField: "X-EBAY-C-MARKETPLACE-ID")
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.timeoutInterval = 15
-
-        let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw NSError(domain: "eBay", code: (response as? HTTPURLResponse)?.statusCode ?? -1, userInfo: [
-                NSLocalizedDescriptionKey: "Browse eBay HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1) · \(body.prefix(140))"
-            ])
-        }
-        let decoded = try JSONDecoder().decode(SearchResponse.self, from: data)
-        let listings: [EbayListing] = (decoded.itemSummaries ?? []).compactMap { s in
-            guard let valueStr = s.price?.value, let price = Double(valueStr), price > 0 else { return nil }
-            let title = s.title ?? query
+        let items = try await MarketplaceGatewayService.ebaySearch(
+            query: KicksDBClient.sanitizeQuery(query),
+            limit: limit,
+            profile: "sneakers"
+        )
+        let listings: [EbayListing] = items.compactMap { item in
+            guard item.price > 0 else { return nil }
+            let title = item.title
             // Descarta basura típica de eBay: zapatos sueltos, tallas de niño, cajas vacías, etc.
             guard !isJunkTitle(title) else { return nil }
-            let rawAspect = s.localizedAspects?.first {
-                ($0.name ?? "").lowercased().contains("size")
+            let rawAspect = item.aspects.first {
+                $0.name.lowercased().contains("size")
             }?.value
             return EbayListing(
-                id: s.itemId ?? UUID().uuidString,
+                id: item.id.isEmpty ? UUID().uuidString : item.id,
                 title: title,
-                price: price,
-                currency: s.price?.currency ?? "USD",
-                url: s.itemWebUrl.flatMap { URL(string: $0) },
+                price: item.price,
+                currency: item.currency,
+                url: item.url.flatMap { URL(string: $0) },
                 // Talla normalizada: del campo estructurado si existe, si no parseada del título.
                 sizeAspect: detectSize(aspect: rawAspect, title: title)
             )
@@ -6052,27 +5839,16 @@ enum EbayPriceService {
     /// Precio representativo (mediana) de una CARTA en eBay. Filtra basura por título y acota a una
     /// banda alrededor del precio de referencia (TCGplayer) para no contar $1 de proxys ni $9.999 de PSA10.
     static func cardLowestPrice(query: String, keyword: String? = nil, anchor: Double? = nil) async -> Double? {
-        guard let token = try? await accessToken() else { return nil }
-        guard var comps = URLComponents(string: browseURL) else { return nil }
-        comps.queryItems = [
-            URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "limit", value: "50"),
-            URLQueryItem(name: "filter", value: "deliveryCountry:US,priceCurrency:USD"),
-            URLQueryItem(name: "sort", value: "price"),
-        ]
-        guard let url = comps.url else { return nil }
-        var req = URLRequest(url: url)
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        req.setValue("EBAY_US", forHTTPHeaderField: "X-EBAY-C-MARKETPLACE-ID")
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.timeoutInterval = 15
-        guard let (data, response) = try? await URLSession.shared.data(for: req),
-              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              let decoded = try? JSONDecoder().decode(SearchResponse.self, from: data) else { return nil }
+        guard let items = try? await MarketplaceGatewayService.ebaySearch(
+            query: query,
+            limit: 50,
+            profile: "cards"
+        ) else { return nil }
         var prices: [Double] = []
-        for s in decoded.itemSummaries ?? [] {
-            guard let v = Double(s.price?.value ?? ""), v >= 5 else { continue }
-            let title = (s.title ?? "").lowercased()
+        for item in items {
+            let v = item.price
+            guard v >= 5 else { continue }
+            let title = item.title.lowercased()
             if let kw = keyword?.lowercased(), !kw.isEmpty, !title.contains(kw) { continue }
             if isJunkCardTitle(title) { continue }
             if let a = anchor, a > 0, (v < a * 0.25 || v > a * 4) { continue } // banda en torno al precio real

@@ -1669,10 +1669,10 @@ struct StockBrowseFiltersSheet: View {
                     .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("My seller account")
+                    Text("Marketplaces")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Color.black.opacity(0.88))
-                    Text("Conecta StockX, GOAT, eBay y más")
+                    Text("Estado de StockX, GOAT, eBay y Flight Club")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.black.opacity(0.45))
                 }
@@ -1950,8 +1950,7 @@ enum StockScanLookupService {
     @MainActor
     static func lookup(
         code rawCode: String,
-        stock: [ClosetItem],
-        goatVM: GoatAccountViewModel
+        stock: [ClosetItem]
     ) async -> StockScanLookupPayload {
         let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = code.uppercased()
@@ -1962,30 +1961,28 @@ enum StockScanLookupService {
             return item.name.uppercased().contains(normalized)
         }
 
-        if goatVM.hasProviderToken {
-            do {
-                let pair = try await GoatAliasAPIService.searchAndPrice(keyword: code)
-                let product = pair.product
-                let prices = pair.prices
-                return StockScanLookupPayload(
-                    scannedCode: code,
-                    productTitle: product.displayTitle,
-                    brand: product.brand,
-                    sku: product.sku.isEmpty ? normalized : product.sku,
-                    imageURL: product.imageURL,
-                    buyPriceUSD: prices.lowestUSD,
-                    sellPriceUSD: prices.highestOfferUSD,
-                    marketEstimate: prices.asPieceMarketPrice(),
-                    matchingStockItemID: local?.id
-                )
-            } catch {
-                // Fall through to OpenAI / local-only payload.
-            }
+        let style = SneakerSKU.extract(from: code) ?? normalized
+        if let estimate = try? await KicksDBClient.fetchAggregated(
+            query: style,
+            fallbackQuery: local?.catalogDisplayName,
+            sizeQuery: local?.sizeText
+        ) {
+            return StockScanLookupPayload(
+                scannedCode: code,
+                productTitle: estimate.matchedTitle ?? local?.catalogDisplayName ?? "Style \(style)",
+                brand: local?.brand ?? "",
+                sku: estimate.matchedSKU ?? style,
+                imageURL: nil,
+                buyPriceUSD: estimate.min,
+                sellPriceUSD: estimate.max,
+                marketEstimate: estimate,
+                matchingStockItemID: local?.id
+            )
         }
 
         do {
             let est = try await PieceMarketPrice.fetchStyleFromInternet(
-                styleCode: SneakerSKU.extract(from: code) ?? normalized,
+                styleCode: style,
                 brand: local?.brand,
                 category: local?.category.displayName ?? "Shoes",
                 sizeText: local?.sizeText,
@@ -2003,7 +2000,6 @@ enum StockScanLookupService {
                 matchingStockItemID: local?.id
             )
         } catch {
-            let style = SneakerSKU.extract(from: code) ?? normalized
             return StockScanLookupPayload(
                 scannedCode: code,
                 productTitle: local?.catalogDisplayName ?? "Style \(style)",

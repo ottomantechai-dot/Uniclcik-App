@@ -19,7 +19,6 @@ struct UniclickAppApp: App {
     @StateObject private var authVM = AuthViewModel()
     @StateObject private var carsVM = CarsViewModel()
     @StateObject private var settingsVM = SettingsViewModel()
-    @StateObject private var goatVM = GoatAccountViewModel()
 
     init() {
         AppSandboxDirectories.ensureApplicationSupportAndClosetRoots()
@@ -40,7 +39,6 @@ struct UniclickAppApp: App {
             AppShellRoot(authVM: authVM)
                 .environmentObject(carsVM)
                 .environmentObject(settingsVM)
-                .environmentObject(goatVM)
                 /// Tema claro por defecto: barra de sistema (hora, señal, batería) en negro sobre UI blanca.
                 .preferredColorScheme(.light)
                 .modelContainer(Self.appModelContainer)

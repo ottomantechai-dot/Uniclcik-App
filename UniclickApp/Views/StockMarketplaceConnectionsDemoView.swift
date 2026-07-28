@@ -1,9 +1,8 @@
 import SwiftUI
 
-/// Conexiones de marketplace: cuenta de vendedor + plataformas por categoría (demo).
+/// Estado de las fuentes de mercado y plataformas disponibles por categoría.
 struct StockMarketplaceConnectionsDemoView: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var goatVM: GoatAccountViewModel
 
     private var allConnectablePlatforms: [String] {
         var seen = Set<String>()
@@ -20,7 +19,7 @@ struct StockMarketplaceConnectionsDemoView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
-                    sectionHeading("My seller account")
+                    sectionHeading("Fuentes de mercado")
                     MarketplaceSellerAccountsCard(platforms: allConnectablePlatforms)
 
                     sectionHeading("By category")
@@ -28,7 +27,7 @@ struct StockMarketplaceConnectionsDemoView: View {
                         categoryCard(segment)
                     }
 
-                    Text("Conecta tus cuentas para sincronizar precios e inventario. GOAT usa login real; el resto es demo.")
+                    Text("Estado real de las fuentes de mercado del servidor. Las credenciales nunca se guardan en el iPhone.")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Color.black.opacity(0.45))
                         .padding(.top, 2)
@@ -37,7 +36,7 @@ struct StockMarketplaceConnectionsDemoView: View {
                 .padding(.vertical, 16)
             }
             .background(Color(red: 0.97, green: 0.97, blue: 0.98))
-            .navigationTitle("Conexiones")
+            .navigationTitle("Integraciones")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -46,9 +45,6 @@ struct StockMarketplaceConnectionsDemoView: View {
                 }
             }
             .preferredColorScheme(.light)
-            .task {
-                await goatVM.validateStoredSession()
-            }
         }
     }
 
