@@ -132,8 +132,16 @@ struct MainTabView: View {
                     DashboardView()
                         .safeAreaInset(edge: .top, spacing: 0) {
                             AppTopBar(title: "Uniclick") {
-                                Button { tabRouter.homeSearchTick += 1 } label: { TopBarGlassButton(systemImage: "magnifyingglass") }
-                                    .buttonStyle(.plain).accessibilityLabel("Search sneakers")
+                                Button { tabRouter.homeSearchTick += 1 } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "magnifyingglass").font(.system(size: 16, weight: .semibold)).foregroundStyle(.black)
+                                        Text("Search").font(.system(size: 16, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.horizontal, 16).frame(maxWidth: .infinity, minHeight: 44)
+                                    .glassEffect(.regular.interactive(), in: .capsule)
+                                }
+                                .buttonStyle(.plain).accessibilityLabel("Search sneakers")
                                 Button {
                                     tabRouter.scanRequested = true
                                     tabRouter.selected = .closet

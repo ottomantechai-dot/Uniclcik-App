@@ -284,14 +284,7 @@ struct DashboardHomeScreen: View {
                           onScan: { tabRouter.scanRequested = true; tabRouter.selected = .closet },
                           onCards: { tabRouter.selected = .cards })
 
-            if !trending.isEmpty {
-                DashboardTrendingSneakersSection(
-                    items: trending,
-                    selectedID: selectedTrendingID,
-                    onSelect: { item in selectedTrendingID = item.id },
-                    onViewAll: onViewStock
-                )
-            }
+            HomeTrendingRow(products: Array(catalogProducts.prefix(12)), onViewAll: onViewStock)
 
             if !watchlist.items.isEmpty {
                 HStack(spacing: 10) {
@@ -2098,7 +2091,7 @@ private struct HomeMarketPriceGridTable: View {
         if normalized == "Avg" { return "Avg" }
         // Tallas ≥ 27 no existen en US (la US llega ~18): son europeas → etiquetar EU.
         if let n = Double(normalized.replacingOccurrences(of: ",", with: ".")), n >= 27 {
-            return "EU \(normalized)"
+            return "US \(normalized)"
         }
         return "US \(normalized)"
     }
@@ -2279,7 +2272,7 @@ struct WatchRow: View {
 
 // MARK: - Inicio en mosaico de cristal
 
-/// Mosaico de fichas de cristal: títulos grandes, un icono redondo y una cifra por ficha.
+/// Inicio: banner, cifras reales del negocio, accesos por categoría.
 struct HomeBentoGrid: View {
     let closetItems: [ClosetItem]
     let catalogProducts: [UpsoledProduct]
@@ -2287,99 +2280,149 @@ struct HomeBentoGrid: View {
     var onScan: () -> Void
     var onCards: () -> Void
     @ObservedObject private var reports = SaleReportStore.shared
+    @ObservedObject private var listings = ListingStore.shared
+    @State private var showReports = false
 
     private var stock: [ClosetItem] { closetItems.filter(\.isActiveInStock) }
+    private var sold: [ClosetItem] { closetItems.filter(\.isSold) }
     private var stockValue: Double { stock.reduce(0) { $0 + $1.stockValueUSD } }
+    private var earnings: Double { sold.reduce(0) { $0 + $1.stockValueUSD } }
+    private let purple = Color(red: 0.49, green: 0.25, blue: 0.95)
+
+    private func money(_ value: Double) -> String { value > 0 ? SaleReport.usd(value.rounded()) : "$0" }
 
     var body: some View {
-        GlassEffectContainer(spacing: 12) {
-            VStack(spacing: 12) {
-                HStack(spacing: 12) {
-                    Button(action: onSneakers) {
-                        tile(height: 168) {
-                            Text("Sneakers").font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.black)
-                            Spacer(minLength: 0)
-                            stat(icon: "shoe.2.fill", label: "With 360°", value: "\(catalogProducts.count)")
+        VStack(spacing: 14) {
+            // Banner de cartas
+            Button(action: onCards) {
+                HStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Trading Cards").font(.system(size: 24, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                        Text("Buy · Sell · Track value").font(.system(size: 14, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                        HStack(spacing: 6) {
+                            Text("Explore").font(.system(size: 14, weight: .bold))
+                            Image(systemName: "arrow.right").font(.system(size: 12, weight: .bold))
                         }
+                        .foregroundStyle(.black).padding(.horizontal, 16).frame(height: 36)
+                        .glassEffect(.regular, in: .capsule).padding(.top, 6)
                     }
-                    .buttonStyle(.plain)
-
-                    Button(action: onScan) {
-                        tile(height: 168) {
-                            Text("Scan a box,\nget its report").font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.black)
-                                .multilineTextAlignment(.leading)
-                            Spacer(minLength: 0)
-                            HStack(spacing: -8) {
-                                round("barcode.viewfinder", dark: true)
-                                round("doc.text.magnifyingglass")
-                                round("tag")
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Button(action: onSneakers) {
-                    tile(height: 132) {
-                        Text("Your stock").font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.black)
-                        Spacer(minLength: 0)
-                        HStack(spacing: 0) {
-                            stat(icon: "archivebox.fill", label: "Pairs", value: "\(stock.count)")
-                            Spacer(minLength: 0)
-                            stat(icon: "dollarsign", label: "Stock value", value: stockValue > 0 ? SaleReport.usd(stockValue.rounded()) : "—")
-                            Spacer(minLength: 0)
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-
-                tile(height: 118) {
-                    Text("Activity").font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                     Spacer(minLength: 0)
-                    if let last = reports.reports.first {
-                        HStack(spacing: 10) {
-                            round("doc.text.fill", dark: true)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(last.title).font(.system(size: 14, weight: .bold)).foregroundStyle(.black).lineLimit(1)
-                                Text("Sale report · " + last.createdAt.formatted(.relative(presentation: .named).locale(Locale(identifier: "en_US"))))
-                                    .font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.5)).lineLimit(1)
-                            }
-                            Spacer(minLength: 0)
-                            Text("\(reports.reports.count)").font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(.black)
-                        }
-                    } else {
-                        HStack(spacing: 10) {
-                            round("doc.text")
-                            Text("No sale reports yet. Scan a box to create one.")
-                                .font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.55))
-                        }
+                    Image("HomeBanner").resizable().scaledToFit().frame(width: 150, height: 130).blendMode(.multiply)
+                }
+                .padding(.leading, 18).padding(.trailing, 6).padding(.vertical, 8)
+                .frame(maxWidth: .infinity).glassEffect(.regular.interactive(), in: .rect(cornerRadius: 26))
+            }
+            .buttonStyle(.plain)
+
+            GlassEffectContainer(spacing: 10) {
+                VStack(spacing: 10) {
+                    HStack(spacing: 10) {
+                        bigStat(icon: "wallet.bifold", title: "Total Earnings", value: money(earnings))
+                            .frame(maxWidth: .infinity)
+                        bigStat(icon: "shippingbox", title: "Pairs Sold", value: "\(sold.count)")
+                            .frame(width: 130)
+                    }
+                    HStack(spacing: 10) {
+                        Button(action: onSneakers) { smallStat(icon: "shoe.2", title: "Inventory", value: "\(stock.count)") }.buttonStyle(.plain)
+                        Button(action: onSneakers) { smallStat(icon: "chart.bar", title: "Stock Value", value: money(stockValue)) }.buttonStyle(.plain)
+                        Button { showReports = true } label: { smallStat(icon: "tag", title: "Listings", value: "\(listings.listings.count)") }.buttonStyle(.plain)
+                    }
+                    HStack(spacing: 10) {
+                        Button(action: onSneakers) { category("shoe.2", "Sneakers", highlighted: true) }.buttonStyle(.plain)
+                        Button(action: onCards) { category("rectangle.portrait.on.rectangle.portrait", "Cards") }.buttonStyle(.plain)
+                        Button(action: onScan) { category("barcode.viewfinder", "Scan") }.buttonStyle(.plain)
+                        Button { showReports = true } label: { category("chart.xyaxis.line", "Reports") }.buttonStyle(.plain)
                     }
                 }
             }
         }
+        .fullScreenCover(isPresented: $showReports) {
+            NavigationStack {
+                SaleReportsHistoryView()
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button { showReports = false } label: { Image(systemName: "xmark") } } }
+            }
+        }
     }
 
-    private func tile<Content: View>(height: CGFloat, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8, content: content)
-            .padding(16)
-            .frame(maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .topLeading)
-            .contentShape(.rect(cornerRadius: 26))
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 26))
+    private func bigStat(icon: String, title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: icon).font(.system(size: 17, weight: .semibold)).foregroundStyle(.black)
+                Text(title).font(.system(size: 14, weight: .medium)).foregroundStyle(.black.opacity(0.7)).lineLimit(1)
+            }
+            Text(value).font(.system(size: 28, weight: .heavy, design: .rounded)).foregroundStyle(.black).minimumScaleFactor(0.5).lineLimit(1)
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 22))
     }
 
-    private func round(_ symbol: String, dark: Bool = false) -> some View {
-        Image(systemName: symbol).font(.system(size: 17, weight: .bold)).foregroundStyle(dark ? .white : .black)
-            .frame(width: 46, height: 46)
-            .background(dark ? Color.black : Color.white, in: .circle)
-            .overlay { Circle().strokeBorder(.white, lineWidth: 2) }
+    private func smallStat(icon: String, title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 13, weight: .semibold))
+                Text(title).font(.system(size: 11, weight: .medium)).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(.black.opacity(0.7))
+            HStack {
+                Text(value).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.black).minimumScaleFactor(0.6).lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(.black.opacity(0.4))
+            }
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect(cornerRadius: 18))
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
     }
 
-    private func stat(icon: String, label: String, value: String) -> some View {
-        HStack(spacing: 10) {
-            round(icon, dark: true)
-            VStack(alignment: .leading, spacing: -2) {
-                Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
-                Text(value).font(.system(size: 26, weight: .heavy, design: .rounded)).foregroundStyle(.black).minimumScaleFactor(0.6).lineLimit(1)
+    private func category(_ icon: String, _ title: String, highlighted: Bool = false) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon).font(.system(size: 22, weight: .medium)).foregroundStyle(highlighted ? purple : .black).frame(height: 26)
+            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.black).lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, minHeight: 78)
+        .contentShape(.rect(cornerRadius: 18))
+        .glassEffect(highlighted ? .regular.tint(purple.opacity(0.14)).interactive() : .regular.interactive(), in: .rect(cornerRadius: 18))
+    }
+}
+
+/// «Trending Now»: fila de zapatos del catálogo que se desliza hacia la derecha.
+struct HomeTrendingRow: View {
+    let products: [UpsoledProduct]
+    var onViewAll: () -> Void
+
+    var body: some View {
+        if !products.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Image(systemName: "flame.fill").foregroundStyle(Color(red: 0.49, green: 0.25, blue: 0.95))
+                    Text("Trending Now").font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                    Spacer()
+                    Button(action: onViewAll) {
+                        HStack(spacing: 4) { Text("View all"); Image(systemName: "arrow.right").font(.system(size: 11, weight: .bold)) }
+                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(red: 0.49, green: 0.25, blue: 0.95))
+                    }
+                    .buttonStyle(.plain)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 10) {
+                        ForEach(products) { product in
+                            NavigationLink { CatalogShoePreview(product: product) } label: {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 320, fillFrame: false)
+                                        .frame(width: 118, height: 90).blendMode(.multiply)
+                                    Text(product.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
+                                        .lineLimit(2).multilineTextAlignment(.leading).frame(width: 118, height: 34, alignment: .topLeading)
+                                    BrandLogoLabel(brand: product.brand ?? "")
+                                }
+                                .padding(12)
+                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .scrollClipDisabled()
             }
         }
     }

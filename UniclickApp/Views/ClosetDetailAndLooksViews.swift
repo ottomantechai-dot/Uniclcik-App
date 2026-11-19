@@ -96,6 +96,8 @@ struct ClosetGarmentDetailView: View {
     @State private var shoeLastSale: Double?
     @State private var shoeSales: [DailySalePoint] = []
     @State private var shoeSizesOpen = false
+    /// Otro zapato del catálogo elegido desde esta ficha: se enseña aquí mismo, sin abrir otra pantalla.
+    @State private var swappedProduct: UpsoledProduct?
     @State private var showShoeMarketData = false
     @State private var shoeExpandedReturnPolicy = false
     @State private var shoeExpandedBuyerPromise = false
@@ -328,6 +330,16 @@ struct ClosetGarmentDetailView: View {
 
     @ViewBuilder
     private var shoeDetailLayout: some View {
+        if let swappedProduct {
+            CatalogShoeBody(product: swappedProduct) { next in withAnimation(.snappy) { self.swappedProduct = next } }
+                .padding(.horizontal, 16)
+                .id(swappedProduct.id)
+        } else {
+            shoeOwnDetailLayout
+        }
+    }
+
+    private var shoeOwnDetailLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
             shoeDetailHero
 
@@ -339,7 +351,7 @@ struct ClosetGarmentDetailView: View {
                 .padding(.bottom, 10)
 
             // Otros colores del mismo modelo.
-            ShoeVariantsStrip(name: item.catalogDisplayName)
+            ShoeVariantsStrip(name: item.catalogDisplayName) { next in withAnimation(.snappy) { swappedProduct = next } }
                 .padding(.bottom, 12)
 
             shoeSizeSelectorRow
@@ -356,7 +368,7 @@ struct ClosetGarmentDetailView: View {
             shoePolicyAccordions
                 .padding(.top, 10)
 
-            ShoeRelatedShelf(name: item.catalogDisplayName, brand: item.brand ?? "")
+            ShoeRelatedShelf(name: item.catalogDisplayName, brand: item.brand ?? "") { next in withAnimation(.snappy) { swappedProduct = next } }
                 .padding(.top, 22)
 
             ShoeProductDetailsCard(rows: shoeDetailRows)
@@ -547,7 +559,7 @@ struct ClosetGarmentDetailView: View {
 
     private var shoeDisplaySizeLabel: String {
         if let core = StockSizeDisplay.normalizedStorage(from: sizeDraft), !core.isEmpty {
-            return "EU \(core)"
+            return "US \(core)"
         }
         return "Select"
     }
@@ -559,7 +571,7 @@ struct ClosetGarmentDetailView: View {
         if let core = StockSizeDisplay.normalizedStorage(from: sizeDraft) {
             return [core]
         }
-        return ["40", "41", "42", "42.5", "43", "44", "45"]
+        return ["7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"]
     }
 
     private var shoeBuyNowUSD: Int? {
@@ -625,7 +637,7 @@ struct ClosetGarmentDetailView: View {
                             withAnimation(.snappy(duration: 0.3)) { shoeSizesOpen = false }
                             Task { await loadShoeMarketData(force: true) }
                         } label: {
-                            Text("EU \(size)")
+                            Text("US \(size)")
                                 .font(.system(size: 13, weight: .bold, design: .rounded))
                                 .foregroundStyle(on ? .white : .black)
                                 .frame(maxWidth: .infinity, minHeight: 42)
@@ -3283,13 +3295,14 @@ enum CatalogShelf {
 /// Tira de miniaturas con los otros colores del mismo modelo.
 struct ShoeVariantsStrip: View {
     let name: String
+    var onSelect: (UpsoledProduct) -> Void
     var body: some View {
         let variants = CatalogShelf.variants(of: name)
         if !variants.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(variants) { product in
-                        NavigationLink { CatalogShoePreview(product: product) } label: {
+                        Button { onSelect(product) } label: {
                             StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 160, fillFrame: false)
                                 .frame(width: 64, height: 48).padding(6)
                                 .background(Color.white, in: .rect(cornerRadius: 14))
@@ -3307,6 +3320,7 @@ struct ShoeVariantsStrip: View {
 struct ShoeRelatedShelf: View {
     let name: String
     let brand: String
+    var onSelect: (UpsoledProduct) -> Void
     var body: some View {
         let items = CatalogShelf.related(to: name, brand: brand)
         if !items.isEmpty {
@@ -3315,7 +3329,7 @@ struct ShoeRelatedShelf: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 12) {
                         ForEach(items) { product in
-                            NavigationLink { CatalogShoePreview(product: product) } label: {
+                            Button { onSelect(product) } label: {
                                 VStack(alignment: .leading, spacing: 8) {
                                     StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 320, fillFrame: false)
                                         .frame(width: 150, height: 110)
@@ -3360,29 +3374,75 @@ struct ShoeProductDetailsCard: View {
     }
 }
 
-/// Vista de un zapato del catálogo abierto desde la ficha de otro: su giro 360° y sus datos.
+/// Ficha de un zapato del catálogo. Al tocar otro color o un relacionado, cambia aquí mismo.
 struct CatalogShoePreview: View {
-    let product: UpsoledProduct
+    @State var product: UpsoledProduct
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                Shoe360View(title: product.name, fallbackURL: product.primaryImageURL)
-                    .frame(height: 230)
-                Text(product.name).font(.system(size: 18, weight: .bold)).foregroundStyle(.black).padding(.top, 8).padding(.bottom, 12)
-                ShoeVariantsStrip(name: product.name)
-                ShoeUsedListingsStrip().padding(.top, 18)
-                ShoeRelatedShelf(name: product.name, brand: product.brand ?? "").padding(.top, 22)
-                ShoeProductDetailsCard(rows: [
-                    (icon: "tag", title: "Brand", value: product.brand ?? "—"),
-                    (icon: "paintpalette", title: "Colorway", value: CatalogShelf.colorway(of: product.name)),
-                    (icon: "shippingbox", title: "Condition", value: "New"),
-                ]).padding(.top, 22)
-                ShoeMarketHistoryCard(sales: []).padding(.top, 18).padding(.bottom, 24)
-            }
-            .padding(.horizontal, 16)
+            CatalogShoeBody(product: product) { next in withAnimation(.snappy) { product = next } }
+                .padding(.horizontal, 16)
+                .id(product.id)
         }
         .background(Color.white)
         .navigationBarTitleDisplayMode(.inline)
         .preferredColorScheme(.light)
+    }
+}
+
+/// Contenido de la ficha de un zapato del catálogo.
+struct CatalogShoeBody: View {
+    let product: UpsoledProduct
+    var onSelect: (UpsoledProduct) -> Void
+    @State private var sizesOpen = false
+    @State private var size: String?
+    private let sizes = ["7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Shoe360View(title: product.name, fallbackURL: product.primaryImageURL)
+                .frame(height: 230)
+            Text(product.name).font(.system(size: 18, weight: .bold)).foregroundStyle(.black).padding(.top, 8).padding(.bottom, 12)
+            ShoeVariantsStrip(name: product.name, onSelect: onSelect).padding(.bottom, 12)
+
+            VStack(spacing: 0) {
+                Button { withAnimation(.snappy(duration: 0.3)) { sizesOpen.toggle() } } label: {
+                    HStack {
+                        Text("Size").font(.system(size: 15)).foregroundStyle(.black.opacity(0.55))
+                        Spacer()
+                        Text(size.map { "US \($0)" } ?? "Select").font(.system(size: 15, weight: .semibold)).foregroundStyle(.black)
+                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(.black.opacity(0.45))
+                            .rotationEffect(.degrees(sizesOpen ? 180 : 0))
+                    }
+                    .padding(14).contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                if sizesOpen {
+                    Divider().padding(.horizontal, 14)
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                        ForEach(sizes, id: \.self) { option in
+                            Button { size = option; withAnimation(.snappy(duration: 0.3)) { sizesOpen = false } } label: {
+                                Text("US \(option)").font(.system(size: 13, weight: .bold, design: .rounded))
+                                    .foregroundStyle(size == option ? .white : .black)
+                                    .frame(maxWidth: .infinity, minHeight: 42)
+                                    .background(size == option ? Color.black : Color.black.opacity(0.05), in: .rect(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(12)
+                }
+            }
+            .background { RoundedRectangle(cornerRadius: 14).strokeBorder(Color.black.opacity(0.12)) }
+
+            ShoeUsedListingsStrip().padding(.top, 18)
+            ShoeRelatedShelf(name: product.name, brand: product.brand ?? "", onSelect: onSelect).padding(.top, 22)
+            ShoeProductDetailsCard(rows: [
+                (icon: "tag", title: "Brand", value: product.brand ?? "—"),
+                (icon: "paintpalette", title: "Colorway", value: CatalogShelf.colorway(of: product.name)),
+                (icon: "shippingbox", title: "Condition", value: "New"),
+            ]).padding(.top, 22)
+            DashboardMarketPricesSection(comparison: nil, maxVisibleRows: 6).padding(.top, 18)
+            ShoeMarketHistoryCard(sales: []).padding(.top, 18).padding(.bottom, 24)
+        }
     }
 }
