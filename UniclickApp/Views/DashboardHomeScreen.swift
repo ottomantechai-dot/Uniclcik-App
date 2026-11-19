@@ -2477,7 +2477,7 @@ struct HomeTrendingRow: View {
                                 }
                                 .overlay(alignment: .topTrailing) {
                                     // Dónde se vende: StockX, GOAT y eBay, en círculos de cristal montados uno sobre otro.
-                                    HStack(spacing: -8) {
+                                    HStack(spacing: -5) {
                                         ForEach(Array(["StockX", "GOAT", "eBay"].enumerated()), id: \.offset) { index, brand in
                                             // StockX y GOAT enseñan solo su símbolo (la parte izquierda del logo); eBay, sus letras.
                                             Group {
@@ -2485,15 +2485,15 @@ struct HomeTrendingRow: View {
                                                     StylizedMarketplaceLogo(brand: brand).frame(width: 19, height: 9)
                                                 } else {
                                                     StylizedMarketplaceLogo(brand: brand)
-                                                        .frame(width: 60, height: 13, alignment: .leading)
-                                                        .frame(width: brand == "GOAT" ? 17 : 14, height: 13, alignment: .leading)
+                                                        .frame(width: brand == "GOAT" ? 50 : 60, height: brand == "GOAT" ? 10 : 13, alignment: .leading)
+                                                        .frame(width: brand == "GOAT" ? 15 : 14, height: 13, alignment: .leading)
                                                         .clipped()
                                                 }
                                             }
                                                 .frame(width: 26, height: 26)
                                                 .background(.white, in: .circle)
                                                 .glassEffect(.regular, in: .circle)
-                                                .zIndex(Double(3 - index))
+                                                .zIndex(Double(index))
                                                 .accessibilityLabel(brand)
                                         }
                                     }
