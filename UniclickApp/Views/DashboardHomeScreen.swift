@@ -328,7 +328,8 @@ struct DashboardHomeScreen: View {
             }
 
             DashboardMarketPricesSection(
-                comparison: marketComparison
+                comparison: marketComparison,
+                featured: marketComparison == nil ? catalogProducts.first : nil
             )
 
             DashboardHomeBottomGrid(
@@ -1817,6 +1818,8 @@ enum HomeMarketTableBuilder {
 struct DashboardMarketPricesSection: View {
     let comparison: MarketComparison?
     var maxVisibleRows: Int? = 3
+    /// Zapato del que se enseñan los precios (en Inicio): su foto, su marca y su nombre encabezan la tabla.
+    var featured: UpsoledProduct?
 
     private let platforms = HomeMarketTableBuilder.homePlatforms
     private let rowHeight: CGFloat = 52
@@ -1832,6 +1835,20 @@ struct DashboardMarketPricesSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             tableHeader
+
+            if let featured {
+                HStack(spacing: 12) {
+                    StockCachedRemoteImage(url: featured.primaryImageURL, maxPixelSide: 320, fillFrame: false)
+                        .frame(width: 96, height: 70).blendMode(.multiply)
+                    VStack(alignment: .leading, spacing: 6) {
+                        BrandLogoLabel(brand: featured.brand ?? "", compact: true)
+                            .frame(width: 30, height: 30).glassEffect(.regular, in: .circle)
+                        Text(featured.name).font(.system(size: 15, weight: .bold)).foregroundStyle(.black)
+                            .lineLimit(2).multilineTextAlignment(.leading)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
 
             if comparison?.bestBuyOverall != nil || lastSale != nil {
                 priceSummary
@@ -1854,7 +1871,7 @@ struct DashboardMarketPricesSection: View {
                                 .background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
                         }
                     }
-                    ForEach(["8", "9", "10", "11"], id: \.self) { size in
+                    ForEach(featured == nil ? ["8", "9", "10", "11"] : ["7", "8", "9", "10", "11", "12"], id: \.self) { size in
                         HStack(spacing: 8) {
                             Text(size).font(.system(size: 14, weight: .heavy, design: .rounded)).foregroundStyle(.white)
                                 .frame(width: 52, height: 40)
@@ -1881,7 +1898,7 @@ struct DashboardMarketPricesSection: View {
         .padding(.horizontal, 18)
         .padding(.top, 18)
         .padding(.bottom, 16)
-        .background(homeCardBackground)
+        .glassEffect(.regular, in: .rect(cornerRadius: 26))
         .task(id: comparison?.matchedSKU ?? comparison?.query ?? "") { await loadLastSale() }
     }
 
