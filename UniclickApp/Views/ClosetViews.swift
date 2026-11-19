@@ -1193,6 +1193,7 @@ struct ClosetView: View {
                 Spacer(minLength: 0)
                 MarketplaceDots(brands: ["StockX", "GOAT", "eBay"], size: 32)
             }
+            Group {
             if let cut = Self.featuredCutout(name) {
                 // Zapato recortado, por encima del fondo de color y del logo.
                 // Mismo lienzo y mismo marco que la foto normal: queda alineado con los demás zapatos.
@@ -1201,6 +1202,16 @@ struct ClosetView: View {
                     .frame(maxWidth: .infinity).frame(height: 96)
             } else {
                 photo().frame(maxWidth: .infinity).frame(height: 96).blendMode(.multiply)
+            }
+            }
+            // Precio confirmado (el más bajo entre plataformas), en una cápsula de cristal sobre la foto.
+            .overlay(alignment: .bottomTrailing) {
+                if let price = ShoeSample.find(name)?.lowest(nil)?.price {
+                    Text(SaleReport.usd(price)).font(.system(size: 15, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                        .padding(.horizontal, 13).frame(height: 32)
+                        .glassEffect(.clear, in: .capsule)
+                        .offset(x: 2, y: 4)
+                }
             }
             Text(name.firstUppercased).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
                 .lineLimit(2).multilineTextAlignment(.leading).frame(maxWidth: .infinity, minHeight: 36, alignment: .topLeading)

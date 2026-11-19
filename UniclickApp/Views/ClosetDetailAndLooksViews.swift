@@ -3171,22 +3171,47 @@ struct ShoeMarketHistoryCard: View {
             HStack {
                 Text("Price history").font(.system(size: 18, weight: .bold)).foregroundStyle(.black)
                 Spacer()
-                HStack(spacing: 5) {
-                    Circle().fill(hasData ? Color.green : Color.black.opacity(0.25)).frame(width: 7, height: 7)
-                    Text(source ?? (hasData ? "Live" : "Waiting for data")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
+                if let source {
+                    // Origen de los datos: logo de la plataforma y fecha, en una cápsula de cristal.
+                    HStack(spacing: 7) {
+                        Circle().fill(Color.green).frame(width: 7, height: 7)
+                        StylizedMarketplaceLogo(brand: "StockX").frame(width: 50, height: 14)
+                        Text(source).font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.6)).lineLimit(1).fixedSize()
+                    }
+                    .padding(.horizontal, 11).frame(height: 30)
+                    .glassEffect(.regular, in: .capsule)
+                } else {
+                    HStack(spacing: 5) {
+                        Circle().fill(hasData ? Color.green : Color.black.opacity(0.25)).frame(width: 7, height: 7)
+                        Text(hasData ? "Live" : "Waiting for data").font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
+                    }
                 }
             }
 
             if hasData {
-                Chart(shown) { point in
+                // Siempre se dibujan todas las ventas; al cambiar de periodo solo se mueve la ventana de
+                // fechas, así la gráfica se desliza y se ajusta sin desaparecer.
+                let last = sales.last?.date ?? Date()
+                let first = sales.first?.date ?? last
+                let from = range > 0 ? max(first, last.addingTimeInterval(-Double(range) * 86400)) : first
+                let top = ((sales.map(\.avg).max() ?? 0) * 1.15 / 25).rounded(.up) * 25
+                Chart(sales) { point in
                     AreaMark(x: .value("Date", point.date), y: .value("Price", point.avg))
+                        .interpolationMethod(.monotone)
                         .foregroundStyle(LinearGradient(colors: [Color.black.opacity(0.16), .clear], startPoint: .top, endPoint: .bottom))
                     LineMark(x: .value("Date", point.date), y: .value("Price", point.avg))
+                        .interpolationMethod(.monotone)
                         .foregroundStyle(.black).lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
+                    PointMark(x: .value("Date", point.date), y: .value("Price", point.avg))
+                        .symbolSize(28).foregroundStyle(.black)
                 }
-                .chartXAxis(.hidden)
+                .chartXScale(domain: from...max(last, from.addingTimeInterval(86400)))
+                .chartYScale(domain: 0...max(top, 25))
+                .chartPlotStyle { $0.clipped() }
+                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 3)) { AxisValueLabel(format: .dateTime.month(.abbreviated).year(.twoDigits).locale(Locale(identifier: "en_US"))) } }
                 .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) }
-                .frame(height: 170)
+                .frame(height: 180)
+                .animation(.smooth(duration: 0.55), value: range)
             } else {
                 // Sin ventas todavía: se enseña el hueco de la gráfica, sin dibujar una curva inventada.
                 ZStack {
@@ -3208,7 +3233,7 @@ struct ShoeMarketHistoryCard: View {
             GlassEffectContainer(spacing: 8) {
                 HStack(spacing: 8) {
                     ForEach([(0, "All"), (30, "1M"), (90, "3M"), (180, "6M"), (365, "1Y")], id: \.0) { days, label in
-                        Button { withAnimation(.snappy) { range = days } } label: {
+                        Button { withAnimation(.smooth(duration: 0.55)) { range = days } } label: {
                             Text(label).font(.system(size: 13, weight: .bold)).foregroundStyle(range == days ? .white : .black)
                                 .frame(maxWidth: .infinity, minHeight: 36)
                                 .glassEffect(range == days ? .regular.tint(.black).interactive() : .regular.interactive(), in: .capsule)
@@ -3258,8 +3283,8 @@ struct ShoeMarketHistoryCard: View {
 struct ShoeUsedListingsStrip: View {
     var listings: [UsedListing] = []
     var title = ""
-    @State private var opened: (listing: UsedListing, page: Int)?
-    @State private var showing = false
+    private struct Opened: Identifiable { let id = UUID(); let listing: UsedListing; let page: Int }
+    @State private var opened: Opened?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -3306,14 +3331,14 @@ struct ShoeUsedListingsStrip: View {
                 Text("No used listings connected yet").font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.45))
             }
         }
-        .fullScreenCover(isPresented: $showing) {
-            if let opened { UsedListingView(listing: opened.listing, title: title, page: opened.page) }
+        .fullScreenCover(item: $opened) { opened in
+            UsedListingView(listing: opened.listing, title: title, page: opened.page)
         }
     }
 
     private func open(_ page: Int) {
         guard let listing = listings.first else { return }
-        opened = (listing, page); showing = true
+        opened = Opened(listing: listing, page: page)
     }
 }
 
@@ -3510,7 +3535,7 @@ struct CatalogShoeBody: View {
                                (icon: "dollarsign.circle", title: "Retail price", value: SaleReport.usd($0.retail)),
                                (icon: "calendar", title: "Release date", value: $0.release)] } ?? [])).padding(.top, 22)
             DashboardMarketPricesSection(comparison: sample?.comparison, maxVisibleRows: sample == nil ? 6 : nil).padding(.top, 18)
-            ShoeMarketHistoryCard(sales: sample?.sales ?? [], summary: sample?.stats, source: sample.map { "StockX · \($0.asOf)" })
+            ShoeMarketHistoryCard(sales: sample?.sales ?? [], summary: sample?.stats, source: sample?.asOf)
                 .padding(.top, 18).padding(.bottom, 24)
         }
     }

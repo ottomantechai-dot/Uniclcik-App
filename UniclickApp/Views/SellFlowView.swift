@@ -717,14 +717,14 @@ struct ShoeSample {
     let sizes = ["3.5Y", "4Y", "4.5Y", "5Y", "5.5Y", "6Y", "6.5Y", "7Y"]
     /// talla → plataforma → precio más bajo en venta
     let asks: [String: [String: Double]] = [
-        "3.5Y": ["StockX": 57, "GOAT": 98],
-        "4Y": ["StockX": 88, "GOAT": 65],
-        "4.5Y": ["StockX": 69, "GOAT": 45],
-        "5Y": ["StockX": 49, "GOAT": 43],
-        "5.5Y": ["StockX": 75, "GOAT": 92, "eBay": 54.99],
-        "6Y": ["GOAT": 92],
-        "6.5Y": ["GOAT": 109],
-        "7Y": ["StockX": 77, "GOAT": 86],
+        "3.5Y": ["StockX": 57, "GOAT": 98, "Flight Club": 98],
+        "4Y": ["StockX": 88, "GOAT": 65, "eBay": 67, "Flight Club": 65],
+        "4.5Y": ["StockX": 69, "GOAT": 45, "eBay": 139.49, "Flight Club": 45],
+        "5Y": ["StockX": 49, "GOAT": 43, "eBay": 189.95, "Flight Club": 43],
+        "5.5Y": ["StockX": 75, "GOAT": 92, "eBay": 120, "Flight Club": 92],
+        "6Y": ["GOAT": 92, "eBay": 150, "Flight Club": 92],
+        "6.5Y": ["GOAT": 109, "eBay": 120, "Flight Club": 111],
+        "7Y": ["StockX": 77, "GOAT": 86, "eBay": 100, "Flight Club": 94],
     ]
     /// Datos históricos tal como los da StockX.
     let stats: [(String, String)] = [
@@ -763,7 +763,7 @@ struct ShoeSample {
     /// La misma comparativa que usa la tabla de precios por talla y plataforma.
     var comparison: MarketComparison {
         func key(_ s: String) -> String { s.replacingOccurrences(of: "Y", with: "") }
-        let names = ["StockX", "GOAT", "eBay"]
+        let names = ["StockX", "GOAT", "eBay", "Flight Club"]
         let quotes = names.map { name -> MarketPlatformQuote in
             var bySize: [String: Double] = [:]
             for (size, row) in asks { if let v = row[name] { bySize[key(size)] = v } }
@@ -807,7 +807,7 @@ struct ShoeSamplePriceCard: View {
                 stat("Retail", sample.retail)
             }
             VStack(spacing: 0) {
-                let names = ["StockX", "GOAT", "eBay"]
+                let names = ["StockX", "GOAT", "eBay", "Flight Club"]
                 ForEach(Array(names.enumerated()), id: \.element) { index, name in
                     let price = size.flatMap { sample.asks[$0]?[name] } ?? (size == nil ? sample.asks.values.compactMap { $0[name] }.min() : nil)
                     HStack {

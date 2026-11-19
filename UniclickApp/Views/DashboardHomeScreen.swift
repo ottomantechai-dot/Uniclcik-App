@@ -489,7 +489,7 @@ struct ShoeMarketDetailView: View {
             // Los DOS precios reales que de verdad importan, lado a lado (sin promedios que confunden).
             HStack(alignment: .top, spacing: 28) {
                 if let ask = comparison?.bestBuyOverall {
-                    headerPrice(label: "ASK MÁS BAJO", value: Self.usd(ask.price), sub: "comprar ya · \(ask.platform)")
+                    headerPrice(label: "LOWEST ASK", value: Self.usd(ask.price), sub: "buy now · \(ask.platform)")
                 }
                 if let last = sales.last {
                     headerPrice(label: "ÚLTIMA VENTA", value: Self.usd(last.avg), sub: "venta real")
@@ -1920,9 +1920,9 @@ struct DashboardMarketPricesSection: View {
     private var priceSummary: some View {
         HStack(spacing: 0) {
             if let ask = comparison?.bestBuyOverall {
-                summaryCol(label: "ASK MÁS BAJO",
+                summaryCol(label: "LOWEST ASK",
                            value: PieceMarketPrice.formatUSD(Int(ask.price.rounded())),
-                           sub: "comprar ya · \(ask.platform)",
+                           sub: "buy now · \(ask.platform)",
                            color: DashboardHomePalette.accentGreen)
             }
             if let ls = lastSale {
