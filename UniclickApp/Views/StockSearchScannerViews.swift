@@ -1594,7 +1594,8 @@ struct StockBrowseFiltersSheet: View {
                                 }
                                 .padding(.vertical, 2)
                             }
-                            .scrollClipDisabled()
+                            // Las marcas se deslizan sin salirse del contenedor.
+                            .clipShape(.rect(cornerRadius: 16))
                         }
                     }
 
