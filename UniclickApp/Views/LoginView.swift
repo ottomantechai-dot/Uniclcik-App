@@ -41,23 +41,12 @@ struct LoginView: View {
     }
 
     var body: some View {
-        ZStack {
-            authBackground
-
-            switch phase {
-            case .welcome:
-                welcomeLayer
-            case .signIn, .signUp:
-                innerAuthLayer
-            }
-        }
+        modernLayer
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .preferredColorScheme(.light)
-        .animation(.easeInOut(duration: 0.3), value: phase)
-        .onChange(of: phase) { _, new in
-            if new == .signIn, !savedEmail.isEmpty {
-                email = savedEmail
-            }
+        .onAppear {
+            if phase == .welcome { phase = .signIn }
+            if email.isEmpty, !savedEmail.isEmpty { email = savedEmail }
         }
         .sheet(isPresented: $showResetSheet) {
             resetPasswordSheet
@@ -67,6 +56,125 @@ struct LoginView: View {
         } message: {
             Text(L10n.tr("auth.helpBody"))
         }
+    }
+
+    // MARK: - Pantalla de acceso
+
+    private var isSignUp: Bool { phase == .signUp }
+    private let loginGray = Color(red: 0.965, green: 0.965, blue: 0.975)
+
+    private var modernLayer: some View {
+        ZStack {
+            loginGray.ignoresSafeArea()
+            // Formas suaves de fondo, arriba a la derecha.
+            Circle().fill(.white).frame(width: 300, height: 300).blur(radius: 30).offset(x: 150, y: -330)
+            Circle().fill(Color.black.opacity(0.05)).frame(width: 180, height: 180).blur(radius: 40).offset(x: 120, y: -260)
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Image("UniclickMark").resizable().scaledToFill()
+                        .frame(width: 58, height: 58).clipShape(.rect(cornerRadius: 16))
+                        .padding(.top, 40)
+
+                    Text(isSignUp ? "Create account" : "Hello again!")
+                        .font(.system(size: 32, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                        .padding(.top, 26)
+                    Text(isSignUp ? "Track, compare and sell your sneakers and cards." : "Welcome back, you've been missed.")
+                        .font(.system(size: 16, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                        .padding(.top, 6)
+
+                    GlassEffectContainer(spacing: 12) {
+                        VStack(spacing: 12) {
+                            field(icon: "envelope") {
+                                TextField("Email address", text: $email)
+                                    .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.emailAddress)
+                                    .textContentType(.username)
+                            }
+                            field(icon: "lock") {
+                                Group {
+                                    if showPassword { TextField("Password", text: $password) } else { SecureField("Password", text: $password) }
+                                }
+                                .textContentType(isSignUp ? .newPassword : .password)
+                                Button { showPassword.toggle() } label: {
+                                    Image(systemName: showPassword ? "eye.slash" : "eye").foregroundStyle(.black.opacity(0.4))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(.top, 30)
+
+                    if !isSignUp {
+                        HStack {
+                            Button { rememberMe.toggle() } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: rememberMe ? "checkmark.square.fill" : "square").font(.system(size: 18)).foregroundStyle(.black)
+                                    Text("Remember me").font(.system(size: 14, weight: .medium)).foregroundStyle(.black.opacity(0.6))
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            Spacer()
+                            Button("Forgot password?") { resetEmail = email; resetInfo = nil; showResetSheet = true }
+                                .font(.system(size: 14, weight: .bold)).foregroundStyle(.black)
+                        }
+                        .padding(.top, 16)
+                    }
+
+                    if let message = auth.lastErrorMessage {
+                        Label(message, systemImage: "exclamationmark.circle")
+                            .font(.system(size: 13, weight: .medium)).foregroundStyle(.red)
+                            .padding(.top, 14)
+                    }
+
+                    Button {
+                        Task {
+                            isBusy = true
+                            defer { isBusy = false }
+                            if isSignUp {
+                                await auth.signUp(email: email, password: password)
+                            } else {
+                                savedEmail = rememberMe ? email.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+                                await auth.signIn(email: email, password: password)
+                            }
+                        }
+                    } label: {
+                        Group {
+                            if isBusy { ProgressView().tint(.white) } else { Text(isSignUp ? "Create account" : "Login") }
+                        }
+                        .font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 58)
+                        .background(canSubmit ? Color.black : Color.black.opacity(0.3), in: .rect(cornerRadius: 18))
+                    }
+                    .buttonStyle(.plain).disabled(!canSubmit || isBusy)
+                    .padding(.top, 22)
+
+                    HStack(spacing: 5) {
+                        Text(isSignUp ? "Already have an account?" : "Don't have an account?").foregroundStyle(.black.opacity(0.5))
+                        Button(isSignUp ? "Log in" : "Sign up") {
+                            auth.lastErrorMessage = nil
+                            withAnimation(.snappy) { phase = isSignUp ? .signIn : .signUp }
+                        }
+                        .fontWeight(.bold).foregroundStyle(.black)
+                    }
+                    .font(.system(size: 14))
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 26)
+                }
+                .padding(.horizontal, 24).padding(.bottom, 30)
+            }
+            .scrollDismissesKeyboard(.interactively)
+        }
+    }
+
+    private func field<Content: View>(icon: String, @ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).font(.system(size: 16, weight: .medium)).foregroundStyle(.black.opacity(0.55)).frame(width: 22)
+            content()
+        }
+        .font(.system(size: 16))
+        .padding(.horizontal, 16).frame(height: 58)
+        .background(.white, in: .rect(cornerRadius: 18))
+        .glassEffect(.regular, in: .rect(cornerRadius: 18))
     }
 
     // MARK: - Fondo

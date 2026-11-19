@@ -1195,8 +1195,11 @@ struct ClosetView: View {
             }
             if let cut = Self.featuredCutout(name) {
                 // Zapato recortado, por encima del fondo de color y del logo.
-                Image(cut).resizable().scaledToFit().frame(maxWidth: .infinity).frame(height: 96)
-                    .shadow(color: .black.opacity(0.18), radius: 6, y: 5)
+                // El recorte va ajustado al zapato; se reduce para que ocupe lo mismo que en la foto original.
+                Image(cut).resizable().scaledToFit()
+                    .frame(height: cut == "ShoeCutMocha" ? 72 : 60)
+                    .shadow(color: .black.opacity(0.18), radius: 5, y: 4)
+                    .frame(maxWidth: .infinity).frame(height: 96)
             } else {
                 photo().frame(maxWidth: .infinity).frame(height: 96).blendMode(.multiply)
             }

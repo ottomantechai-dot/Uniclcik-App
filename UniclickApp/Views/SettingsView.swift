@@ -291,7 +291,7 @@ struct SettingsView: View {
 
                     platformGroup("Sneaker platforms", icon: "shoe.2", brands: ["StockX", "GOAT", "eBay", "Flight Club"])
                     platformGroup("Card platforms", icon: "rectangle.portrait.on.rectangle.portrait", brands: ["Collectr", "TCGplayer", "eBay"])
-                    platformGroup("Coming soon", icon: "clock", brands: ["Grailed", "Poshmark", "Stadium Goods", "Alias"], dimmed: true)
+                    platformGroup("Coming soon", icon: "clock", brands: ["Poshmark", "Grailed", "Mercari", "Whatnot", "Facebook Marketplace"], dimmed: true)
 
                     glassCard {
                         glassRow(icon: "info.circle", title: "Version", value: "\(settingsVM.appVersion) (\(settingsVM.buildNumber))")
@@ -345,8 +345,8 @@ struct SettingsView: View {
                     ForEach(brands, id: \.self) { brand in
                         VStack(spacing: 6) {
                             Group {
-                                if UIImage(named: "Logo" + brand) != nil {
-                                    Image("Logo" + brand).resizable().scaledToFit().frame(width: 30, height: 30).clipShape(.rect(cornerRadius: 8))
+                                if UIImage(named: "Logo" + brand.replacingOccurrences(of: " ", with: "")) != nil {
+                                    Image("Logo" + brand.replacingOccurrences(of: " ", with: "")).resizable().scaledToFit().frame(width: 30, height: 30).clipShape(.rect(cornerRadius: 8))
                                 } else {
                                     StylizedMarketplaceLogo(brand: brand).frame(width: 38, height: 22)
                                 }
@@ -354,8 +354,8 @@ struct SettingsView: View {
                             .frame(width: 54, height: 54)
                             .background(.white, in: .circle)
                             .overlay { Circle().strokeBorder(Color.black.opacity(0.08), lineWidth: 1) }
-                            .opacity(dimmed ? 0.55 : 1)
-                            Text(brand).font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(dimmed ? 0.45 : 0.75)).lineLimit(1).minimumScaleFactor(0.7)
+                            .opacity(dimmed ? 0.8 : 1)
+                            Text(brand == "Facebook Marketplace" ? "Marketplace" : brand).font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(dimmed ? 0.45 : 0.75)).lineLimit(1).minimumScaleFactor(0.7)
                         }
                         .frame(maxWidth: .infinity)
                     }
