@@ -1193,23 +1193,34 @@ struct ClosetView: View {
                 Spacer(minLength: 0)
                 MarketplaceDots(brands: ["StockX", "GOAT", "eBay"], size: 32)
             }
-            photo().frame(maxWidth: .infinity).frame(height: 96).blendMode(.multiply)
+            if let cut = Self.featuredCutout(name) {
+                // Zapato recortado, por encima del fondo de color y del logo.
+                Image(cut).resizable().scaledToFit().frame(maxWidth: .infinity).frame(height: 96)
+                    .shadow(color: .black.opacity(0.18), radius: 6, y: 5)
+            } else {
+                photo().frame(maxWidth: .infinity).frame(height: 96).blendMode(.multiply)
+            }
             Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
                 .lineLimit(2).multilineTextAlignment(.leading).frame(maxWidth: .infinity, minHeight: 36, alignment: .topLeading)
         }
         .padding(10)
         .background {
-            // Zapatos destacados: un barrido de color y el logo de la marca, en grande y suave, detrás del zapato.
+            // Zapatos destacados: blanco arriba, un barrido de color detrás del zapato con el logo de la
+            // marca en grande, y un difuminado a blanco que llega justo hasta el texto.
             if let accent = Self.featuredAccent(name) {
-                ZStack {
-                    Color.white
-                    LinearGradient(colors: [accent.opacity(0.05), accent.opacity(0.42), accent.opacity(0.10)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                    Ellipse().fill(accent.opacity(0.35)).frame(width: 190, height: 70).blur(radius: 26).rotationEffect(.degrees(-18)).offset(x: 20, y: -6)
+                // El fondo se dibuja como capa de un rectángulo blanco del tamaño exacto de la ficha: no se sale.
+                Color.white.overlay {
+                    ZStack {
+                    Ellipse().fill(accent.opacity(0.55)).frame(width: 230, height: 90).blur(radius: 28)
+                        .rotationEffect(.degrees(-16)).offset(x: 14, y: -6)
                     if let logo = BrandLogoLabel.assetName(for: brand) {
-                        Image(logo).resizable().scaledToFit().frame(width: 84, height: 84)
-                            .foregroundStyle(.white.opacity(0.75)).offset(x: 44, y: -24)
+                        Image(logo).resizable().scaledToFit().frame(width: 78, height: 78)
+                            .foregroundStyle(.white.opacity(0.9)).offset(x: 42, y: -22)
                     }
-                    LinearGradient(colors: [.clear, .white.opacity(0.9)], startPoint: .center, endPoint: .bottom)
+                    LinearGradient(stops: [.init(color: .white, location: 0), .init(color: .white.opacity(0), location: 0.26),
+                                           .init(color: .white.opacity(0), location: 0.60), .init(color: .white, location: 0.76)],
+                                   startPoint: .top, endPoint: .bottom)
+                    }
                 }
                 .clipShape(.rect(cornerRadius: 20))
             } else {
@@ -1217,6 +1228,12 @@ struct ClosetView: View {
             }
         }
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+    }
+
+    private static func featuredCutout(_ name: String) -> String? {
+        if name.localizedCaseInsensitiveContains("Jordan 1") && name.localizedCaseInsensitiveContains("Dark Mocha") { return "ShoeCutMocha" }
+        if name.localizedCaseInsensitiveContains("1906R") && name.localizedCaseInsensitiveContains("Nightwatch") { return "ShoeCutNB1906" }
+        return nil
     }
 
     /// Los dos zapatos con fondo especial y el color de cada uno.

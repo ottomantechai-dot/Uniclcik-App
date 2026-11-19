@@ -289,17 +289,9 @@ struct SettingsView: View {
                         glassRow(icon: "phone", title: "Phone", value: "+1 (305) 555-0100")
                     }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Platforms").font(.system(size: 17, weight: .bold, design: .rounded)).foregroundStyle(.black).padding(.leading, 4)
-                        glassCard {
-                            HStack(spacing: 0) {
-                                ForEach(["StockX", "GOAT", "eBay", "Flight Club"], id: \.self) { brand in
-                                    StylizedMarketplaceLogo(brand: brand).frame(height: 18).frame(maxWidth: .infinity)
-                                }
-                            }
-                            .padding(.vertical, 18).padding(.horizontal, 8)
-                        }
-                    }
+                    platformGroup("Sneaker platforms", icon: "shoe.2", brands: ["StockX", "GOAT", "eBay", "Flight Club"])
+                    platformGroup("Card platforms", icon: "rectangle.portrait.on.rectangle.portrait", brands: ["Collectr", "TCGplayer", "eBay"])
+                    platformGroup("Coming soon", icon: "clock", brands: ["Grailed", "Poshmark", "Stadium Goods", "Alias"], dimmed: true)
 
                     glassCard {
                         glassRow(icon: "info.circle", title: "Version", value: "\(settingsVM.appVersion) (\(settingsVM.buildNumber))")
@@ -339,6 +331,40 @@ struct SettingsView: View {
         }
     }
 
+    /// Un grupo de plataformas: cada una en su círculo de cristal con el nombre debajo.
+    private func platformGroup(_ title: String, icon: String, brands: [String], dimmed: Bool = false) -> some View {
+        glassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
+                        .frame(width: 32, height: 32).background(Color.black.opacity(0.05), in: .circle)
+                    Text(title).font(.system(size: 16, weight: .bold, design: .rounded)).foregroundStyle(.black)
+                    Spacer()
+                }
+                HStack(alignment: .top, spacing: 0) {
+                    ForEach(brands, id: \.self) { brand in
+                        VStack(spacing: 6) {
+                            Group {
+                                if UIImage(named: "Logo" + brand) != nil {
+                                    Image("Logo" + brand).resizable().scaledToFit().frame(width: 30, height: 30).clipShape(.rect(cornerRadius: 8))
+                                } else {
+                                    StylizedMarketplaceLogo(brand: brand).frame(width: 38, height: 22)
+                                }
+                            }
+                            .frame(width: 54, height: 54)
+                            .background(.white, in: .circle)
+                            .overlay { Circle().strokeBorder(Color.black.opacity(0.08), lineWidth: 1) }
+                            .opacity(dimmed ? 0.55 : 1)
+                            Text(brand).font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(dimmed ? 0.45 : 0.75)).lineLimit(1).minimumScaleFactor(0.7)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+            .padding(14)
+        }
+    }
+
     private func glassCard<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         VStack(spacing: 0, content: content)
             .frame(maxWidth: .infinity)
@@ -372,8 +398,8 @@ struct SettingsView: View {
                             .fill(
                                 LinearGradient(
                                     colors: [
-                                        Color(red: 0.30, green: 0.55, blue: 0.95),
-                                        Color(red: 0.14, green: 0.36, blue: 0.85),
+                                        Color(white: 0.25),
+                                        Color.black,
                                     ],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
@@ -386,21 +412,8 @@ struct SettingsView: View {
                 }
                 .frame(width: 108, height: 108)
                 .clipShape(Circle())
-                .overlay {
-                    Circle()
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.30, green: 0.55, blue: 0.95).opacity(0.50),
-                                    Color(red: 0.14, green: 0.36, blue: 0.85).opacity(0.15),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 2
-                        )
-                }
-                .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.25), radius: 18, y: 8)
+                .overlay { Circle().strokeBorder(Color.white, lineWidth: 3) }
+                .shadow(color: .black.opacity(0.10), radius: 12, y: 6)
 
                 if auth.isUploadingProfileAvatar {
                     Circle()
@@ -415,27 +428,11 @@ struct SettingsView: View {
                     guard auth.isAuthenticated else { return }
                     showProfilePhotoSheet = true
                 } label: {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.30, green: 0.55, blue: 0.95),
-                                        Color(red: 0.14, green: 0.36, blue: 0.85),
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 34, height: 34)
-                            .overlay {
-                                Circle().strokeBorder(Color.white, lineWidth: 2.5)
-                            }
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                    .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.40), radius: 6, y: 3)
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 13, weight: .bold)).foregroundStyle(.black)
+                        .frame(width: 36, height: 36)
+                        .background(.white, in: .circle)
+                        .glassEffect(.regular.interactive(), in: .circle)
                 }
                 .buttonStyle(.plain)
                 .disabled(!auth.isAuthenticated || auth.isUploadingProfileAvatar)
