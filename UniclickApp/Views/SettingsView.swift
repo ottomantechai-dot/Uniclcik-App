@@ -273,39 +273,59 @@ struct SettingsView: View {
 
     @State private var showProfilePhotoSheet = false
 
+    @Environment(\.dismiss) private var dismiss
+    private let pageGray = Color(red: 0.965, green: 0.965, blue: 0.975)
+
     var body: some View {
-        ZStack {
-            Color.white.ignoresSafeArea()
-
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 18) {
+        ScrollView(.vertical, showsIndicators: false) {
+            GlassEffectContainer(spacing: 12) {
+                VStack(spacing: 14) {
                     profileHeroSection
-                        .padding(.top, 8)
+                        .padding(.top, 8).padding(.bottom, 6)
 
-                    Group {
-                        sectionTitle(L10n.tr("settings.personalInfo"))
-                        generalInfoSection
+                    glassCard {
+                        glassRow(icon: "envelope", title: "Email", value: auth.session?.user.email ?? "—")
+                        Divider().padding(.leading, 58)
+                        glassRow(icon: "phone", title: "Phone", value: "+1 (305) 555-0100")
                     }
 
-                    Group {
-                        sectionTitle("Marketplaces")
-                        MarketplaceSellerAccountsCard()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Platforms").font(.system(size: 17, weight: .bold, design: .rounded)).foregroundStyle(.black).padding(.leading, 4)
+                        glassCard {
+                            HStack(spacing: 0) {
+                                ForEach(["StockX", "GOAT", "eBay", "Flight Club"], id: \.self) { brand in
+                                    StylizedMarketplaceLogo(brand: brand).frame(height: 18).frame(maxWidth: .infinity)
+                                }
+                            }
+                            .padding(.vertical, 18).padding(.horizontal, 8)
+                        }
                     }
 
-                    Group {
-                        sectionTitle(L10n.tr("settings.platforms"))
-                        marketplaceLogosGallerySection
+                    glassCard {
+                        glassRow(icon: "info.circle", title: "Version", value: "\(settingsVM.appVersion) (\(settingsVM.buildNumber))")
                     }
 
-                    accountSection
-                    aboutSection
+                    Button { Task { await auth.signOut() } } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                            Text("Log out")
+                        }
+                        .font(.system(size: 16, weight: .bold)).foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, minHeight: 54)
+                        .background(.white, in: .capsule)
+                        .glassEffect(.regular.interactive(), in: .capsule)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-                .padding(.bottom, 24)
-                .frame(minWidth: 0, maxWidth: .infinity)
+                .padding(.horizontal, 16).padding(.top, 56).padding(.bottom, 30)
             }
-            .frame(maxWidth: .infinity)
+        }
+        .background(pageGray.ignoresSafeArea())
+        .overlay(alignment: .topTrailing) {
+            // X para salir del perfil.
+            Button { dismiss() } label: { TopBarGlassButton(systemImage: "xmark") }
+                .buttonStyle(.plain).padding(.trailing, 16).padding(.top, 4)
+                .accessibilityLabel("Close")
         }
         .preferredColorScheme(.light)
         .environment(\.dashboardLightSurface, true)
@@ -317,6 +337,25 @@ struct SettingsView: View {
             .presentationDragIndicator(Visibility.visible)
             .presentationDetents([.medium])
         }
+    }
+
+    private func glassCard<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(spacing: 0, content: content)
+            .frame(maxWidth: .infinity)
+            .background(.white, in: .rect(cornerRadius: 24))
+            .glassEffect(.regular, in: .rect(cornerRadius: 24))
+    }
+
+    private func glassRow(icon: String, title: String, value: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
+                .frame(width: 34, height: 34)
+                .background(Color.black.opacity(0.05), in: .circle)
+            Text(title).font(.system(size: 15, weight: .medium)).foregroundStyle(.black)
+            Spacer(minLength: 8)
+            Text(value).font(.system(size: 14, weight: .medium)).foregroundStyle(.black.opacity(0.55)).lineLimit(1).minimumScaleFactor(0.7)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
     }
 
     // Profile hero — avatar grande centrado + nombre + email

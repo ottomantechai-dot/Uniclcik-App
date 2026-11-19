@@ -31,11 +31,6 @@ struct AppTopBar<Extra: View>: View {
         .fullScreenCover(isPresented: $showSettings) {
             NavigationStack {
                 SettingsView()
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button { showSettings = false } label: { Image(systemName: "xmark") }
-                        }
-                    }
             }
         }
     }
