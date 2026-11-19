@@ -245,7 +245,7 @@ struct CardsMarketView: View {
         }
         .onChange(of: market.reloadToken) { _, _ in Task { await reload() } }
         .fullScreenCover(item: $report) { SaleReportView(report: $0) }
-        .fullScreenCover(item: $openedCard) { CardDetailView(card: $0) }
+        .navigationDestination(item: $openedCard) { CardDetailView(card: $0) }
     }
 
     private var setsStrip: some View {

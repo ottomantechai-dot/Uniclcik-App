@@ -17,7 +17,7 @@ struct CardDetailView: View {
     private var setLogo: URL? { PokemonTCGClient.storedSets().first { $0.name == card.setName }?.logoURL }
 
     var body: some View {
-        NavigationStack {
+        Group {   // se abre apilada, como la ficha de un zapato: entra por la derecha y se vuelve deslizando
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     CardImage(url: card.imageURL, preview: card.thumbURL)
@@ -109,7 +109,7 @@ struct CardDetailView: View {
             .safeAreaInset(edge: .top, spacing: 0) { Color.clear.frame(height: 52) }
             .overlay(alignment: .top) {
                 HStack {
-                    Button { dismiss() } label: { TopBarGlassButton(systemImage: "xmark") }.buttonStyle(.plain)
+                    Button { dismiss() } label: { TopBarGlassButton(systemImage: "chevron.left") }.buttonStyle(.plain)
                     Spacer()
                     CardImage(url: setLogo, placeholder: false).frame(width: 96, height: 30)
                     Spacer()
@@ -132,6 +132,7 @@ struct CardDetailView: View {
             .fullScreenCover(item: $report) { SaleReportView(report: $0) }
         }
         .preferredColorScheme(.light)
+        .toolbar(.hidden, for: .tabBar)
         .swipeBackToDismiss()
     }
 

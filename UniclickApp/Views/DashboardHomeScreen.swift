@@ -1070,7 +1070,7 @@ struct PokemonSetData: Identifiable, Hashable {
     let logoURL: URL?
 }
 
-struct PokemonCardData: Identifiable {
+struct PokemonCardData: Identifiable, Hashable {
     let id: String
     let name: String
     let setName: String
@@ -2587,7 +2587,7 @@ struct HomeTrendingCardsRow: View {
             CardImage.prefetch(cards.compactMap(\.thumbURL) + cards.compactMap(\.imageURL))
         }
         .fullScreenCover(item: $report) { SaleReportView(report: $0) }
-        .fullScreenCover(item: $openedCard) { CardDetailView(card: $0) }
+        .navigationDestination(item: $openedCard) { CardDetailView(card: $0) }
     }
 }
 
