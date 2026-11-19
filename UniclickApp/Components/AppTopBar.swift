@@ -168,3 +168,13 @@ struct CardTileSkeleton: View {
         .background(Color.white, in: .rect(cornerRadius: 12))
     }
 }
+
+
+/// Esqueleto con forma de zapatilla: la silueta en gris con el brillo recorriéndola.
+struct ShoeSkeleton: View {
+    var body: some View {
+        Skeleton(corner: 0)
+            .mask { Image("TabZapatos").resizable().scaledToFit().padding(.horizontal, 14) }
+            .accessibilityHidden(true)
+    }
+}

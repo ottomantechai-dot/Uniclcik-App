@@ -160,7 +160,7 @@ struct CardSetFilterSheet: View {
         return Button { market.choose(set); dismiss() } label: {
             VStack(spacing: 6) {
                 AsyncImage(url: set.logoURL) { phase in
-                    if let image = phase.image { image.resizable().scaledToFit() } else { Color.clear }
+                    if let image = phase.image { image.resizable().scaledToFit() } else { Skeleton(corner: 8) }
                 }
                 .frame(height: 40).frame(maxWidth: .infinity)
                 Text(set.name).font(.system(size: 11, weight: .bold, design: .rounded)).foregroundStyle(.black)
@@ -285,9 +285,7 @@ struct CardsMarketView: View {
         } label: {
             if let set {
                 AsyncImage(url: set.logoURL) { phase in
-                    if let image = phase.image { image.resizable().scaledToFit() } else {
-                        Text(set.name).font(.system(size: 10, weight: .semibold)).foregroundStyle(.black).lineLimit(2).multilineTextAlignment(.center)
-                    }
+                    if let image = phase.image { image.resizable().scaledToFit() } else { Skeleton(corner: 8) }
                 }
                 .frame(width: 78, height: 32)
                 .padding(.horizontal, 10).padding(.vertical, 6)

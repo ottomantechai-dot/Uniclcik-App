@@ -154,7 +154,7 @@ struct StockCachedRemoteImage: View {
                     .resizable()
                     .aspectRatio(contentMode: fillFrame ? .fill : .fit)
             } else if url != nil {
-                Skeleton(corner: 12).padding(6)
+                ShoeSkeleton()
             } else {
                 Image(systemName: "photo")
                     .font(.system(size: 22))
