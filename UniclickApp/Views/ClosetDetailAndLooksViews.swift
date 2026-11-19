@@ -550,12 +550,12 @@ struct ClosetGarmentDetailView: View {
                         .scaleEffect(1.14)
                         .offset(y: -10)
                 ),
-                queries: item.marketLookupQueries
+                queries: item.marketLookupQueries,
+                badgeLift: 50
             )
         }
         .frame(maxWidth: .infinity)
         .frame(height: 230)
-        .clipped()
     }
 
     private var shoeDisplaySizeLabel: String {
@@ -642,7 +642,8 @@ struct ClosetGarmentDetailView: View {
                                 .font(.system(size: 13, weight: .bold, design: .rounded))
                                 .foregroundStyle(on ? .white : .black)
                                 .frame(maxWidth: .infinity, minHeight: 42)
-                                .background(on ? Color.black : Color.black.opacity(0.05), in: .rect(cornerRadius: 12))
+                                .background(on ? Color.black : Color.white, in: .rect(cornerRadius: 12))
+                                .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Color.black.opacity(on ? 0 : 0.12)) }
                         }
                         .buttonStyle(.plain)
                     }
@@ -651,11 +652,8 @@ struct ClosetGarmentDetailView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.black.opacity(0.12), lineWidth: 1)
-        }
-        .clipShape(.rect(cornerRadius: 14))
+        .background(.white, in: .rect(cornerRadius: 20))
+        .glassEffect(.regular, in: .rect(cornerRadius: 20))
     }
 
     private var shoeBuyMarketCard: some View {
@@ -3400,7 +3398,7 @@ struct CatalogShoeBody: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Shoe360View(title: product.name, fallbackURL: product.primaryImageURL, brand: product.brand)
+            Shoe360View(title: product.name, fallbackURL: product.primaryImageURL, brand: product.brand, badgeLift: 50)
                 .frame(height: 230)
             Text(product.name.firstUppercased).font(.system(size: 18, weight: .bold)).foregroundStyle(.black).padding(.top, 8).padding(.bottom, 12)
             ShoeVariantsStrip(name: product.name, onSelect: onSelect).padding(.bottom, 12)
@@ -3425,7 +3423,8 @@ struct CatalogShoeBody: View {
                                 Text("US \(option)").font(.system(size: 13, weight: .bold, design: .rounded))
                                     .foregroundStyle(size == option ? .white : .black)
                                     .frame(maxWidth: .infinity, minHeight: 42)
-                                    .background(size == option ? Color.black : Color.black.opacity(0.05), in: .rect(cornerRadius: 12))
+                                    .background(size == option ? Color.black : Color.white, in: .rect(cornerRadius: 12))
+                                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Color.black.opacity(size == option ? 0 : 0.12)) }
                             }
                             .buttonStyle(.plain)
                         }
@@ -3433,7 +3432,8 @@ struct CatalogShoeBody: View {
                     .padding(12)
                 }
             }
-            .background { RoundedRectangle(cornerRadius: 14).strokeBorder(Color.black.opacity(0.12)) }
+            .background(.white, in: .rect(cornerRadius: 20))
+            .glassEffect(.regular, in: .rect(cornerRadius: 20))
 
             ShoeUsedListingsStrip().padding(.top, 18)
             ShoeRelatedShelf(name: product.name, brand: product.brand ?? "", onSelect: onSelect).padding(.top, 22)

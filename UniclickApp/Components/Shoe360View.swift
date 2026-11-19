@@ -144,15 +144,19 @@ struct Shoe360View: View {
     var queries: [String] = []
     /// Marca del zapato: su logo sale arriba a la derecha, junto al aviso de que se puede girar.
     var brand: String?
+    /// Cuánto suben el aviso y la marca: en la ficha quedan a la altura del botón de volver.
+    var badgeLift: CGFloat = 0
 
-    init(title: String, fallbackURL: URL? = nil, queries: [String] = [], brand: String? = nil) {
+    init(title: String, fallbackURL: URL? = nil, queries: [String] = [], brand: String? = nil, badgeLift: CGFloat = 0) {
+        self.badgeLift = badgeLift
         self.titles = [title]
         self.fallbackURL = fallbackURL
         self.queries = queries
         self.brand = brand
     }
 
-    init(titles: [String], brand: String? = nil, fallbackURL: URL? = nil, fallback: AnyView? = nil, queries: [String] = []) {
+    init(titles: [String], brand: String? = nil, fallbackURL: URL? = nil, fallback: AnyView? = nil, queries: [String] = [], badgeLift: CGFloat = 0) {
+        self.badgeLift = badgeLift
         self.titles = titles.filter { !$0.isEmpty }
         self.brand = brand
         self.fallbackURL = fallbackURL
@@ -211,7 +215,8 @@ struct Shoe360View: View {
                         .glassEffect(.regular, in: .circle)
                 }
             }
-            .padding(.trailing, 4).padding(.top, 4)
+            .padding(.trailing, 0).padding(.top, 4)
+            .offset(y: -badgeLift)
             .allowsHitTesting(false)
         }
         .task(id: titles + queries + [fallbackURL?.absoluteString ?? ""]) {
