@@ -234,7 +234,10 @@ struct CardsMarketView: View {
                 }
 
                 if loading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 24)
+                    // Mientras llegan las cartas: la misma rejilla, en esqueleto.
+                    LazyVGrid(columns: columns, spacing: 8) {
+                        ForEach(0..<(cards.isEmpty ? 12 : 3), id: \.self) { _ in CardTileSkeleton() }
+                    }
                 } else if failed {
                     VStack(spacing: 10) {
                         Text("The card catalog did not respond.").font(.system(size: 14)).foregroundStyle(.secondary)

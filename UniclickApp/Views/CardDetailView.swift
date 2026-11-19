@@ -259,7 +259,7 @@ struct CardImage: View {
     var body: some View {
         Group {
             if let image { Image(uiImage: image).resizable().scaledToFit() }
-            else if placeholder { RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.05)) }
+            else if placeholder { Skeleton(corner: 8) }
             else { Color.clear }
         }
         .task(id: url) {

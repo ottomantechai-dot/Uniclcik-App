@@ -1195,15 +1195,14 @@ struct ClosetView: View {
             }
             if let cut = Self.featuredCutout(name) {
                 // Zapato recortado, por encima del fondo de color y del logo.
-                // El recorte va ajustado al zapato; se reduce para que ocupe lo mismo que en la foto original.
+                // Mismo lienzo y mismo marco que la foto normal: queda alineado con los demás zapatos.
                 Image(cut).resizable().scaledToFit()
-                    .frame(height: cut == "ShoeCutMocha" ? 72 : 60)
                     .shadow(color: .black.opacity(0.18), radius: 5, y: 4)
                     .frame(maxWidth: .infinity).frame(height: 96)
             } else {
                 photo().frame(maxWidth: .infinity).frame(height: 96).blendMode(.multiply)
             }
-            Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
+            Text(name.firstUppercased).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
                 .lineLimit(2).multilineTextAlignment(.leading).frame(maxWidth: .infinity, minHeight: 36, alignment: .topLeading)
         }
         .padding(10)
@@ -1219,6 +1218,10 @@ struct ClosetView: View {
                     if let logo = BrandLogoLabel.assetName(for: brand) {
                         Image(logo).resizable().scaledToFit().frame(width: 78, height: 78)
                             .foregroundStyle(.white.opacity(0.9)).offset(x: 42, y: -22)
+                    } else {
+                        // Marca sin logo: su nombre en grande.
+                        Text(brand.uppercased()).font(.system(size: 38, weight: .black, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.9)).offset(x: 0, y: -26)
                     }
                     LinearGradient(stops: [.init(color: .white, location: 0), .init(color: .white.opacity(0), location: 0.26),
                                            .init(color: .white.opacity(0), location: 0.60), .init(color: .white, location: 0.76)],
@@ -1236,6 +1239,7 @@ struct ClosetView: View {
     private static func featuredCutout(_ name: String) -> String? {
         if name.localizedCaseInsensitiveContains("Jordan 1") && name.localizedCaseInsensitiveContains("Dark Mocha") { return "ShoeCutMocha" }
         if name.localizedCaseInsensitiveContains("1906R") && name.localizedCaseInsensitiveContains("Nightwatch") { return "ShoeCutNB1906" }
+        if name.localizedCaseInsensitiveContains("Big Red Boot") { return "ShoeCutRedBoot" }
         return nil
     }
 
@@ -1243,6 +1247,7 @@ struct ClosetView: View {
     private static func featuredAccent(_ name: String) -> Color? {
         if name.localizedCaseInsensitiveContains("Jordan 1") && name.localizedCaseInsensitiveContains("Dark Mocha") { return Color(red: 0.55, green: 0.44, blue: 0.36) }
         if name.localizedCaseInsensitiveContains("1906R") && name.localizedCaseInsensitiveContains("Nightwatch") { return Color(red: 0.30, green: 0.52, blue: 0.44) }
+        if name.localizedCaseInsensitiveContains("Big Red Boot") { return Color(red: 0.90, green: 0.16, blue: 0.14) }
         return nil
     }
 
@@ -6611,4 +6616,10 @@ struct ComparisonSaleReportButton: View {
             }
         }
     }
+}
+
+
+extension String {
+    /// La primera letra en mayúscula («adidas Campus» → «Adidas Campus»); el resto, tal cual.
+    var firstUppercased: String { prefix(1).uppercased() + dropFirst() }
 }

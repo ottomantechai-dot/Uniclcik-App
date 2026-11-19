@@ -343,7 +343,7 @@ struct ClosetGarmentDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             shoeDetailHero
 
-            Text(item.catalogDisplayName)
+            Text(item.catalogDisplayName.firstUppercased)
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(Color.black.opacity(0.92))
                 .fixedSize(horizontal: false, vertical: true)
@@ -3333,7 +3333,7 @@ struct ShoeRelatedShelf: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 320, fillFrame: false)
                                         .frame(width: 150, height: 110)
-                                    Text(product.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
+                                    Text(product.name.firstUppercased).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
                                         .lineLimit(2).multilineTextAlignment(.leading).frame(width: 150, alignment: .leading)
                                     Text(product.brand ?? "").font(.system(size: 11)).foregroundStyle(.black.opacity(0.5))
                                 }
@@ -3401,7 +3401,7 @@ struct CatalogShoeBody: View {
         VStack(alignment: .leading, spacing: 0) {
             Shoe360View(title: product.name, fallbackURL: product.primaryImageURL)
                 .frame(height: 230)
-            Text(product.name).font(.system(size: 18, weight: .bold)).foregroundStyle(.black).padding(.top, 8).padding(.bottom, 12)
+            Text(product.name.firstUppercased).font(.system(size: 18, weight: .bold)).foregroundStyle(.black).padding(.top, 8).padding(.bottom, 12)
             ShoeVariantsStrip(name: product.name, onSelect: onSelect).padding(.bottom, 12)
 
             VStack(spacing: 0) {

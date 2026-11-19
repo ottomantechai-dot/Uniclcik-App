@@ -154,12 +154,7 @@ struct StockCachedRemoteImage: View {
                     .resizable()
                     .aspectRatio(contentMode: fillFrame ? .fill : .fit)
             } else if url != nil {
-                ZStack {
-                    Color.white
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(Color.black.opacity(0.35))
-                }
+                Skeleton(corner: 12).padding(6)
             } else {
                 Image(systemName: "photo")
                     .font(.system(size: 22))
@@ -851,7 +846,7 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
         VStack(alignment: .leading, spacing: 4) {
             BrandLogoLabel(brand: brandLine)
 
-            Text(nameLine)
+            Text(nameLine.firstUppercased)
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Color.black.opacity(0.92))
                 .lineLimit(2)

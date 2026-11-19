@@ -131,3 +131,40 @@ struct SwipeBackToDismiss: ViewModifier {
 extension View {
     func swipeBackToDismiss() -> some View { modifier(SwipeBackToDismiss()) }
 }
+
+
+// MARK: - Esqueletos de carga
+
+/// Bloque gris con un brillo que lo recorre: ocupa el sitio de lo que está cargando.
+struct Skeleton: View {
+    var corner: CGFloat = 12
+    @State private var phase: CGFloat = -1
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: corner, style: .continuous)
+            .fill(Color.black.opacity(0.07))
+            .overlay {
+                GeometryReader { geo in
+                    LinearGradient(colors: [.clear, .white.opacity(0.75), .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: geo.size.width * 0.6)
+                        .offset(x: phase * geo.size.width * 1.4)
+                }
+            }
+            .clipShape(.rect(cornerRadius: corner))
+            .onAppear { withAnimation(.linear(duration: 1.15).repeatForever(autoreverses: false)) { phase = 1 } }
+            .accessibilityHidden(true)
+    }
+}
+
+/// Esqueleto de una ficha de carta de la rejilla (carta, nombre y precio).
+struct CardTileSkeleton: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Skeleton(corner: 6).aspectRatio(0.72, contentMode: .fit)
+            Skeleton(corner: 4).frame(height: 10)
+            Skeleton(corner: 4).frame(width: 44, height: 10)
+        }
+        .padding(6)
+        .background(Color.white, in: .rect(cornerRadius: 12))
+    }
+}

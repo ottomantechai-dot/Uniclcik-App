@@ -1395,7 +1395,7 @@ private struct DashboardHomeCategoryCard<ImageContent: View>: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(product.name)
+                    Text(product.name.firstUppercased)
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(DashboardHomePalette.textPrimary)
                         .lineLimit(2)
@@ -1856,7 +1856,7 @@ struct DashboardMarketPricesSection: View {
                     // Las plataformas van arriba, a la misma altura que el círculo de la marca; debajo, el nombre.
                     VStack(alignment: .leading, spacing: 10) {
                         MarketplaceDots(brands: ["StockX", "GOAT", "eBay", "Flight Club"], size: 30)
-                        Text(featured.name).font(.system(size: 16, weight: .bold)).foregroundStyle(.black)
+                        Text(featured.name.firstUppercased).font(.system(size: 16, weight: .bold)).foregroundStyle(.black)
                             .lineLimit(2).multilineTextAlignment(.leading)
                     }
                     Spacer(minLength: 0)
@@ -2472,7 +2472,7 @@ struct HomeTrendingRow: View {
                                 VStack(alignment: .leading, spacing: 8) {
                                     StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 320, fillFrame: false)
                                         .frame(width: 118, height: 90).blendMode(.multiply)
-                                    Text(product.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
+                                    Text(product.name.firstUppercased).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
                                         .lineLimit(2).multilineTextAlignment(.leading).frame(width: 118, height: 34, alignment: .topLeading)
                                 }
                                 .padding(12).padding(.top, 14)
@@ -2528,9 +2528,7 @@ struct HomeTrendingCardsRow: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 10) {
                     if cards.isEmpty {
-                        ForEach(0..<4, id: \.self) { _ in
-                            RoundedRectangle(cornerRadius: 20).fill(Color.black.opacity(0.04)).frame(width: 142, height: 200)
-                        }
+                        ForEach(0..<4, id: \.self) { _ in Skeleton(corner: 20).frame(width: 142, height: 200) }
                     }
                     ForEach(cards) { card in
                         Button { openedCard = card } label: {
