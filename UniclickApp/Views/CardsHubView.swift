@@ -165,21 +165,24 @@ struct CardsMarketView: View {
             selectedSet = set
             Task { await reload() }
         } label: {
-            Group {
-                if let set {
-                    AsyncImage(url: set.logoURL) { phase in
-                        if let image = phase.image { image.resizable().scaledToFit() } else {
-                            Text(set.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(.black).lineLimit(2).multilineTextAlignment(.center)
-                        }
+            let blue = Color(red: 0.16, green: 0.44, blue: 0.98)
+            if let set {
+                AsyncImage(url: set.logoURL) { phase in
+                    if let image = phase.image { image.resizable().scaledToFit() } else {
+                        Text(set.name).font(.system(size: 10, weight: .semibold)).foregroundStyle(.black).lineLimit(2).multilineTextAlignment(.center)
                     }
-                } else {
-                    Image(systemName: "square.grid.2x2.fill").font(.system(size: 22, weight: .semibold)).foregroundStyle(.black)
                 }
+                .frame(width: 78, height: 32)
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .glassEffect(on ? .regular.tint(blue.opacity(0.28)).interactive() : .regular.interactive(), in: .rect(cornerRadius: 16))
+                .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(on ? blue : .clear, lineWidth: 2) }
+            } else {
+                // «Todas»: un círculo pequeño, del tamaño del icono.
+                Image(systemName: "square.grid.2x2.fill").font(.system(size: 16, weight: .semibold)).foregroundStyle(.black)
+                    .frame(width: 44, height: 44)
+                    .glassEffect(on ? .regular.tint(blue.opacity(0.28)).interactive() : .regular.interactive(), in: .circle)
+                    .overlay { Circle().strokeBorder(on ? blue : .clear, lineWidth: 2) }
             }
-            .frame(width: 104, height: 46)
-            .padding(.horizontal, 12).padding(.vertical, 10)
-            .glassEffect(on ? .regular.tint(Color(red: 0.16, green: 0.44, blue: 0.98).opacity(0.28)).interactive() : .regular.interactive(), in: .rect(cornerRadius: 20))
-            .overlay { RoundedRectangle(cornerRadius: 20).strokeBorder(on ? Color(red: 0.16, green: 0.44, blue: 0.98) : .clear, lineWidth: 2) }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(set?.name ?? "Todas las cartas")
