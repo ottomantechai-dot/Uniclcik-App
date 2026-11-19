@@ -2377,13 +2377,6 @@ struct HomeBentoGrid: View {
                         Button(action: onSneakers) { smallStat(icon: "chart.bar", title: "Stock Value", value: money(stockValue)) }.buttonStyle(.plain)
                         Button { showReports = true } label: { smallStat(icon: "tag", title: "Listings", value: "\(listings.listings.count)") }.buttonStyle(.plain)
                     }
-                    HStack(spacing: 10) {
-                        // Sneakers y Cards cambian lo que se ve debajo, sin salir de Inicio.
-                        Button { withAnimation(.snappy) { showsCards = false } } label: { category("shoe.2", "Sneakers", highlighted: !showsCards) }.buttonStyle(.plain)
-                        Button { withAnimation(.snappy) { showsCards = true } } label: { category("rectangle.portrait.on.rectangle.portrait", "Cards", highlighted: showsCards) }.buttonStyle(.plain)
-                        Button(action: onScan) { category("barcode.viewfinder", "Scan") }.buttonStyle(.plain)
-                        Button { showReports = true } label: { category("chart.xyaxis.line", "Reports") }.buttonStyle(.plain)
-                    }
                 }
             }
         }
