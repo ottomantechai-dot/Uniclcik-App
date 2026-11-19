@@ -147,35 +147,42 @@ struct CardsMarketView: View {
 
     private var setsStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 10) {
-                setChip(nil)
-                ForEach(sets) { setChip($0) }
+            GlassEffectContainer(spacing: 10) {
+                LazyHStack(spacing: 10) {
+                    setChip(nil)
+                    ForEach(sets) { setChip($0) }
+                }
+                .padding(.vertical, 4)
             }
         }
+        .scrollClipDisabled()
     }
 
+    /// Ficha de cristal con solo el logo de la colección (el nombre sale debajo, en el título de la lista).
     private func setChip(_ set: PokemonSetData?) -> some View {
         let on = selectedSet?.id == set?.id
         return Button {
             selectedSet = set
             Task { await reload() }
         } label: {
-            VStack(spacing: 6) {
+            Group {
                 if let set {
                     AsyncImage(url: set.logoURL) { phase in
-                        if let image = phase.image { image.resizable().scaledToFit() } else { Color.clear }
+                        if let image = phase.image { image.resizable().scaledToFit() } else {
+                            Text(set.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(.black).lineLimit(2).multilineTextAlignment(.center)
+                        }
                     }
-                    .frame(width: 96, height: 40)
                 } else {
-                    Image(systemName: "square.grid.2x2.fill").font(.system(size: 22)).foregroundStyle(.black).frame(width: 96, height: 40)
+                    Image(systemName: "square.grid.2x2.fill").font(.system(size: 22, weight: .semibold)).foregroundStyle(.black)
                 }
-                Text(set?.name ?? "Todas").font(.system(size: 11, weight: .semibold)).foregroundStyle(.black).lineLimit(1).frame(width: 96)
             }
-            .padding(10)
-            .background(Color.white, in: .rect(cornerRadius: 16))
-            .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(on ? Color.black : .clear, lineWidth: 2) }
+            .frame(width: 104, height: 46)
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .glassEffect(on ? .regular.tint(Color(red: 0.16, green: 0.44, blue: 0.98).opacity(0.28)).interactive() : .regular.interactive(), in: .rect(cornerRadius: 20))
+            .overlay { RoundedRectangle(cornerRadius: 20).strokeBorder(on ? Color(red: 0.16, green: 0.44, blue: 0.98) : .clear, lineWidth: 2) }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(set?.name ?? "Todas las cartas")
     }
 
     private func tile(_ card: PokemonCardData) -> some View {
