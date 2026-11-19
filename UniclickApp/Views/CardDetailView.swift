@@ -170,9 +170,9 @@ struct CardDetailView: View {
             source(name: "Collectr", logo: nil, value: nil)
             HStack(spacing: 8) {
                 source(name: "TCGplayer", logo: nil, value: card.tcgMarketUSD.map(SaleReport.usd))
-                source(name: "Cardmarket", logo: nil, value: card.cardmarketEUR.map { String(format: "€%.2f", $0) })
+                source(name: "eBay", logo: "eBay", value: nil)
             }
-            Text("TCGplayer and Cardmarket prices are live. Collectr appears once connected.")
+            Text("TCGplayer prices are live. Collectr and eBay appear once connected.")
                 .font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.45))
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
@@ -191,11 +191,21 @@ struct CardDetailView: View {
             HStack(spacing: 8) {
                 Image("LogoPSAMark").resizable().scaledToFit().frame(height: 11).foregroundStyle(Color(red: 0.93, green: 0.05, blue: 0.05))
                     .frame(width: 58, height: 38).background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
-                ForEach(["Collectr", "TCGplayer", "Cardmarket"], id: \.self) { name in
-                    Image("Logo" + name).resizable().scaledToFit()
-                        .frame(width: 24, height: 24).clipShape(.rect(cornerRadius: 6))
-                        .frame(maxWidth: .infinity, minHeight: 38).background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
-                        .accessibilityLabel(name)
+                // Cada plataforma con su logo y su nombre completo. Solo empresas americanas.
+                ForEach(["Collectr", "TCGplayer", "eBay"], id: \.self) { name in
+                    Group {
+                        if name == "eBay" {
+                            StylizedMarketplaceLogo(brand: "eBay").frame(height: 15)
+                        } else {
+                            HStack(spacing: 4) {
+                                Image("Logo" + name).resizable().scaledToFit().frame(width: 16, height: 16).clipShape(.rect(cornerRadius: 4))
+                                Text(name).font(.system(size: 10, weight: .heavy)).foregroundStyle(.black).lineLimit(1).minimumScaleFactor(0.8)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                    .frame(maxWidth: .infinity, minHeight: 38).background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
+                    .accessibilityLabel(name)
                 }
             }
             ForEach(["Raw", "8", "9", "10"], id: \.self) { grade in
@@ -206,9 +216,7 @@ struct CardDetailView: View {
                     }
                     .frame(width: 58, height: 40).background(Color.black, in: .rect(cornerRadius: 11))
                     ForEach(0..<3, id: \.self) { column in
-                        let value: String? = grade != "Raw" ? nil
-                            : column == 1 ? card.tcgMarketUSD.map(SaleReport.usd)
-                            : column == 2 ? card.cardmarketEUR.map { String(format: "€%.2f", $0) } : nil
+                        let value: String? = grade == "Raw" && column == 1 ? card.tcgMarketUSD.map(SaleReport.usd) : nil
                         Text(value ?? "—").font(.system(size: 14, weight: value == nil ? .semibold : .heavy, design: .rounded))
                             .foregroundStyle(value == nil ? Color.black.opacity(0.25) : .black)
                             .frame(maxWidth: .infinity, minHeight: 40)
@@ -227,9 +235,13 @@ struct CardDetailView: View {
 
     private func source(name: String, logo: String?, value: String?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image("Logo" + name).resizable().scaledToFit().frame(width: 24, height: 24).clipShape(.rect(cornerRadius: 6))
-                Text(name).font(.system(size: 13, weight: .heavy)).foregroundStyle(.black)
+            if let logo {
+                StylizedMarketplaceLogo(brand: logo).frame(height: 18).frame(maxWidth: 62, alignment: .leading).frame(height: 24)
+            } else {
+                HStack(spacing: 8) {
+                    Image("Logo" + name).resizable().scaledToFit().frame(width: 24, height: 24).clipShape(.rect(cornerRadius: 6))
+                    Text(name).font(.system(size: 13, weight: .heavy)).foregroundStyle(.black)
+                }
             }
             Text(value ?? "—").font(.system(size: 19, weight: .heavy, design: .rounded))
                 .foregroundStyle(value == nil ? Color.black.opacity(0.25) : .black)
@@ -301,6 +313,30 @@ struct CardImage: View {
         Task.detached(priority: .utility) {
             await withTaskGroup(of: Void.self) { group in
                 for url in urls.prefix(60) { group.addTask { _ = await load(url) } }
+            }
+        }
+    }
+}
+
+
+/// Dónde se compara el precio de una carta: Collectr, TCGplayer y eBay, en círculos montados.
+struct CardSourceDots: View {
+    var size: CGFloat = 22
+    var body: some View {
+        HStack(spacing: -5) {
+            ForEach(Array(["Collectr", "TCGplayer", "eBay"].enumerated()), id: \.offset) { index, name in
+                Group {
+                    if name == "eBay" {
+                        StylizedMarketplaceLogo(brand: "eBay").frame(width: size * 0.72, height: size * 0.34)
+                    } else {
+                        Image("Logo" + name).resizable().scaledToFill().frame(width: size * 0.68, height: size * 0.68).clipShape(.circle)
+                    }
+                }
+                .frame(width: size, height: size)
+                .background(.white, in: .circle)
+                .overlay { Circle().strokeBorder(Color.black.opacity(0.10), lineWidth: 0.5) }
+                .zIndex(Double(index))
+                .accessibilityLabel(name)
             }
         }
     }

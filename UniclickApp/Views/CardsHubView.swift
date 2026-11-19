@@ -295,6 +295,7 @@ struct CardsMarketView: View {
             CardImage(url: card.thumbURL)
             .aspectRatio(0.72, contentMode: .fit)
             .frame(maxWidth: .infinity)
+            .overlay(alignment: .bottomLeading) { CardSourceDots(size: 20).padding(4) }
             Text(card.name).font(.system(size: 11, weight: .bold)).foregroundStyle(.black).lineLimit(1)
             Text(card.tcgMarketUSD.map(SaleReport.usd) ?? "No price")
                 .font(.system(size: 12, weight: .heavy, design: .rounded)).foregroundStyle(card.tcgMarketUSD == nil ? Color.secondary : .black)
