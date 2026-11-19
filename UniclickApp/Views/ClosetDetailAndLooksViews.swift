@@ -115,6 +115,20 @@ struct ClosetGarmentDetailView: View {
         closetStockItems.filter(\.isActiveInStock)
     }
 
+    /// Detalles del producto: solo lo que se sabe de verdad.
+    private var shoeDetailRows: [(icon: String, title: String, value: String)] {
+        var rows: [(String, String, String)] = []
+        if let brand = item.brand, !brand.isEmpty { rows.append(("tag", "Brand", brand)) }
+        let colorway = CatalogShelf.colorway(of: item.catalogDisplayName)
+        if let color = item.colorLabel, !color.isEmpty { rows.append(("paintpalette", "Color", color)) }
+        else if !colorway.isEmpty { rows.append(("paintpalette", "Colorway", colorway)) }
+        if let sku = item.resolvedSKU, HomeSneakerHighlight.isRealStyleCode(sku) { rows.append(("number", "Style code", sku)) }
+        if let size = item.cardSizeLabel { rows.append(("ruler", "Size", size)) }
+        rows.append(("shippingbox", "Condition", "New"))
+        rows.append(("calendar", "Added", item.createdAt.formatted(date: .abbreviated, time: .omitted)))
+        return rows.map { (icon: $0.0, title: $0.1, value: $0.2) }
+    }
+
     private var similarStockItems: [ClosetItem] {
         activeStockItems.filter { $0.id != item.id }
     }
@@ -323,6 +337,10 @@ struct ClosetGarmentDetailView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 10)
 
+            // Otros colores del mismo modelo.
+            ShoeVariantsStrip(name: item.catalogDisplayName)
+                .padding(.bottom, 12)
+
             shoeSizeSelectorRow
 
             shoeBuyMarketCard
@@ -334,15 +352,18 @@ struct ClosetGarmentDetailView: View {
             ShoeUsedListingsStrip()
                 .padding(.top, 18)
 
+            shoePolicyAccordions
+                .padding(.top, 10)
+
+            ShoeRelatedShelf(name: item.catalogDisplayName, brand: item.brand ?? "")
+                .padding(.top, 22)
+
+            ShoeProductDetailsCard(rows: shoeDetailRows)
+                .padding(.top, 22)
+
             ShoeMarketHistoryCard(sales: shoeSales)
                 .padding(.top, 18)
-
-            shoePolicyAccordions
-                .padding(.top, 8)
-
-            shoeSimilarStockSection
-                .padding(.top, 24)
-                .padding(.bottom, 16)
+                .padding(.bottom, 24)
         }
         .padding(.horizontal, 16)
         .task(id: shoeMarketComparison?.matchedSKU ?? shoeMarketComparison?.query ?? item.marketPriceJSON) {
@@ -3199,5 +3220,142 @@ struct ShoeUsedListingsStrip: View {
             }
             Text("No used listings connected yet").font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.45))
         }
+    }
+}
+
+
+// MARK: - Catálogo compartido con la ficha
+
+/// Los zapatos del catálogo (todos con giro 360°), para enseñar en la ficha los otros colores del
+/// mismo modelo y los productos relacionados.
+@MainActor
+enum CatalogShelf {
+    static var products: [UpsoledProduct] = []
+
+    /// «Air Jordan 4 Retro Black Cat 2025» → modelo «air jordan 4».
+    nonisolated static func model(of name: String) -> String {
+        name.lowercased().split(separator: " ").prefix(3).joined(separator: " ")
+    }
+    nonisolated static func colorway(of name: String) -> String {
+        var words = name.split(separator: " ").dropFirst(3).map(String.init)
+        if words.first == "Retro" || words.first == "Low" || words.first == "High" || words.first == "V2" { words.removeFirst() }
+        return words.joined(separator: " ")
+    }
+    static func variants(of name: String) -> [UpsoledProduct] {
+        let key = model(of: name)
+        return products.filter { model(of: $0.name) == key && $0.name.caseInsensitiveCompare(name) != .orderedSame }
+    }
+    static func related(to name: String, brand: String) -> [UpsoledProduct] {
+        let key = model(of: name)
+        let same = products.filter { ($0.brand ?? "").caseInsensitiveCompare(brand) == .orderedSame && model(of: $0.name) != key }
+        let rest = products.filter { ($0.brand ?? "").caseInsensitiveCompare(brand) != .orderedSame }
+        return Array((same + rest).prefix(12))
+    }
+}
+
+/// Tira de miniaturas con los otros colores del mismo modelo.
+struct ShoeVariantsStrip: View {
+    let name: String
+    var body: some View {
+        let variants = CatalogShelf.variants(of: name)
+        if !variants.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(variants) { product in
+                        NavigationLink { CatalogShoePreview(product: product) } label: {
+                            StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 160, fillFrame: false)
+                                .frame(width: 64, height: 48).padding(6)
+                                .background(Color.white, in: .rect(cornerRadius: 14))
+                                .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(Color.black.opacity(0.08)) }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Productos relacionados, en una fila que se desliza hacia la derecha.
+struct ShoeRelatedShelf: View {
+    let name: String
+    let brand: String
+    var body: some View {
+        let items = CatalogShelf.related(to: name, brand: brand)
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Related products").font(.system(size: 18, weight: .bold)).foregroundStyle(.black)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(items) { product in
+                            NavigationLink { CatalogShoePreview(product: product) } label: {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 320, fillFrame: false)
+                                        .frame(width: 150, height: 110)
+                                    Text(product.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
+                                        .lineLimit(2).multilineTextAlignment(.leading).frame(width: 150, alignment: .leading)
+                                    Text(product.brand ?? "").font(.system(size: 11)).foregroundStyle(.black.opacity(0.5))
+                                }
+                                .padding(10)
+                                .background(Color.white, in: .rect(cornerRadius: 18))
+                                .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(Color.black.opacity(0.07)) }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .scrollClipDisabled()
+            }
+        }
+    }
+}
+
+/// Detalles del producto, cada uno con su icono.
+struct ShoeProductDetailsCard: View {
+    let rows: [(icon: String, title: String, value: String)]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Product details").font(.system(size: 18, weight: .bold)).foregroundStyle(.black).padding(.bottom, 6)
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                HStack(spacing: 12) {
+                    Image(systemName: row.icon).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
+                        .frame(width: 34, height: 34).glassEffect(.regular, in: .circle)
+                    Text(row.title).font(.system(size: 14)).foregroundStyle(.black.opacity(0.6))
+                    Spacer()
+                    Text(row.value).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black).multilineTextAlignment(.trailing)
+                }
+                .padding(.vertical, 6)
+                if index < rows.count - 1 { Divider().padding(.leading, 46) }
+            }
+        }
+        .padding(16)
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+    }
+}
+
+/// Vista de un zapato del catálogo abierto desde la ficha de otro: su giro 360° y sus datos.
+struct CatalogShoePreview: View {
+    let product: UpsoledProduct
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Shoe360View(title: product.name, fallbackURL: product.primaryImageURL)
+                    .frame(height: 230)
+                Text(product.name).font(.system(size: 18, weight: .bold)).foregroundStyle(.black).padding(.top, 8).padding(.bottom, 12)
+                ShoeVariantsStrip(name: product.name)
+                ShoeUsedListingsStrip().padding(.top, 18)
+                ShoeRelatedShelf(name: product.name, brand: product.brand ?? "").padding(.top, 22)
+                ShoeProductDetailsCard(rows: [
+                    (icon: "tag", title: "Brand", value: product.brand ?? "—"),
+                    (icon: "paintpalette", title: "Colorway", value: CatalogShelf.colorway(of: product.name)),
+                    (icon: "shippingbox", title: "Condition", value: "New"),
+                ]).padding(.top, 22)
+                ShoeMarketHistoryCard(sales: []).padding(.top, 18).padding(.bottom, 24)
+            }
+            .padding(.horizontal, 16)
+        }
+        .background(Color.white)
+        .navigationBarTitleDisplayMode(.inline)
+        .preferredColorScheme(.light)
     }
 }

@@ -579,6 +579,7 @@ struct ClosetView: View {
             catalogVM.fetchLimit = 750
             await catalogVM.reload()
         }
+        .onChange(of: catalogVM.products.count, initial: true) { _, _ in CatalogShelf.products = catalogVM.products }
         .task(id: marketPrefetchKey) {
             await prefetchStockMarketPrices()
         }
@@ -623,7 +624,7 @@ struct ClosetView: View {
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $showStockFiltersSheet) {
+        .fullScreenCover(isPresented: $showStockFiltersSheet) {
             StockBrowseFiltersSheet(
                 filters: $stockFilters,
                 layoutMode: stockLayoutModeBinding,
@@ -1107,16 +1108,32 @@ struct ClosetView: View {
         .padding(.bottom, bottomInsetForClosetGrid)
     }
 
+    private struct MergedStockRow: Identifiable {
+        enum Kind { case closet(ClosetItem), catalog(UpsoledProduct) }
+        let id: String
+        let name: String
+        let kind: Kind
+    }
+
+    private func mergedRows(_ section: UnifiedStockSection) -> [MergedStockRow] {
+        let rows = section.closetItems.map { MergedStockRow(id: "c-\($0.id)", name: $0.catalogDisplayName, kind: .closet($0)) }
+            + section.catalogProducts.map { MergedStockRow(id: "p-\($0.id)", name: $0.name, kind: .catalog($0)) }
+        guard stockFilters.sort == .newest else { return rows }
+        return rows.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     private var unifiedStockListContent: some View {
         LazyVStack(alignment: .leading, spacing: 10) {
             ForEach(filteredUnifiedStockSections) { section in
-                ForEach(section.closetItems) { item in
-                    closetListRow(item)
-                        .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")-\(item.marketPriceJSON ?? "")")
-                }
-
-                ForEach(section.catalogProducts) { product in
-                    catalogListRow(product)
+                // Una sola lista por nombre: abrir un zapato no lo mueve al principio.
+                ForEach(mergedRows(section)) { row in
+                    switch row.kind {
+                    case .closet(let item):
+                        closetListRow(item)
+                            .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")-\(item.marketPriceJSON ?? "")")
+                    case .catalog(let product):
+                        catalogListRow(product)
+                    }
                 }
             }
 

@@ -192,7 +192,7 @@ struct CardsMarketView: View {
     @State private var loadToken = 0
     @State private var failed = false
 
-    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
 
     /// Lo que se pide al catálogo: nombre buscado, colección elegida, o todas las cartas.
     private var catalogQuery: String {
@@ -210,7 +210,7 @@ struct CardsMarketView: View {
 
                 if !sets.isEmpty { setsStrip }
 
-                LazyVGrid(columns: columns, spacing: 12) {
+                LazyVGrid(columns: columns, spacing: 8) {
                     ForEach(cards) { card in
                         Button { report = SaleReport.from(card: card) } label: { tile(card) }
                             .buttonStyle(.plain)
@@ -287,28 +287,20 @@ struct CardsMarketView: View {
     }
 
     private func tile(_ card: PokemonCardData) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             AsyncImage(url: card.thumbURL) { phase in
                 if let image = phase.image { image.resizable().scaledToFit() } else {
-                    RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.06))
+                    RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.06))
                 }
             }
             .aspectRatio(0.72, contentMode: .fit)
             .frame(maxWidth: .infinity)
-            Text(card.name).font(.system(size: 14, weight: .bold)).foregroundStyle(.black).lineLimit(1)
-            Text(card.setName).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-            HStack {
-                Text(card.tcgMarketUSD.map(SaleReport.usd) ?? "No price")
-                    .font(.system(size: 15, weight: .heavy, design: .rounded)).foregroundStyle(card.tcgMarketUSD == nil ? Color.secondary : .black)
-                Spacer()
-                if card.changePercent != 0 {
-                    Text(String(format: "%+.0f%%", card.changePercent))
-                        .font(.system(size: 11, weight: .bold)).foregroundStyle(card.changePercent >= 0 ? .green : .red)
-                }
-            }
+            Text(card.name).font(.system(size: 11, weight: .bold)).foregroundStyle(.black).lineLimit(1)
+            Text(card.tcgMarketUSD.map(SaleReport.usd) ?? "No price")
+                .font(.system(size: 12, weight: .heavy, design: .rounded)).foregroundStyle(card.tcgMarketUSD == nil ? Color.secondary : .black)
         }
-        .padding(10)
-        .background(Color.white, in: .rect(cornerRadius: 16))
+        .padding(6)
+        .background(Color.white, in: .rect(cornerRadius: 12))
     }
 
     private func reload() async {
