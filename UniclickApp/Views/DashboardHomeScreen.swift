@@ -2593,31 +2593,32 @@ struct CardEditionBadge: View {
 }
 
 
-/// Llama animada, pequeña: el icono de fuego de siempre, que arde a saltos como un GIF.
-/// Dos llamas superpuestas (una exterior y otra interior) tiemblan y el color va del negro al rojo.
+/// Llama animada, pequeña y bien centrada: no se ladea ni se desplaza. Solo «respira» hacia arriba
+/// desde su base, a saltos como un GIF, y su color va del negro al rojo.
 struct AnimatedFlame: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1.0 / 10)) { context in
-            // 10 pasos por segundo: el movimiento va a saltos, como un GIF.
             let t = (context.date.timeIntervalSinceReferenceDate * 10).rounded() / 10
             let heat = (sin(t * 2.4) + 1) / 2
-            let a = sin(t * 11) * 0.6 + sin(t * 17.3) * 0.4
-            let b = sin(t * 13 + 1.7) * 0.6 + sin(t * 7.1) * 0.4
+            let outer = sin(t * 11) * 0.6 + sin(t * 17.3) * 0.4
+            let inner = sin(t * 13 + 1.7) * 0.6 + sin(t * 7.1) * 0.4
             ZStack(alignment: .bottom) {
                 Image(systemName: "flame.fill")
-                    .font(.system(size: 15, weight: .bold))
+                    .resizable().scaledToFit()
+                    .frame(width: 15, height: 18)
                     .foregroundStyle(Color(red: 0.92 * heat, green: 0.06 * heat, blue: 0.03 * heat))
-                    .scaleEffect(x: 1 + a * 0.08, y: 1 + a * 0.14, anchor: .bottom)
-                    .rotationEffect(.degrees(a * 7), anchor: .bottom)
+                    .scaleEffect(x: 1, y: 1 + outer * 0.07, anchor: .bottom)
                 Image(systemName: "flame.fill")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(Color(red: 1, green: 0.45 + 0.3 * heat, blue: 0.1).opacity(0.25 + 0.75 * heat))
-                    .scaleEffect(x: 1 + b * 0.12, y: 1 + b * 0.22, anchor: .bottom)
-                    .rotationEffect(.degrees(-b * 9), anchor: .bottom)
-                    .offset(y: -1)
+                    .resizable().scaledToFit()
+                    .frame(width: 7, height: 9)
+                    .foregroundStyle(Color(red: 1, green: 0.5 + 0.3 * heat, blue: 0.1).opacity(0.2 + 0.8 * heat))
+                    .scaleEffect(x: 1, y: 1 + inner * 0.18, anchor: .bottom)
+                    .padding(.bottom, 1.5)
             }
+            .frame(width: 18, height: 21, alignment: .bottom)
         }
-        .frame(width: 18, height: 20)
+        .frame(width: 18, height: 21)
+        .alignmentGuide(VerticalAlignment.center) { $0[VerticalAlignment.center] + 1 }
         .accessibilityHidden(true)
     }
 }
