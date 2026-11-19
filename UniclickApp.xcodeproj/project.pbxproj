@@ -134,6 +134,7 @@
 		AA000220 /* Shoe360View.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000220 /* Shoe360View.swift */; };
 		AA000221 /* AppTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000221 /* AppTopBar.swift */; };
 		AA000222 /* CardSetsSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000222 /* CardSetsSeed.swift */; };
+		AA000223 /* CardDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000223 /* CardDetailView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -268,6 +269,7 @@
 		AB000220 /* Shoe360View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shoe360View.swift; sourceTree = "<group>"; };
 		AB000221 /* AppTopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTopBar.swift; sourceTree = "<group>"; };
 		AB000222 /* CardSetsSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardSetsSeed.swift; sourceTree = "<group>"; };
+		AB000223 /* CardDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardDetailView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -397,6 +399,7 @@
 		AD000006 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				AB000223 /* CardDetailView.swift */,
 				AB000219 /* CardsHubView.swift */,
 				AB000218 /* SaleReportView.swift */,
 				AB000037 /* AuthRootView.swift */,
@@ -683,6 +686,7 @@
 				AA000212 /* StockCategoryMarketplaceCatalog.swift in Sources */,
 				AA000213 /* StockMarketplaceConnectionsDemoView.swift in Sources */,
 				AA000214 /* MarketplaceGatewayService.swift in Sources */,
+				AA000223 /* CardDetailView.swift in Sources */,
 				AA000222 /* CardSetsSeed.swift in Sources */,
 				AA000221 /* AppTopBar.swift in Sources */,
 				AA000220 /* Shoe360View.swift in Sources */,

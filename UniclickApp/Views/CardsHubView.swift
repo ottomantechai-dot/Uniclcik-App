@@ -189,6 +189,7 @@ struct CardsMarketView: View {
     @State private var reachedEnd = false
     @State private var loading = false
     @State private var report: SaleReport?
+    @State private var openedCard: PokemonCardData?
     @State private var loadToken = 0
     @State private var failed = false
 
@@ -212,7 +213,7 @@ struct CardsMarketView: View {
 
                 LazyVGrid(columns: columns, spacing: 8) {
                     ForEach(cards) { card in
-                        Button { report = SaleReport.from(card: card) } label: { tile(card) }
+                        Button { openedCard = card } label: { tile(card) }
                             .buttonStyle(.plain)
                             .onAppear { if card.id == cards.last?.id { Task { await loadMore() } } }
                     }
@@ -243,6 +244,7 @@ struct CardsMarketView: View {
         }
         .onChange(of: market.reloadToken) { _, _ in Task { await reload() } }
         .fullScreenCover(item: $report) { SaleReportView(report: $0) }
+        .fullScreenCover(item: $openedCard) { CardDetailView(card: $0) }
     }
 
     private var setsStrip: some View {

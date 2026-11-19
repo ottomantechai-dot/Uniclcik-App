@@ -2521,6 +2521,7 @@ struct HomeTrendingCardsRow: View {
     var onViewAll: () -> Void
     @State private var cards: [PokemonCardData] = []
     @State private var report: SaleReport?
+    @State private var openedCard: PokemonCardData?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2542,7 +2543,7 @@ struct HomeTrendingCardsRow: View {
                         }
                     }
                     ForEach(cards) { card in
-                        Button { report = SaleReport.from(card: card) } label: {
+                        Button { openedCard = card } label: {
                             VStack(alignment: .leading, spacing: 8) {
                                 AsyncImage(url: card.thumbURL) { phase in
                                     if let image = phase.image { image.resizable().scaledToFit() } else { Color.black.opacity(0.05) }
@@ -2581,6 +2582,7 @@ struct HomeTrendingCardsRow: View {
             cards = picked.isEmpty ? Array(found.prefix(12)) : picked
         }
         .fullScreenCover(item: $report) { SaleReportView(report: $0) }
+        .fullScreenCover(item: $openedCard) { CardDetailView(card: $0) }
     }
 }
 
