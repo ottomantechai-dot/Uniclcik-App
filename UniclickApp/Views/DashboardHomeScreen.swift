@@ -332,7 +332,8 @@ struct DashboardHomeScreen: View {
 
             DashboardMarketPricesSection(
                 comparison: marketComparison,
-                featured: marketComparison == nil ? catalogProducts.first : nil
+                // Un zapato distinto de los que ya salen en «Trending Now».
+                featured: marketComparison == nil ? (catalogProducts.filter { $0.name.count <= 29 }.dropFirst(12).first ?? catalogProducts.last) : nil
             )
 
             DashboardHomeBottomGrid(
@@ -1845,13 +1846,15 @@ struct DashboardMarketPricesSection: View {
             if let featured {
                 HStack(spacing: 12) {
                     StockCachedRemoteImage(url: featured.primaryImageURL, maxPixelSide: 320, fillFrame: false)
-                        .frame(width: 96, height: 70).blendMode(.multiply)
-                    VStack(alignment: .leading, spacing: 6) {
-                        BrandLogoLabel(brand: featured.brand ?? "", compact: true)
-                            .frame(width: 30, height: 30).glassEffect(.regular, in: .circle)
-                        Text(featured.name).font(.system(size: 15, weight: .bold)).foregroundStyle(.black)
-                            .lineLimit(2).multilineTextAlignment(.leading)
-                    }
+                        .frame(width: 120, height: 88).blendMode(.multiply)
+                        .padding(.top, 10).padding(.trailing, 14)
+                        .overlay(alignment: .topTrailing) {
+                            // La marca, arriba a la derecha del zapato.
+                            BrandLogoLabel(brand: featured.brand ?? "", compact: true)
+                                .frame(width: 30, height: 30).glassEffect(.regular, in: .circle)
+                        }
+                    Text(featured.name).font(.system(size: 16, weight: .bold)).foregroundStyle(.black)
+                        .lineLimit(2).multilineTextAlignment(.leading)
                     Spacer(minLength: 0)
                 }
             }

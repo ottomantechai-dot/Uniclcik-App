@@ -139,6 +139,7 @@ struct CardSetFilterSheet: View {
             .task { if market.sets.isEmpty { market.sets = await PokemonTCGClient.fetchSets() } }
         }
         .preferredColorScheme(.light)
+        .swipeBackToDismiss()
     }
 
     /// Ficha de cristal de una colección: logo arriba, nombre y año debajo.

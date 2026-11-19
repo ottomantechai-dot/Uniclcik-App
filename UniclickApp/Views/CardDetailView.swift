@@ -132,6 +132,7 @@ struct CardDetailView: View {
             .fullScreenCover(item: $report) { SaleReportView(report: $0) }
         }
         .preferredColorScheme(.light)
+        .swipeBackToDismiss()
     }
 
     private func select(_ other: PokemonCardData) {

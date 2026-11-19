@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Barra superior de la app
 // Va arriba en Inicio, Zapatos y Cartas: el logo con el nombre de la sección a la izquierda y la
@@ -86,4 +87,52 @@ struct ProfileAvatar: View {
         .frame(width: size, height: size)
         .clipShape(.circle)
     }
+}
+
+
+// MARK: - Volver deslizando desde el borde izquierdo
+
+/// En las pantallas apiladas, el gesto de volver sigue funcionando aunque la barra de navegación
+/// esté escondida (por defecto iOS lo apaga en ese caso).
+extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
+    override open func viewDidLoad() {
+        super.viewDidLoad()
+        interactivePopGestureRecognizer?.delegate = self
+    }
+
+    public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        viewControllers.count > 1
+    }
+}
+
+/// En las pantallas completas (fichas, informes, filtros): deslizar desde el borde izquierdo hacia
+/// la derecha las cierra, acompañando al dedo.
+struct SwipeBackToDismiss: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+    @State private var offset: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .offset(x: offset)
+            .overlay(alignment: .leading) {
+                // Franja del borde izquierdo que recoge el gesto sin estorbar al contenido.
+                Color.clear.frame(width: 24).contentShape(.rect)
+                    .gesture(
+                        DragGesture(minimumDistance: 8)
+                            .onChanged { value in offset = max(0, value.translation.width) }
+                            .onEnded { value in
+                                if value.translation.width > 110 || value.predictedEndTranslation.width > 260 {
+                                    dismiss()
+                                } else {
+                                    withAnimation(.snappy(duration: 0.25)) { offset = 0 }
+                                }
+                            }
+                    )
+                    .ignoresSafeArea()
+            }
+    }
+}
+
+extension View {
+    func swipeBackToDismiss() -> some View { modifier(SwipeBackToDismiss()) }
 }

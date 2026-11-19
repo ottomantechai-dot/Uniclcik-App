@@ -61,6 +61,7 @@ struct SaleReportView: View {
             }
         }
         .preferredColorScheme(.light)
+        .swipeBackToDismiss()
     }
 
     private var header: some View {
