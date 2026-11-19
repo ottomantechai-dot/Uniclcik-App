@@ -1158,14 +1158,33 @@ struct ClosetView: View {
         enum Kind { case closet(ClosetItem), catalog(UpsoledProduct) }
         let id: String
         let name: String
+        let brand: String
         let kind: Kind
     }
 
     private func mergedRows(_ section: UnifiedStockSection) -> [MergedStockRow] {
-        let rows = section.closetItems.map { MergedStockRow(id: "c-\($0.id)", name: $0.catalogDisplayName, kind: .closet($0)) }
-            + section.catalogProducts.map { MergedStockRow(id: "p-\($0.id)", name: $0.name, kind: .catalog($0)) }
+        let rows = section.closetItems.map { MergedStockRow(id: "c-\($0.id)", name: $0.catalogDisplayName, brand: $0.brand ?? "", kind: .closet($0)) }
+            + section.catalogProducts.map { MergedStockRow(id: "p-\($0.id)", name: $0.name, brand: $0.brand ?? "", kind: .catalog($0)) }
         guard stockFilters.sort == .newest else { return rows }
-        return rows.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let sorted = rows.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        // Con una marca elegida, por nombre. Sin marca, surtido: se va tomando un zapato de cada
+        // marca por turnos, siempre en el mismo orden (no cambia al abrir un zapato).
+        guard stockFilters.brands.isEmpty else { return sorted }
+        var byBrand: [String: [MergedStockRow]] = [:]
+        var order: [String] = []
+        for row in sorted {
+            let brand = row.brand.isEmpty ? "—" : row.brand
+            if byBrand[brand] == nil { order.append(brand) }
+            byBrand[brand, default: []].append(row)
+        }
+        order.sort { (byBrand[$0]?.count ?? 0) > (byBrand[$1]?.count ?? 0) }
+        var mixed: [MergedStockRow] = []
+        var round = 0
+        while mixed.count < sorted.count {
+            for brand in order { if let list = byBrand[brand], round < list.count { mixed.append(list[round]) } }
+            round += 1
+        }
+        return mixed
     }
 
     private var unifiedStockListContent: some View {

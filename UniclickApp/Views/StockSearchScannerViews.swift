@@ -852,7 +852,7 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
             BrandLogoLabel(brand: brandLine)
 
             Text(nameLine)
-                .font(.system(size: 15, weight: .bold))
+                .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Color.black.opacity(0.92))
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
