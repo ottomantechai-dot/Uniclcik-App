@@ -3152,6 +3152,9 @@ struct GarmentLookbookCaptureView: View {
 /// Solo se enseña cuando el mercado ha devuelto ventas; nunca con cifras inventadas.
 struct ShoeMarketHistoryCard: View {
     let sales: [DailySalePoint]
+    /// Datos históricos ya calculados por el mercado (si no, se calculan de las ventas).
+    var summary: [(String, String)]? = nil
+    var source: String? = nil
     @State private var range = 0   // 0 = todo, o días
 
     private var shown: [DailySalePoint] {
@@ -3170,7 +3173,7 @@ struct ShoeMarketHistoryCard: View {
                 Spacer()
                 HStack(spacing: 5) {
                     Circle().fill(hasData ? Color.green : Color.black.opacity(0.25)).frame(width: 7, height: 7)
-                    Text(hasData ? "Live" : "Waiting for data").font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
+                    Text(source ?? (hasData ? "Live" : "Waiting for data")).font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
                 }
             }
 
@@ -3219,12 +3222,18 @@ struct ShoeMarketHistoryCard: View {
             let prices = shown.map(\.avg)
             let mean = prices.isEmpty ? 0 : prices.reduce(0, +) / Double(prices.count)
             let deviation = prices.isEmpty ? 0 : (prices.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(prices.count)).squareRoot()
+            if let summary {
+                VStack(spacing: 0) {
+                    ForEach(Array(summary.enumerated()), id: \.offset) { index, item in row(item.0, item.1, last: index == summary.count - 1) }
+                }
+            } else {
             VStack(spacing: 0) {
                 row("Price range high", hasData ? Self.usd(prices.max() ?? 0) : "—")
                 row("Price range low", hasData ? Self.usd(prices.min() ?? 0) : "—")
                 row("Volatility", hasData && mean > 0 ? String(format: "%.0f%%", deviation / mean * 100) : "—")
                 row("Number of sales", hasData ? "\(shown.reduce(0) { $0 + $1.orders })" : "—")
                 row("Average sale price", hasData ? Self.usd(mean) : "—", last: true)
+            }
             }
         }
         .padding(16)
@@ -3247,23 +3256,64 @@ struct ShoeMarketHistoryCard: View {
 /// «Shop used listings»: fila de círculos con anuncios de usados. Hasta que haya una fuente de usados
 /// conectada, enseña los huecos vacíos en vez de fotos inventadas.
 struct ShoeUsedListingsStrip: View {
+    var listings: [UsedListing] = []
+    var title = ""
+    @State private var opened: (listing: UsedListing, page: Int)?
+    @State private var showing = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Shop used listings").font(.system(size: 18, weight: .bold)).foregroundStyle(.black)
                 Spacer()
-                Image(systemName: "arrow.right").font(.system(size: 14, weight: .bold)).foregroundStyle(.black.opacity(0.35))
-                    .frame(width: 36, height: 36).glassEffect(.regular, in: .circle)
-            }
-            HStack(spacing: 10) {
-                ForEach(0..<5, id: \.self) { _ in
-                    Image(systemName: "shoe.2").font(.system(size: 15)).foregroundStyle(.black.opacity(0.22))
-                        .frame(width: 52, height: 52).glassEffect(.regular, in: .circle)
+                Button { open(0) } label: {
+                    Image(systemName: "arrow.right").font(.system(size: 14, weight: .bold)).foregroundStyle(.black.opacity(listings.isEmpty ? 0.35 : 1))
+                        .frame(width: 36, height: 36).glassEffect(.regular.interactive(), in: .circle)
                 }
-                Spacer(minLength: 0)
+                .buttonStyle(.plain).disabled(listings.isEmpty)
             }
-            Text("No used listings connected yet").font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+            if let listing = listings.first {
+                HStack(spacing: 10) {
+                    ForEach(Array(listing.photos.enumerated()), id: \.offset) { index, url in
+                        Button { open(index) } label: {
+                            StockCachedRemoteImage(url: url, maxPixelSide: 240, fillFrame: true)
+                                .frame(width: 58, height: 58).clipShape(.circle)
+                                .padding(3).background(.white, in: .circle).glassEffect(.regular.interactive(), in: .circle)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 8) {
+                    HStack(spacing: 5) {
+                        Image("IconTalla").renderingMode(.template).resizable().scaledToFit().frame(width: 15, height: 15)
+                        Text("US \(listing.size) · Used").font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundStyle(.black.opacity(0.7)).padding(.horizontal, 9).frame(height: 28).background(Color.black.opacity(0.05), in: .capsule)
+                    Text(SaleReport.usd(listing.price)).font(.system(size: 16, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                    Text("\(SaleReport.usd(listing.priceWithFees)) incl. fees").font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+                    Spacer(minLength: 0)
+                    StylizedMarketplaceLogo(brand: "StockX").frame(width: 52, height: 15)
+                }
+            } else {
+                HStack(spacing: 10) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        Image(systemName: "shoe.2").font(.system(size: 15)).foregroundStyle(.black.opacity(0.22))
+                            .frame(width: 52, height: 52).glassEffect(.regular, in: .circle)
+                    }
+                    Spacer(minLength: 0)
+                }
+                Text("No used listings connected yet").font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+            }
         }
+        .fullScreenCover(isPresented: $showing) {
+            if let opened { UsedListingView(listing: opened.listing, title: title, page: opened.page) }
+        }
+    }
+
+    private func open(_ page: Int) {
+        guard let listing = listings.first else { return }
+        opened = (listing, page); showing = true
     }
 }
 
@@ -3403,7 +3453,8 @@ struct CatalogShoeBody: View {
     var onSelect: (UpsoledProduct) -> Void
     @State private var sizesOpen = false
     @State private var size: String?
-    private let sizes = ["7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"]
+    private var sample: ShoeSample? { ShoeSample.find(product.name) }
+    private var sizes: [String] { sample?.sizes ?? ["7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"] }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -3447,16 +3498,20 @@ struct CatalogShoeBody: View {
             .clipShape(.rect(cornerRadius: 20))
             .glassEffect(.regular, in: .rect(cornerRadius: 20))
 
+            if let sample { ShoeSamplePriceCard(sample: sample, size: size).padding(.top, 12) }
             SellButton(item: .shoe(name: product.name, brand: product.brand ?? "", imageURL: product.primaryImageURL)).padding(.top, 14)
-            ShoeUsedListingsStrip().padding(.top, 18)
+            ShoeUsedListingsStrip(listings: sample?.used ?? [], title: product.name.firstUppercased).padding(.top, 18)
             ShoeRelatedShelf(name: product.name, brand: product.brand ?? "", onSelect: onSelect).padding(.top, 22)
             ShoeProductDetailsCard(rows: [
                 (icon: "tag", title: "Brand", value: product.brand ?? "—"),
-                (icon: "paintpalette", title: "Colorway", value: CatalogShelf.colorway(of: product.name)),
+                (icon: "paintpalette", title: "Colorway", value: sample?.colorway ?? CatalogShelf.colorway(of: product.name)),
                 (icon: "shippingbox", title: "Condition", value: "New"),
-            ]).padding(.top, 22)
-            DashboardMarketPricesSection(comparison: nil, maxVisibleRows: 6).padding(.top, 18)
-            ShoeMarketHistoryCard(sales: []).padding(.top, 18).padding(.bottom, 24)
+            ] + (sample.map { [(icon: "number", title: "Style", value: $0.style),
+                               (icon: "dollarsign.circle", title: "Retail price", value: SaleReport.usd($0.retail)),
+                               (icon: "calendar", title: "Release date", value: $0.release)] } ?? [])).padding(.top, 22)
+            DashboardMarketPricesSection(comparison: sample?.comparison, maxVisibleRows: sample == nil ? 6 : nil).padding(.top, 18)
+            ShoeMarketHistoryCard(sales: sample?.sales ?? [], summary: sample?.stats, source: sample.map { "StockX · \($0.asOf)" })
+                .padding(.top, 18).padding(.bottom, 24)
         }
     }
 }

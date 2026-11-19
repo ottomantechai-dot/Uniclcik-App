@@ -33,7 +33,7 @@ struct MarketSnapshot {
             sizes: ["3.5Y", "4Y", "4.5Y", "5Y", "5.5Y", "6Y", "6.5Y", "7Y"],
             lowestAsk: ["3.5Y": 57, "4Y": 88, "4.5Y": 69, "5Y": 49, "5.5Y": 75, "7Y": 77],
             highestBid: ["3.5Y": 20, "4Y": 31, "4.5Y": 22, "5Y": 21, "5.5Y": 28, "6Y": 67, "6.5Y": 60, "7Y": 51],
-            lastSale: 49,
+            lastSale: 74,
             asks: [Row(price: 49, size: "5Y"), Row(price: 57, size: "3.5Y"), Row(price: 61, size: "5Y"), Row(price: 62, size: "5Y"),
                    Row(price: 69, size: "4.5Y"), Row(price: 70, size: "4.5Y", quantity: 2), Row(price: 70, size: "5Y"),
                    Row(price: 75, size: "5Y", quantity: 2), Row(price: 75, size: "5.5Y"), Row(price: 75, size: "4.5Y"),
@@ -645,9 +645,15 @@ struct MarketDataView: View {
                         pill("All", on: size == nil) { size = nil }
                         ForEach(snapshot.sizes, id: \.self) { s in pill("US \(s)", on: size == s) { size = s } }
                     }
-                    .padding(.trailing, 16).padding(.vertical, 2)
+                    .padding(.leading, 12).padding(.trailing, 24).padding(.vertical, 2)
                 }
-                .mask { LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.04), .init(color: .black, location: 0.92), .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing) }
+                .mask {
+                    HStack(spacing: 0) {
+                        LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing).frame(width: 12)
+                        Color.black
+                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 24)
+                    }
+                }
             }
             .padding(.leading, 16)
         }
@@ -681,5 +687,215 @@ struct MarketDataView: View {
         .padding(.horizontal, 14).frame(height: 52)
         .background(.white, in: .rect(cornerRadius: 16))
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
+    }
+}
+
+
+// MARK: - Zapato de ejemplo con todos sus datos
+
+/// Anuncio de un par usado, con sus fotos.
+struct UsedListing: Identifiable {
+    let id = UUID()
+    let size: String
+    let price: Double
+    let priceWithFees: Double
+    let photos: [URL]
+    let url: URL?
+}
+
+/// Ficha completa del zapato de ejemplo (Jordan 1 Low Green Toe GS, 553560-371). Todas las cifras se
+/// leyeron de las páginas públicas de cada plataforma el 19 nov 2026; no hay nada estimado.
+struct ShoeSample {
+    let asOf = "Nov 19, 2026"
+    let style = "553560-371"
+    let colorway = "Noble Green/White/Black/Pollen"
+    let retail = 85.0
+    let release = "Oct 12, 2021"
+    let buyNow = 49.0
+    let lastSale = 74.0
+    let highestOffer = 67.0
+    let sizes = ["3.5Y", "4Y", "4.5Y", "5Y", "5.5Y", "6Y", "6.5Y", "7Y"]
+    /// talla → plataforma → precio más bajo en venta
+    let asks: [String: [String: Double]] = [
+        "3.5Y": ["StockX": 57, "GOAT": 98],
+        "4Y": ["StockX": 88, "GOAT": 65],
+        "4.5Y": ["StockX": 69, "GOAT": 45],
+        "5Y": ["StockX": 49, "GOAT": 43],
+        "5.5Y": ["StockX": 75, "GOAT": 92, "eBay": 54.99],
+        "6Y": ["GOAT": 92],
+        "6.5Y": ["GOAT": 109],
+        "7Y": ["StockX": 77, "GOAT": 86],
+    ]
+    /// Datos históricos tal como los da StockX.
+    let stats: [(String, String)] = [
+        ("Price range · 12 months", "$20 – $158"),
+        ("Price range · 3 months", "$29 – $145"),
+        ("Volatility", "19%"),
+        ("Number of sales · 3 months", "35"),
+        ("Price premium · last sale", "−13%"),
+        ("Average sale price · 3 months", "$73"),
+    ]
+    let used: [UsedListing] = {
+        let base = "https://listing-images.stockx.com/users/9b8a22b4-8ef1-11ec-b819-124738b50e12/listings/75e79d5b-6909-4c22-b619-36037ca74ca8/"
+        let photos = ["01a1cad1-d2ea-7136-b10f-2d7a77c11de3", "01a1cad1-d2ea-7637-9f71-4af1fb976e0a", "01a1cad1-d2ea-77ac-80d9-24c4492c821f", "01a1cad1-d2ea-78fa-a338-8a259a5ae7be"]
+            .compactMap { URL(string: base + $0 + "?w=900") }
+        return [UsedListing(size: "7Y", price: 78, priceWithFees: 82, photos: photos,
+                            url: URL(string: "https://stockx.com/air-jordan-1-low-noble-green-gs/listings/75e79d5b-6909-4c22-b619-36037ca74ca8"))]
+    }()
+
+    static func find(_ name: String) -> ShoeSample? {
+        name.localizedCaseInsensitiveContains("Jordan 1 Low Green Toe") ? ShoeSample() : nil
+    }
+
+    func lowest(_ size: String?) -> (platform: String, price: Double)? {
+        let pool: [(String, Double)] = size.map { (asks[$0] ?? [:]).map { ($0.key, $0.value) } } ?? asks.values.flatMap { $0.map { ($0.key, $0.value) } }
+        return pool.min { $0.1 < $1.1 }.map { (platform: $0.0, price: $0.1) }
+    }
+
+    /// Ventas reales con fecha (talla 3.5Y), para la gráfica.
+    var sales: [DailySalePoint] {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "MMM d, yyyy"
+        return (MarketSnapshot.sample(for: "Jordan 1 Low Green Toe")?.sales ?? [])
+            .compactMap { row in row.date.flatMap(f.date(from:)).map { DailySalePoint(date: $0, avg: row.price, orders: 1) } }
+            .sorted { $0.date < $1.date }
+    }
+
+    /// La misma comparativa que usa la tabla de precios por talla y plataforma.
+    var comparison: MarketComparison {
+        func key(_ s: String) -> String { s.replacingOccurrences(of: "Y", with: "") }
+        let names = ["StockX", "GOAT", "eBay"]
+        let quotes = names.map { name -> MarketPlatformQuote in
+            var bySize: [String: Double] = [:]
+            for (size, row) in asks { if let v = row[name] { bySize[key(size)] = v } }
+            let values = Array(bySize.values)
+            return MarketPlatformQuote(platform: name, color: .black, matchedTitle: "Jordan 1 Low Green Toe (GS)", matchedSKU: style, productURL: nil,
+                                       asksBySize: bySize, avg: values.isEmpty ? nil : values.reduce(0, +) / Double(values.count),
+                                       lowestAsk: values.min(), highestAsk: values.max())
+        }
+        let rows = sizes.map { MarketSizeRow(size: key($0), asks: asks[$0] ?? [:]) }
+        return MarketComparison(query: "Jordan 1 Low Green Toe (GS)", platforms: quotes, sizes: rows.map(\.size), rows: rows, fetchedAt: Date(), skuAligned: true)
+    }
+}
+
+/// Precio del zapato de ejemplo: el más bajo para la talla elegida, las referencias del mercado y el
+/// precio en cada plataforma.
+struct ShoeSamplePriceCard: View {
+    let sample: ShoeSample
+    let size: String?
+
+    var body: some View {
+        let best = sample.lowest(size)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(size == nil ? "Buy now from" : "Buy now · US \(size ?? "")").font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                    Text(best.map { SaleReport.usd($0.price) } ?? "—").font(.system(size: 38, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                }
+                Spacer()
+                if let best {
+                    VStack(alignment: .trailing, spacing: 6) {
+                        StylizedMarketplaceLogo(brand: best.platform).frame(width: 62, height: 18, alignment: .trailing)
+                        let diff = sample.retail - best.price
+                        Text(diff >= 0 ? "\(SaleReport.usd(diff)) below retail" : "\(SaleReport.usd(-diff)) above retail")
+                            .font(.system(size: 12, weight: .bold)).foregroundStyle(diff >= 0 ? sellGreen : .black.opacity(0.6))
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                stat("Last sale", sample.lastSale)
+                stat("Highest offer", sample.highestOffer)
+                stat("Retail", sample.retail)
+            }
+            VStack(spacing: 0) {
+                let names = ["StockX", "GOAT", "eBay"]
+                ForEach(Array(names.enumerated()), id: \.element) { index, name in
+                    let price = size.flatMap { sample.asks[$0]?[name] } ?? (size == nil ? sample.asks.values.compactMap { $0[name] }.min() : nil)
+                    HStack {
+                        StylizedMarketplaceLogo(brand: name).frame(width: 60, height: 17, alignment: .leading)
+                        Spacer()
+                        Text(price.map { (size == nil ? "from " : "") + SaleReport.usd($0) } ?? "No listing")
+                            .font(.system(size: 15, weight: price == nil ? .medium : .heavy, design: .rounded))
+                            .foregroundStyle(price == nil ? .black.opacity(0.35) : (best?.platform == name ? sellGreen : .black))
+                    }
+                    .padding(.vertical, 11)
+                    if index < names.count - 1 { Divider() }
+                }
+            }
+            Text("Prices read from each marketplace · \(sample.asOf)").font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.4))
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white, in: .rect(cornerRadius: 22)).glassEffect(.regular, in: .rect(cornerRadius: 22))
+    }
+
+    private func stat(_ title: String, _ value: Double) -> some View {
+        VStack(spacing: 2) {
+            Text(SaleReport.usd(value)).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+            Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
+        }
+        .frame(maxWidth: .infinity, minHeight: 54).background(Color.black.opacity(0.04), in: .rect(cornerRadius: 14))
+    }
+}
+
+/// Fotos de un anuncio usado, a pantalla completa.
+struct UsedListingView: View {
+    let listing: UsedListing
+    let title: String
+    @State var page: Int
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        VStack(spacing: 14) {
+            TabView(selection: $page) {
+                ForEach(Array(listing.photos.enumerated()), id: \.offset) { index, url in
+                    StockCachedRemoteImage(url: url, maxPixelSide: 1200, fillFrame: false)
+                        .clipShape(.rect(cornerRadius: 24)).padding(.horizontal, 16).tag(index)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            HStack(spacing: 6) {
+                ForEach(listing.photos.indices, id: \.self) { i in
+                    Capsule().fill(i == page ? Color.black : Color.black.opacity(0.15)).frame(width: i == page ? 22 : 8, height: 6)
+                }
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                Text(title).font(.system(size: 17, weight: .bold)).foregroundStyle(.black)
+                HStack {
+                    HStack(spacing: 5) {
+                        Image("IconTalla").renderingMode(.template).resizable().scaledToFit().frame(width: 16, height: 16)
+                        Text("US \(listing.size) · Used").font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundStyle(.black.opacity(0.7)).padding(.horizontal, 9).frame(height: 28).background(Color.black.opacity(0.05), in: .capsule)
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text(SaleReport.usd(listing.price)).font(.system(size: 24, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                        Text("\(SaleReport.usd(listing.priceWithFees)) incl. fees").font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                    }
+                }
+            }
+            .padding(16).background(.white, in: .rect(cornerRadius: 22)).glassEffect(.regular, in: .rect(cornerRadius: 22))
+            .padding(.horizontal, 16)
+            if let url = listing.url {
+                Button { openURL(url) } label: {
+                    HStack { Text("View on"); StylizedMarketplaceLogo(brand: "StockX").frame(width: 60, height: 17).colorInvert().brightness(1) }
+                        .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 56).background(.black, in: .capsule)
+                }
+                .buttonStyle(.plain).padding(.horizontal, 20).padding(.bottom, 8)
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HStack {
+                Button { dismiss() } label: { TopBarGlassButton(systemImage: "xmark") }.buttonStyle(.plain)
+                Spacer()
+                Text("Used listing").font(.system(size: 17, weight: .bold, design: .rounded)).foregroundStyle(.black)
+                Spacer()
+                Color.clear.frame(width: 44, height: 44)
+            }
+            .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 10)
+        }
+        .background(sellGray.ignoresSafeArea())
+        .preferredColorScheme(.light)
+        .swipeBackToDismiss()
     }
 }
