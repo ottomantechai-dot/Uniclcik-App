@@ -453,48 +453,116 @@ struct SaleReportsHistoryView: View {
     @ObservedObject private var listings = ListingStore.shared
     @State private var open: SaleReport?
 
+    private var totalNet: Double { store.reports.compactMap { $0.best?.netUSD }.reduce(0, +) }
+
     var body: some View {
-        List {
-            if !listings.listings.isEmpty {
-                Section("Ready listings") {
-                    ForEach(listings.listings) { listing in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(listing.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                            ListingRow(listing: listing)
-                        }
+        ScrollView {
+            GlassEffectContainer(spacing: 10) {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 10) {
+                        summary(icon: "doc.text", title: "Reports", value: "\(store.reports.count)")
+                        summary(icon: "tag", title: "Listings", value: "\(listings.listings.count)")
+                        summary(icon: "dollarsign", title: "Best payout", value: totalNet > 0 ? SaleReport.usd(totalNet.rounded()) : "—")
                     }
-                    .onDelete { offsets in offsets.map { listings.listings[$0] }.forEach(listings.delete) }
-                }
-            }
-            Section("Reports") {
-                if store.reports.isEmpty {
-                    Text("Scan a box and its report is saved here.").foregroundStyle(.secondary)
-                }
-                ForEach(store.reports) { report in
-                    Button { open = report } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(report.title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.primary).lineLimit(1)
-                                Text(report.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if let best = report.best {
-                                VStack(alignment: .trailing, spacing: 1) {
-                                    Text(SaleReport.usd(best.netUSD)).font(.system(size: 14, weight: .heavy, design: .rounded)).foregroundStyle(.primary)
-                                    Text(best.platform).font(.caption2).foregroundStyle(.secondary)
+
+                    if !listings.listings.isEmpty {
+                        Text("Ready listings").font(.system(size: 18, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                        VStack(spacing: 10) {
+                            ForEach(listings.listings) { listing in
+                                HStack(spacing: 12) {
+                                    thumb(listing.imageURL)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(listing.title).font(.system(size: 14, weight: .bold)).foregroundStyle(.black).lineLimit(1)
+                                        HStack(spacing: 6) {
+                                            PlatformLogoMark(platform: listing.platform)
+                                            if !listing.size.isEmpty { Text("US \(listing.size)").font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5)) }
+                                        }
+                                        Text(listing.status == .published ? "Published" : "Ready · seller account needed")
+                                            .font(.system(size: 11, weight: .medium)).foregroundStyle(listing.status == .published ? .green : .orange)
+                                    }
+                                    Spacer(minLength: 0)
+                                    Text(SaleReport.usd(listing.priceUSD)).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                                    Button { listings.delete(listing) } label: {
+                                        Image(systemName: "trash").font(.system(size: 13, weight: .semibold)).foregroundStyle(.black.opacity(0.4)).frame(width: 30, height: 30)
+                                    }
+                                    .buttonStyle(.plain)
                                 }
+                                .padding(12)
+                                .glassEffect(.regular, in: .rect(cornerRadius: 20))
                             }
                         }
                     }
+
+                    Text("Sale reports").font(.system(size: 18, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                    if store.reports.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: "doc.text.magnifyingglass").font(.system(size: 30, weight: .semibold)).foregroundStyle(.black.opacity(0.3))
+                            Text("Scan a box and its report is saved here.").font(.system(size: 14, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 40)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+                    }
+                    VStack(spacing: 10) {
+                        ForEach(store.reports) { report in
+                            Button { open = report } label: {
+                                HStack(spacing: 12) {
+                                    thumb(report.imageURL)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(report.title).font(.system(size: 14, weight: .bold)).foregroundStyle(.black).lineLimit(1)
+                                        if let best = report.best { PlatformLogoMark(platform: best.platform) }
+                                        Text(report.createdAt.formatted(.dateTime.month(.abbreviated).day().hour().minute().locale(Locale(identifier: "en_US"))))
+                                            .font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+                                    }
+                                    Spacer(minLength: 0)
+                                    VStack(alignment: .trailing, spacing: 1) {
+                                        Text(report.best.map { SaleReport.usd($0.netUSD) } ?? "—")
+                                            .font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                                        Text("you keep").font(.system(size: 10, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+                                    }
+                                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(.black.opacity(0.3))
+                                }
+                                .padding(12)
+                                .contentShape(.rect(cornerRadius: 20))
+                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu { Button(role: .destructive) { store.delete(report) } label: { Label("Delete report", systemImage: "trash") } }
+                        }
+                    }
                 }
-                .onDelete { offsets in offsets.map { store.reports[$0] }.forEach(store.delete) }
+                .padding(16)
             }
         }
+        .background(Color(red: 0.965, green: 0.965, blue: 0.975).ignoresSafeArea())
         .navigationTitle("Reports")
+        .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(item: $open) { SaleReportView(report: $0) }
+        .preferredColorScheme(.light)
+    }
+
+    private func summary(icon: String, title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 13, weight: .semibold))
+                Text(title).font(.system(size: 11, weight: .medium)).lineLimit(1)
+            }
+            .foregroundStyle(.black.opacity(0.7))
+            Text(value).font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(.black).minimumScaleFactor(0.6).lineLimit(1)
+        }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+    }
+
+    private func thumb(_ url: String?) -> some View {
+        AsyncImage(url: url.flatMap(URL.init(string:))) { phase in
+            if let image = phase.image { image.resizable().scaledToFit() } else {
+                Image(systemName: "shoe.2").font(.system(size: 16)).foregroundStyle(.black.opacity(0.25))
+            }
+        }
+        .frame(width: 58, height: 58)
+        .background(Color.white, in: .rect(cornerRadius: 14))
     }
 }
-
 
 /// El logo de la plataforma (StockX, GOAT, eBay, Flight Club); si no hay logo, su nombre.
 struct PlatformLogoMark: View {

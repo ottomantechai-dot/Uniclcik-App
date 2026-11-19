@@ -263,6 +263,8 @@ struct DashboardHomeScreen: View {
     @State private var showMarketComparator = false
     @State private var showWatchlist = false
     @State private var showSearch = false
+    /// En Inicio, la fila de tendencias enseña zapatos o cartas según el acceso elegido.
+    @State private var homeShowsCards = false
     @EnvironmentObject private var tabRouter: MainTabRouter
     @State private var showOpportunities = false
     @ObservedObject private var watchlist = WatchlistStore.shared
@@ -280,11 +282,16 @@ struct DashboardHomeScreen: View {
         VStack(alignment: .leading, spacing: 16) {
 
             HomeBentoGrid(closetItems: closetItems, catalogProducts: catalogProducts,
+                          showsCards: $homeShowsCards,
                           onSneakers: onViewStock,
                           onScan: { tabRouter.scanRequested = true; tabRouter.selected = .closet },
                           onCards: { tabRouter.selected = .cards })
 
-            HomeTrendingRow(products: Array(catalogProducts.prefix(12)), onViewAll: onViewStock)
+            if homeShowsCards {
+                HomeTrendingCardsRow(onViewAll: { tabRouter.selected = .cards })
+            } else {
+                HomeTrendingRow(products: Array(catalogProducts.prefix(12)), onViewAll: onViewStock)
+            }
 
             if !watchlist.items.isEmpty {
                 HStack(spacing: 10) {
@@ -2276,6 +2283,7 @@ struct WatchRow: View {
 struct HomeBentoGrid: View {
     let closetItems: [ClosetItem]
     let catalogProducts: [UpsoledProduct]
+    @Binding var showsCards: Bool
     var onSneakers: () -> Void
     var onScan: () -> Void
     var onCards: () -> Void
@@ -2287,7 +2295,7 @@ struct HomeBentoGrid: View {
     private var sold: [ClosetItem] { closetItems.filter(\.isSold) }
     private var stockValue: Double { stock.reduce(0) { $0 + $1.stockValueUSD } }
     private var earnings: Double { sold.reduce(0) { $0 + $1.stockValueUSD } }
-    private let purple = Color(red: 0.49, green: 0.25, blue: 0.95)
+    private let purple = Color.black
 
     private func money(_ value: Double) -> String { value > 0 ? SaleReport.usd(value.rounded()) : "$0" }
 
@@ -2328,8 +2336,9 @@ struct HomeBentoGrid: View {
                         Button { showReports = true } label: { smallStat(icon: "tag", title: "Listings", value: "\(listings.listings.count)") }.buttonStyle(.plain)
                     }
                     HStack(spacing: 10) {
-                        Button(action: onSneakers) { category("shoe.2", "Sneakers", highlighted: true) }.buttonStyle(.plain)
-                        Button(action: onCards) { category("rectangle.portrait.on.rectangle.portrait", "Cards") }.buttonStyle(.plain)
+                        // Sneakers y Cards cambian lo que se ve debajo, sin salir de Inicio.
+                        Button { withAnimation(.snappy) { showsCards = false } } label: { category("shoe.2", "Sneakers", highlighted: !showsCards) }.buttonStyle(.plain)
+                        Button { withAnimation(.snappy) { showsCards = true } } label: { category("rectangle.portrait.on.rectangle.portrait", "Cards", highlighted: showsCards) }.buttonStyle(.plain)
                         Button(action: onScan) { category("barcode.viewfinder", "Scan") }.buttonStyle(.plain)
                         Button { showReports = true } label: { category("chart.xyaxis.line", "Reports") }.buttonStyle(.plain)
                     }
@@ -2381,7 +2390,7 @@ struct HomeBentoGrid: View {
         }
         .frame(maxWidth: .infinity, minHeight: 78)
         .contentShape(.rect(cornerRadius: 18))
-        .glassEffect(highlighted ? .regular.tint(purple.opacity(0.14)).interactive() : .regular.interactive(), in: .rect(cornerRadius: 18))
+        .glassEffect(highlighted ? .regular.tint(Color.black.opacity(0.10)).interactive() : .regular.interactive(), in: .rect(cornerRadius: 18))
     }
 }
 
@@ -2394,12 +2403,12 @@ struct HomeTrendingRow: View {
         if !products.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Image(systemName: "flame.fill").foregroundStyle(Color(red: 0.49, green: 0.25, blue: 0.95))
+                    Image(systemName: "flame.fill").foregroundStyle(.black)
                     Text("Trending Now").font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                     Spacer()
                     Button(action: onViewAll) {
                         HStack(spacing: 4) { Text("View all"); Image(systemName: "arrow.right").font(.system(size: 11, weight: .bold)) }
-                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color(red: 0.49, green: 0.25, blue: 0.95))
+                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
                     }
                     .buttonStyle(.plain)
                 }
@@ -2424,6 +2433,74 @@ struct HomeTrendingRow: View {
                 }
                 .scrollClipDisabled()
             }
+        }
+    }
+}
+
+
+/// «Trending Now» con cartas: las mismas fichas que los zapatos, con cartas reales del catálogo.
+struct HomeTrendingCardsRow: View {
+    var onViewAll: () -> Void
+    @State private var cards: [PokemonCardData] = []
+    @State private var report: SaleReport?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "flame.fill").foregroundStyle(.black)
+                Text("Trending Now").font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                Spacer()
+                Button(action: onViewAll) {
+                    HStack(spacing: 4) { Text("View all"); Image(systemName: "arrow.right").font(.system(size: 11, weight: .bold)) }
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
+                }
+                .buttonStyle(.plain)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 10) {
+                    if cards.isEmpty {
+                        ForEach(0..<4, id: \.self) { _ in
+                            RoundedRectangle(cornerRadius: 20).fill(Color.black.opacity(0.04)).frame(width: 142, height: 200)
+                        }
+                    }
+                    ForEach(cards) { card in
+                        Button { report = SaleReport.from(card: card) } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                AsyncImage(url: card.thumbURL) { phase in
+                                    if let image = phase.image { image.resizable().scaledToFit() } else { Color.black.opacity(0.05) }
+                                }
+                                .frame(width: 118, height: 150)
+                                Text(card.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black).lineLimit(1).frame(width: 118, alignment: .leading)
+                                Text(card.tcgMarketUSD.map(SaleReport.usd) ?? card.setName)
+                                    .font(.system(size: 12, weight: card.tcgMarketUSD == nil ? .medium : .heavy, design: .rounded))
+                                    .foregroundStyle(card.tcgMarketUSD == nil ? Color.black.opacity(0.5) : .black).lineLimit(1).frame(width: 118, alignment: .leading)
+                            }
+                            .padding(12)
+                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
+        }
+        .task {
+            if cards.isEmpty { cards = Array((await PokemonTCGClient.fetchPage(query: "supertype:pokemon", page: 1) ?? []).prefix(12)) }
+        }
+        .fullScreenCover(item: $report) { SaleReportView(report: $0) }
+    }
+}
+
+/// Difuminado en la parte de abajo, como el de la cabecera: el contenido se pierde bajo la barra.
+struct BottomFade: ViewModifier {
+    var color: Color = .white
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .bottom) {
+            LinearGradient(colors: [color.opacity(0), color.opacity(0.9), color], startPoint: .top, endPoint: .bottom)
+                .frame(height: 120)
+                .ignoresSafeArea(edges: .bottom)
+                .allowsHitTesting(false)
         }
     }
 }
