@@ -2247,7 +2247,10 @@ struct BrandLogoLabel: View {
     /// Para las fichas de la tira de marcas: logo más grande, o el nombre si no hay logo.
     var wide = false
 
-    private var asset: String? {
+    private var asset: String? { Self.assetName(for: brand) }
+
+    /// Nombre del logo de una marca en Assets, o nil si no hay.
+    static func assetName(for brand: String) -> String? {
         let key = brand.lowercased().replacingOccurrences(of: " ", with: "")
         if key == "on" || key == "onrunning" { return "BrandLogo-on" }   // «On» va aparte: su nombre está dentro de otros
         for name in ["nike", "adidas", "jordan", "newbalance", "puma", "dior", "vans", "crocs", "asics", "ugg", "salomon", "timberland"] where key.contains(name) { return "BrandLogo-" + name }

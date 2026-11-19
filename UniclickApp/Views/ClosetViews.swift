@@ -1198,8 +1198,32 @@ struct ClosetView: View {
                 .lineLimit(2).multilineTextAlignment(.leading).frame(maxWidth: .infinity, minHeight: 36, alignment: .topLeading)
         }
         .padding(10)
-        .background(.white, in: .rect(cornerRadius: 20))
+        .background {
+            // Zapatos destacados: un barrido de color y el logo de la marca, en grande y suave, detrás del zapato.
+            if let accent = Self.featuredAccent(name) {
+                ZStack {
+                    Color.white
+                    LinearGradient(colors: [accent.opacity(0.05), accent.opacity(0.42), accent.opacity(0.10)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    Ellipse().fill(accent.opacity(0.35)).frame(width: 190, height: 70).blur(radius: 26).rotationEffect(.degrees(-18)).offset(x: 20, y: -6)
+                    if let logo = BrandLogoLabel.assetName(for: brand) {
+                        Image(logo).resizable().scaledToFit().frame(width: 84, height: 84)
+                            .foregroundStyle(.white.opacity(0.75)).offset(x: 44, y: -24)
+                    }
+                    LinearGradient(colors: [.clear, .white.opacity(0.9)], startPoint: .center, endPoint: .bottom)
+                }
+                .clipShape(.rect(cornerRadius: 20))
+            } else {
+                RoundedRectangle(cornerRadius: 20).fill(.white)
+            }
+        }
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+    }
+
+    /// Los dos zapatos con fondo especial y el color de cada uno.
+    private static func featuredAccent(_ name: String) -> Color? {
+        if name.localizedCaseInsensitiveContains("Jordan 1") && name.localizedCaseInsensitiveContains("Dark Mocha") { return Color(red: 0.55, green: 0.44, blue: 0.36) }
+        if name.localizedCaseInsensitiveContains("1906R") && name.localizedCaseInsensitiveContains("Nightwatch") { return Color(red: 0.30, green: 0.52, blue: 0.44) }
+        return nil
     }
 
     private var unifiedStockListContent: some View {
