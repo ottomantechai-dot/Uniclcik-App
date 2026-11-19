@@ -1123,7 +1123,7 @@ enum StockProductType: String, CaseIterable, Identifiable {
         switch self {
         case .sneakers: return "Sneakers"
         case .hoodies: return "Hoodies & sweaters"
-        case .tees: return "T-shirts"
+        case .tees: return "Shirts & tees"
         case .pants: return "Pants"
         case .shorts: return "Shorts"
         case .bags: return "Bags"
@@ -1146,9 +1146,9 @@ enum StockProductType: String, CaseIterable, Identifiable {
         let text = " " + name.lowercased() + " "
         func has(_ words: [String]) -> Bool { words.contains { text.contains($0) } }
         if has(["hoodie", "hooded", "sweatshirt", "crewneck", "sweater", "fleece full"]) { return .hoodies }
-        if has(["short "]) { return .shorts }
+        if has([" tee ", "t-shirt", " shirt", " polo", " jersey"]) { return .tees }
+        if has(["short"]) { return .shorts }
         if has([" pant", "jeans", "jogger", "trouser"]) { return .pants }
-        if has([" tee ", "t-shirt", " shirt", " jersey"]) { return .tees }
         if has(["backpack", " bag", "duffle", "tote"]) { return .bags }
         if has([" hat", " cap ", "beanie", "trucker"]) { return .hats }
         if (category ?? "shoes").lowercased() == "shoes" { return .sneakers }

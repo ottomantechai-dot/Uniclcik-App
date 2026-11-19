@@ -1253,6 +1253,22 @@ struct ClosetView: View {
     /// Zapatos destacados (los más conocidos del catálogo): su recorte y el color de su fondo.
     private static let featured: [String: (cut: String, accent: Color)] = [
         // Ropa y bolsos.
+        "chrome-hearts-ch-hollywood-trucker-hat-black": ("ShoeCut-70", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "chrome-hearts-ch-hollywood-trucker-hat-black-white": ("ShoeCut-71", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "chrome-hearts-cemetery-cross-hollywood-trucker-hat-red-white-blue": ("ShoeCut-72", Color(red: 0.80, green: 0.15, blue: 0.25)),
+        "chrome-hearts-logo-beanie-black": ("ShoeCut-73", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "chrome-hearts-ch-logo-beanie-red-white": ("ShoeCut-74", Color(red: 0.88, green: 0.12, blue: 0.14)),
+        "fear-of-god-essentials-classic-fleece-sweatshort-concrete-heather": ("ShoeCut-75", Color(red: 0.62, green: 0.58, blue: 0.52)),
+        "supreme-big-script-mesh-short-black": ("ShoeCut-76", Color(red: 0.86, green: 0.10, blue: 0.10)),
+        "supreme-vaquera-basketball-shorts-black": ("ShoeCut-77", Color(red: 0.80, green: 0.50, blue: 0.60)),
+        "eric-emanuel-ee-basic-short-black": ("ShoeCut-78", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "eric-emanuel-ee-basic-short-black-skyline": ("ShoeCut-79", Color(red: 0.35, green: 0.40, blue: 0.60)),
+        "supreme-comme-des-garcons-shirt-patchwork-button-up-shirt-multicolor": ("ShoeCut-80", Color(red: 0.85, green: 0.35, blue: 0.25)),
+        "supreme-antihero-ss-button-up-shirt-yellow": ("ShoeCut-81", Color(red: 0.95, green: 0.80, blue: 0.30)),
+        "supreme-stripe-button-up-polo-brown": ("ShoeCut-82", Color(red: 0.60, green: 0.25, blue: 0.30)),
+        "chrome-hearts-scroll-logo-t-shirt-black": ("ShoeCut-83", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "chrome-hearts-multi-color-cross-t-shirt-black": ("ShoeCut-84", Color(red: 0.45, green: 0.50, blue: 0.85)),
+        "fear-of-god-essentials-classic-short-sleeve-tee-jet-black": ("ShoeCut-85", Color(red: 0.62, green: 0.58, blue: 0.52)),
         "supreme-cargo-pant-fw26-woodland-camo": ("ShoeCut-59", Color(red: 0.36, green: 0.44, blue: 0.26)),
         "supreme-cargo-pant-olive-fw23": ("ShoeCut-60", Color(red: 0.45, green: 0.52, blue: 0.36)),
         "supreme-gore-tex-cargo-pant-fw26-red": ("ShoeCut-61", Color(red: 0.86, green: 0.12, blue: 0.16)),
