@@ -292,7 +292,8 @@ struct DashboardHomeScreen: View {
             if homeShowsCards {
                 HomeTrendingCardsRow(onViewAll: { tabRouter.selected = .cards })
             } else {
-                HomeTrendingRow(products: Array(catalogProducts.prefix(12)), onViewAll: onViewStock)
+                // Solo zapatos cuyo nombre cabe entero en la ficha (dos líneas), para que no se corte.
+                HomeTrendingRow(products: Array(catalogProducts.filter { $0.name.count <= 29 }.prefix(12)), onViewAll: onViewStock)
             }
 
             if !watchlist.items.isEmpty {
@@ -2473,6 +2474,30 @@ struct HomeTrendingRow: View {
                                         .frame(width: 30, height: 30)
                                         .glassEffect(.regular, in: .circle)
                                         .padding(8)
+                                }
+                                .overlay(alignment: .topTrailing) {
+                                    // Dónde se vende: StockX, GOAT y eBay, en círculos de cristal montados uno sobre otro.
+                                    HStack(spacing: -8) {
+                                        ForEach(Array(["StockX", "GOAT", "eBay"].enumerated()), id: \.offset) { index, brand in
+                                            // StockX y GOAT enseñan solo su símbolo (la parte izquierda del logo); eBay, sus letras.
+                                            Group {
+                                                if brand == "eBay" {
+                                                    StylizedMarketplaceLogo(brand: brand).frame(width: 19, height: 9)
+                                                } else {
+                                                    StylizedMarketplaceLogo(brand: brand)
+                                                        .frame(width: 60, height: 13, alignment: .leading)
+                                                        .frame(width: brand == "GOAT" ? 17 : 14, height: 13, alignment: .leading)
+                                                        .clipped()
+                                                }
+                                            }
+                                                .frame(width: 26, height: 26)
+                                                .background(.white, in: .circle)
+                                                .glassEffect(.regular, in: .circle)
+                                                .zIndex(Double(3 - index))
+                                                .accessibilityLabel(brand)
+                                        }
+                                    }
+                                    .padding(.top, 11).padding(.trailing, 8)
                                 }
                             }
                             .buttonStyle(.plain)
