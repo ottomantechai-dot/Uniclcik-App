@@ -2310,7 +2310,23 @@ struct HomeBentoGrid: View {
         VStack(spacing: 14) {
             // Banner de cartas
             Button(action: onCards) {
-                HStack(spacing: 0) {
+                ZStack(alignment: .leading) {
+                    // Tres cartas gradadas en abanico, a la derecha, que se difuminan hacia el texto y hacia abajo.
+                    HStack(spacing: -30) {
+                        bannerCard("BannerCard1", angle: -9, y: 12)
+                        bannerCard("BannerCard2", angle: 0, y: 0).zIndex(1)
+                        bannerCard("BannerCard3", angle: 9, y: 12)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 2)
+                    .offset(y: 14)
+                    .mask {
+                        LinearGradient(stops: [.init(color: .clear, location: 0.46), .init(color: .black, location: 0.60)], startPoint: .leading, endPoint: .trailing)
+                    }
+                    .mask {
+                        LinearGradient(stops: [.init(color: .black, location: 0.70), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom)
+                    }
+
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Trading Cards").font(.system(size: 24, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                         Text("Buy · Sell · Track value").font(.system(size: 14, weight: .medium)).foregroundStyle(.black.opacity(0.5))
@@ -2321,11 +2337,11 @@ struct HomeBentoGrid: View {
                         .foregroundStyle(.black).padding(.horizontal, 16).frame(height: 36)
                         .glassEffect(.regular, in: .capsule).padding(.top, 6)
                     }
-                    Spacer(minLength: 0)
-                    Image("HomeBanner").resizable().scaledToFit().frame(width: 150, height: 130).blendMode(.multiply)
+                    .padding(.leading, 18)
                 }
-                .padding(.leading, 18).padding(.trailing, 6).padding(.vertical, 8)
-                .frame(maxWidth: .infinity).glassEffect(.regular.interactive(), in: .rect(cornerRadius: 26))
+                .frame(maxWidth: .infinity, minHeight: 150, maxHeight: 150)
+                .clipShape(.rect(cornerRadius: 26))
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 26))
             }
             .buttonStyle(.plain)
 
@@ -2358,6 +2374,15 @@ struct HomeBentoGrid: View {
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button { showReports = false } label: { Image(systemName: "xmark") } } }
             }
         }
+    }
+
+    private func bannerCard(_ name: String, angle: Double, y: CGFloat) -> some View {
+        Image(name).resizable().scaledToFit()
+            .frame(width: 78)
+            .clipShape(.rect(cornerRadius: 6))
+            .shadow(color: .black.opacity(0.22), radius: 8, y: 4)
+            .rotationEffect(.degrees(angle))
+            .offset(y: y)
     }
 
     private func bigStat(icon: String, title: String, value: String) -> some View {
