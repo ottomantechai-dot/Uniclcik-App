@@ -101,22 +101,17 @@ struct CardDetailView: View {
                         .padding(.top, 10)
                     }
                 }
-                .padding(.horizontal, 16).padding(.bottom, 30)
+                .padding(.horizontal, 16).padding(.bottom, 120)   // aire para que el difuminado de abajo no tape las últimas cartas
                 .id(card.id)
             }
             .background(Color(red: 0.965, green: 0.965, blue: 0.975).ignoresSafeArea())
-            // Barra nativa (transparente): así el gesto de volver funciona igual que en la ficha de un zapato
+            // Barra nativa, como en la ficha de un zapato: así el gesto de volver funciona igual que en la ficha de un zapato
             // y se ve la pantalla anterior por detrás al deslizar.
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     CardImage(url: setLogo, placeholder: false).frame(width: 96, height: 30)
                 }
-            }
-            .overlay(alignment: .top) {
-                LinearGradient(colors: [gray, gray.opacity(0.9), gray.opacity(0)], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 110).ignoresSafeArea(edges: .top).allowsHitTesting(false)
             }
             .modifier(BottomFade(color: gray))
             .task(id: card.setName) {
