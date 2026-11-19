@@ -2289,10 +2289,6 @@ struct HomeBentoGrid: View {
                             Spacer(minLength: 0)
                             stat(icon: "shoe.2.fill", label: "With 360°", value: "\(catalogProducts.count)")
                         }
-                        .background(alignment: .topTrailing) {
-                            StockCachedRemoteImage(url: catalogProducts.first?.primaryImageURL, maxPixelSide: 320, fillFrame: false)
-                                .frame(width: 120, height: 86).blendMode(.multiply).opacity(0.9).offset(x: 14, y: 30)
-                        }
                     }
                     .buttonStyle(.plain)
 
@@ -2333,7 +2329,7 @@ struct HomeBentoGrid: View {
                             round("doc.text.fill", dark: true)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(last.title).font(.system(size: 14, weight: .bold)).foregroundStyle(.black).lineLimit(1)
-                                Text("Sale report · " + last.createdAt.formatted(.relative(presentation: .named)))
+                                Text("Sale report · " + last.createdAt.formatted(.relative(presentation: .named).locale(Locale(identifier: "en_US"))))
                                     .font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.5)).lineLimit(1)
                             }
                             Spacer(minLength: 0)

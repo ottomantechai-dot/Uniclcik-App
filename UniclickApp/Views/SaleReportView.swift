@@ -133,8 +133,7 @@ struct SaleReportView: View {
             ForEach(report.lines.sorted { $0.netUSD > $1.netUSD }) { line in
                 VStack(spacing: 8) {
                     HStack(spacing: 10) {
-                        Circle().fill(PlatformPrice.brandColor(for: line.platform)).frame(width: 10, height: 10)
-                        Text(line.platform).font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
+                        PlatformLogoMark(platform: line.platform)
                         if line.platform == report.best?.platform {
                             Text("BEST").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
                                 .padding(.horizontal, 6).padding(.vertical, 3).background(green, in: .capsule)
@@ -434,7 +433,7 @@ struct ListingRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Circle().fill(PlatformPrice.brandColor(for: listing.platform)).frame(width: 10, height: 10)
+            PlatformLogoMark(platform: listing.platform, showsName: false)
             VStack(alignment: .leading, spacing: 1) {
                 Text(listing.platform + (listing.size.isEmpty ? "" : " · \(listing.size)"))
                     .font(.system(size: 14, weight: .bold)).foregroundStyle(.black)
@@ -493,5 +492,30 @@ struct SaleReportsHistoryView: View {
         }
         .navigationTitle("Reports")
         .fullScreenCover(item: $open) { SaleReportView(report: $0) }
+    }
+}
+
+
+/// El logo de la plataforma (StockX, GOAT, eBay, Flight Club); si no hay logo, su nombre.
+struct PlatformLogoMark: View {
+    let platform: String
+    var showsName = true
+
+    private var brand: String? {
+        let key = platform.lowercased()
+        if key.contains("stockx") { return "StockX" }
+        if key.contains("goat") { return "GOAT" }
+        if key.contains("ebay") { return "eBay" }
+        if key.contains("flight") { return "Flight Club" }
+        return nil
+    }
+
+    var body: some View {
+        if let brand {
+            StylizedMarketplaceLogo(brand: brand).frame(width: 74, height: 22, alignment: .leading)
+                .accessibilityLabel(brand)
+        } else if showsName {
+            Text(platform).font(.system(size: 15, weight: .bold)).foregroundStyle(.black)
+        }
     }
 }
