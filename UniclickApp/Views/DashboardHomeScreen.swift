@@ -1844,7 +1844,7 @@ struct DashboardMarketPricesSection: View {
             tableHeader
 
             if let featured {
-                HStack(spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
                     StockCachedRemoteImage(url: featured.primaryImageURL, maxPixelSide: 320, fillFrame: false)
                         .frame(width: 120, height: 88).blendMode(.multiply)
                         .padding(.top, 10).padding(.trailing, 14)
@@ -1853,10 +1853,11 @@ struct DashboardMarketPricesSection: View {
                             BrandLogoLabel(brand: featured.brand ?? "", compact: true)
                                 .frame(width: 30, height: 30).glassEffect(.regular, in: .circle)
                         }
-                    VStack(alignment: .leading, spacing: 8) {
+                    // Las plataformas van arriba, a la misma altura que el círculo de la marca; debajo, el nombre.
+                    VStack(alignment: .leading, spacing: 10) {
+                        MarketplaceDots(brands: ["StockX", "GOAT", "eBay", "Flight Club"], size: 30)
                         Text(featured.name).font(.system(size: 16, weight: .bold)).foregroundStyle(.black)
                             .lineLimit(2).multilineTextAlignment(.leading)
-                        MarketplaceDots(brands: ["StockX", "GOAT", "eBay", "Flight Club"], size: 30)
                     }
                     Spacer(minLength: 0)
                 }
