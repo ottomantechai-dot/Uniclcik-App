@@ -89,7 +89,6 @@ struct CardSetFilterSheet: View {
     }
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
-    private let blue = Color(red: 0.16, green: 0.44, blue: 0.98)
 
     var body: some View {
         NavigationStack {
@@ -104,7 +103,7 @@ struct CardSetFilterSheet: View {
                                     Text("\(market.sets.count) sets").font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.5))
                                 }
                                 Spacer()
-                                if market.selectedSet == nil { Image(systemName: "checkmark.circle.fill").font(.system(size: 22)).foregroundStyle(blue) }
+                                if market.selectedSet == nil { Image(systemName: "checkmark.circle.fill").font(.system(size: 22)).foregroundStyle(.black) }
                             }
                             .padding(.horizontal, 14).frame(height: 68)
                             .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
@@ -157,8 +156,9 @@ struct CardSetFilterSheet: View {
             }
             .padding(.horizontal, 8).padding(.vertical, 12)
             .frame(maxWidth: .infinity)
-            .glassEffect(on ? .regular.tint(blue.opacity(0.25)).interactive() : .regular.interactive(), in: .rect(cornerRadius: 20))
-            .overlay { RoundedRectangle(cornerRadius: 20).strokeBorder(on ? blue : .clear, lineWidth: 2) }
+            .background(on ? Color.white : Color.clear, in: .rect(cornerRadius: 20))
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+            .overlay { RoundedRectangle(cornerRadius: 20).strokeBorder(on ? Color.black : .clear, lineWidth: 1.5) }
         }
         .buttonStyle(.plain)
     }
@@ -267,7 +267,6 @@ struct CardsMarketView: View {
         return Button {
             market.choose(set)
         } label: {
-            let blue = Color(red: 0.16, green: 0.44, blue: 0.98)
             if let set {
                 AsyncImage(url: set.logoURL) { phase in
                     if let image = phase.image { image.resizable().scaledToFit() } else {
@@ -276,14 +275,16 @@ struct CardsMarketView: View {
                 }
                 .frame(width: 78, height: 32)
                 .padding(.horizontal, 10).padding(.vertical, 6)
-                .glassEffect(on ? .regular.tint(blue.opacity(0.28)).interactive() : .regular.interactive(), in: .rect(cornerRadius: 16))
-                .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(on ? blue : .clear, lineWidth: 2) }
+                .background(on ? Color.white : Color.clear, in: .rect(cornerRadius: 16))
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+                .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(on ? Color.black : .clear, lineWidth: 1.5) }
             } else {
                 // «Todas»: un círculo pequeño, del tamaño del icono.
                 Image(systemName: "square.grid.2x2.fill").font(.system(size: 16, weight: .semibold)).foregroundStyle(.black)
                     .frame(width: 44, height: 44)
-                    .glassEffect(on ? .regular.tint(blue.opacity(0.28)).interactive() : .regular.interactive(), in: .circle)
-                    .overlay { Circle().strokeBorder(on ? blue : .clear, lineWidth: 2) }
+                    .background(on ? Color.white : Color.clear, in: .circle)
+                .glassEffect(.regular.interactive(), in: .circle)
+                    .overlay { Circle().strokeBorder(on ? Color.black : .clear, lineWidth: 1.5) }
             }
         }
         .buttonStyle(.plain)

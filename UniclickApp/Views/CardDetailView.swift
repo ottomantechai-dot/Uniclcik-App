@@ -51,7 +51,9 @@ struct CardDetailView: View {
                                     .buttonStyle(.plain)
                                 }
                             }
+                            .padding(.vertical, 2)
                         }
+                        .scrollClipDisabled()   // las cartas llegan hasta el borde de la pantalla, sin corte
                         .padding(.top, 14)
                     }
 
@@ -111,6 +113,16 @@ struct CardDetailView: View {
             // Barra nativa, como en la ficha de un zapato: así el gesto de volver funciona igual que en la ficha de un zapato
             // y se ve la pantalla anterior por detrás al deslizar.
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // Arriba a la derecha, a la altura del botón de volver: la colección y dónde se compara.
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 8) {
+                        CardImage(url: setLogo, placeholder: false).frame(width: 64, height: 24)
+                        CardSourceDots(size: 24)
+                    }
+                    .padding(.horizontal, 6)
+                }
+            }
             .modifier(BottomFade(color: gray))
             .task(id: card.setName) {
                 if let known = Self.relatedCache[card.setName] { related = known.filter { $0.id != card.id }; return }
