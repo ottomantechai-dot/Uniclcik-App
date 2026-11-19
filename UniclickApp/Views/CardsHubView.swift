@@ -210,13 +210,6 @@ struct CardsMarketView: View {
 
                 if !sets.isEmpty { setsStrip }
 
-                HStack {
-                    Text(selectedSet?.name ?? (query.isEmpty ? "All cards" : "Results"))
-                        .font(.system(size: 17, weight: .bold)).foregroundStyle(.black)
-                    Spacer()
-                    if let selectedSet { Text("\(selectedSet.total) cards · \(selectedSet.year)").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary) }
-                }
-
                 LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(cards) { card in
                         Button { report = SaleReport.from(card: card) } label: { tile(card) }

@@ -310,12 +310,20 @@ struct ClosetView: View {
     }
 
     /// Closet sin entradas repetidas (mismo SKU+talla o mismo enlace de catálogo).
+    /// Nombres (en forma de dirección) de los zapatos del catálogo que tienen giro 360°.
+    private var spinSlugs: Set<String> {
+        Set(catalogVM.products.compactMap(\.primaryImageURL).flatMap { Shoe360Loader.slugs(fromImageURL: $0) }.map { $0.lowercased() })
+    }
+
     private var stockClosetItemsExcludingCatalogDuplicates: [ClosetItem] {
         var seenCatalogLinks = Set<UUID>()
         var seenIdentityKeys = Set<String>()
         var unique: [ClosetItem] = []
 
         for item in filteredActiveClosetItems {
+            // Solo se enseñan los zapatos que tienen giro 360°: los que coinciden con el catálogo.
+            // Los demás no se borran del teléfono; simplemente no salen en la lista.
+            guard spinSlugs.contains(Shoe360Loader.slug(item.catalogDisplayName).lowercased()) else { continue }
             if let catalogId = CatalogClosetBridge.catalogProductId(forClosetItem: item.id) {
                 guard !seenCatalogLinks.contains(catalogId) else { continue }
                 seenCatalogLinks.insert(catalogId)
