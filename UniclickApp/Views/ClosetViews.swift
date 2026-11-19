@@ -475,7 +475,7 @@ struct ClosetView: View {
                         withAnimation(.snappy(duration: 0.28)) { stockSearchOpen.toggle() }
                         stockSearchFocused = stockSearchOpen
                         if !stockSearchOpen { stockSearchText = "" }
-                    } label: { TopBarGlassButton(systemImage: "xmark", asset: stockSearchOpen ? nil : "IconBuscar") }
+                    } label: { TopBarGlassButton(systemImage: stockSearchOpen ? "xmark" : "magnifyingglass") }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Buscar")
                     Menu {
@@ -489,7 +489,7 @@ struct ClosetView: View {
                                 }
                             }
                         }
-                    } label: { TopBarGlassButton(systemImage: "line.3.horizontal.decrease", asset: "IconFiltro") }
+                    } label: { TopBarGlassButton(systemImage: "slider.horizontal.3") }
                         .accessibilityLabel("Filtros y orden")
                 }
             }

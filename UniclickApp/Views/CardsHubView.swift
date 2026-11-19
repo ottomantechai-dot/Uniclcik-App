@@ -35,12 +35,12 @@ struct CardsHubView: View {
                     withAnimation(.snappy(duration: 0.28)) { market.searchOpen.toggle() }
                     searchFocused = market.searchOpen
                     if !market.searchOpen, !market.query.isEmpty { market.query = ""; market.reloadToken += 1 }
-                } label: { TopBarGlassButton(systemImage: "xmark", asset: market.searchOpen ? nil : "IconBuscar") }
+                } label: { TopBarGlassButton(systemImage: market.searchOpen ? "xmark" : "magnifyingglass") }
                     .buttonStyle(.plain).accessibilityLabel("Buscar cartas")
                 Button {
                     mode = .market
                     market.showFilter = true
-                } label: { TopBarGlassButton(systemImage: "line.3.horizontal.decrease", asset: "IconFiltro") }
+                } label: { TopBarGlassButton(systemImage: "slider.horizontal.3") }
                     .buttonStyle(.plain).accessibilityLabel("Filtrar por colección")
             }
             if market.searchOpen {
