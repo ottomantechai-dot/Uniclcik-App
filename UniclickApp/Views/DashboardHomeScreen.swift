@@ -2688,14 +2688,6 @@ struct CardsShowcase: View {
             }
 
             ZStack(alignment: .bottom) {
-                // Plataforma luminosa bajo las cartas.
-                Ellipse().fill(RadialGradient(colors: [red.opacity(0.35), red.opacity(0)], center: .center, startRadius: 4, endRadius: 170))
-                    .frame(width: 340, height: 70)
-                Ellipse().strokeBorder(LinearGradient(colors: [.white, red.opacity(0.7)], startPoint: .top, endPoint: .bottom), lineWidth: 3)
-                    .frame(width: 250, height: 38).blur(radius: 0.6)
-                    .shadow(color: red.opacity(0.8), radius: 10)
-                    .padding(.bottom, 10)
-
                 ZStack {
                     ForEach(Array(cards.enumerated()), id: \.offset) { index, name in
                         let d = offset(of: index)
@@ -2711,10 +2703,10 @@ struct CardsShowcase: View {
                             .zIndex(10 - depth)
                     }
                 }
-                .padding(.bottom, 26)
+                .padding(.bottom, 8)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 300)
+            .frame(height: 276)
             .contentShape(.rect)
             .gesture(
                 DragGesture(minimumDistance: 6)
