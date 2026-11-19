@@ -22,11 +22,11 @@ struct CardsHubView: View {
             }
         }
         .background(Color(red: 0.96, green: 0.96, blue: 0.97))
-        .navigationTitle("Cartas")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                NavigationLink { SaleReportsHistoryView() } label: { Image(systemName: "doc.text.magnifyingglass") }
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            AppTopBar(title: "Cartas") {
+                NavigationLink { SaleReportsHistoryView() } label: { TopBarGlassButton(systemImage: "doc.text.magnifyingglass") }
+                    .buttonStyle(.plain)
             }
         }
         .preferredColorScheme(.light)

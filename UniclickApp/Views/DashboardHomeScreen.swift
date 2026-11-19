@@ -425,6 +425,10 @@ struct ShoeMarketDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
+                    Shoe360View(title: comparison?.matchedTitle ?? item.displayName, fallbackURL: comparison?.imageURL)
+                        .frame(height: 220)
+                        .padding(.vertical, 6)
+                        .background(Color.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                     if loading {
                         loadingSkeleton
                     } else if let comp = comparison, !comp.rows.isEmpty {

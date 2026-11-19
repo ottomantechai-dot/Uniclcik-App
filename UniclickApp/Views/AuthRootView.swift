@@ -8,10 +8,14 @@ struct AuthRootView: View {
 
     var body: some View {
         Group {
-            if Self.previewsNewSections {
+            if Self.previewsShoeReport {
+                // Solo desarrollo (-uniclickPreviewReport): informe de un zapato sin precios, para ver el giro 360°.
+                SaleReportView(report: SaleReport(title: "adidas Yeezy Boost 350 V2 Steel Grey", sku: "IF3219", scannedCode: "",
+                                                  imageURL: nil, size: "9.5", costUSD: nil, lines: [], priceIsEstimate: false))
+            } else if Self.previewsNewSections {
                 // Solo en compilaciones de desarrollo y con el argumento -uniclickPreview: enseña las
                 // secciones nuevas sin iniciar sesión, para poder probarlas en el simulador.
-                NavigationStack { CardsHubView() }
+                MainTabView()
             } else if auth.isRestoringSession {
                 ZStack {
                     Color(.systemGroupedBackground)
@@ -32,6 +36,14 @@ struct AuthRootView: View {
 }
 
 extension AuthRootView {
+    static var previewsShoeReport: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-uniclickPreviewReport")
+        #else
+        return false
+        #endif
+    }
+
     static var previewsNewSections: Bool {
         #if DEBUG
         return ProcessInfo.processInfo.arguments.contains("-uniclickPreview")

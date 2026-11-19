@@ -98,15 +98,9 @@ struct SaleReport: Identifiable, Codable, Equatable {
 
     /// Informe a partir del escaneo de una caja (código de barras).
     static func from(payload: StockScanLookupPayload, costUSD: Double? = nil, size: String? = nil) -> SaleReport {
-        var lines: [Line] = []
-        var estimate = false
-        let perPlatform = (payload.marketEstimate?.platforms ?? []).filter { $0.avg > 0 }
-        if !perPlatform.isEmpty {
-            lines = perPlatform.map { line($0.name, price: Double($0.avg)) }
-        } else if let sell = payload.sellPriceUSD ?? payload.marketEstimate?.avg, sell > 0 {
-            estimate = true
-            lines = shoePlatforms.map { line($0, price: Double(sell)) }
-        }
+        // Solo precios confirmados por cada plataforma: sin ellos, el informe no inventa cifras.
+        let estimate = false
+        let lines = (payload.marketEstimate?.platforms ?? []).filter { $0.avg > 0 }.map { line($0.name, price: Double($0.avg)) }
         return SaleReport(title: payload.productTitle, sku: payload.sku, scannedCode: payload.scannedCode,
                           imageURL: payload.imageURL, size: size, costUSD: costUSD ?? payload.buyPriceUSD.map(Double.init),
                           lines: lines, priceIsEstimate: estimate)

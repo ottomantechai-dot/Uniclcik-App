@@ -16,7 +16,6 @@ enum UpsoledMainTab: Hashable {
     case home
     case closet
     case cards
-    case settings
 }
 
 @MainActor
@@ -120,27 +119,28 @@ struct MainTabView: View {
     /// Solo el `TabView` con sus ítems; los `.environmentObject`/`task`/`onReceive` van en `mainTabChrome`.
     private var bareTabView: some View {
         TabView(selection: $tabRouter.selected) {
-            Tab(L10n.tr("tab.dashboard"), systemImage: "square.grid.2x2.fill", value: UpsoledMainTab.home) {
+            Tab("Inicio", systemImage: "house.fill", value: UpsoledMainTab.home) {
                 NavigationStack {
                     DashboardView()
+                        .safeAreaInset(edge: .top, spacing: 0) { AppTopBar(title: "Uniclick") }
                 }
             }
 
-            Tab(L10n.tr("tab.closet"), systemImage: "archivebox.fill", value: UpsoledMainTab.closet) {
+            Tab("Zapatos", systemImage: "shoe.2.fill", value: UpsoledMainTab.closet) {
                 NavigationStack {
                     ClosetView()
+                        .safeAreaInset(edge: .top, spacing: 0) {
+                            AppTopBar(title: "Zapatos") {
+                                NavigationLink { SaleReportsHistoryView() } label: { TopBarGlassButton(systemImage: "doc.text.magnifyingglass") }
+                                    .buttonStyle(.plain)
+                            }
+                        }
                 }
             }
 
             Tab("Cartas", systemImage: "rectangle.portrait.on.rectangle.portrait.fill", value: UpsoledMainTab.cards) {
                 NavigationStack {
                     CardsHubView()
-                }
-            }
-
-            Tab(L10n.tr("tab.settings"), systemImage: "gearshape.fill", value: UpsoledMainTab.settings) {
-        NavigationStack {
-                    SettingsView()
                 }
             }
         }

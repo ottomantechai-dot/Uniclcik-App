@@ -673,14 +673,8 @@ private enum StockMarketRowMetrics {
             return match.avg
         }
 
-        let base: Int = {
-            if let avg = marketPrice?.avg, avg > 0 { return avg }
-            if stockValueUSD > 0 { return Int(stockValueUSD.rounded()) }
-            if askingUSD > 0 { return Int(askingUSD.rounded()) }
-            return 0
-        }()
-        guard base > 0 else { return nil }
-        return synthesizedPlatformPrice(platform: name, base: base)
+        // Solo precios confirmados: si esa plataforma no ha dado precio, no se inventa uno.
+        return nil
     }
 
     static func synthesizedPlatformPrice(platform name: String, base: Int) -> Int {

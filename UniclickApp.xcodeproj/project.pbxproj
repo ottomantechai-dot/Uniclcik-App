@@ -132,6 +132,8 @@
 		AA000217 /* CardPacks.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000217 /* CardPacks.swift */; };
 		AA000218 /* SaleReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000218 /* SaleReportView.swift */; };
 		AA000219 /* CardsHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000219 /* CardsHubView.swift */; };
+		AA000220 /* Shoe360View.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000220 /* Shoe360View.swift */; };
+		AA000221 /* AppTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000221 /* AppTopBar.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -264,6 +266,8 @@
 		AB000217 /* CardPacks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardPacks.swift; sourceTree = "<group>"; };
 		AB000218 /* SaleReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaleReportView.swift; sourceTree = "<group>"; };
 		AB000219 /* CardsHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardsHubView.swift; sourceTree = "<group>"; };
+		AB000220 /* Shoe360View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shoe360View.swift; sourceTree = "<group>"; };
+		AB000221 /* AppTopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTopBar.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -429,6 +433,8 @@
 		AD000007 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				AB000221 /* AppTopBar.swift */,
+				AB000220 /* Shoe360View.swift */,
 				AB000014 /* GlassCard.swift */,
 				AB000015 /* MetricCard.swift */,
 				AB000016 /* CircularGauge.swift */,
@@ -677,6 +683,8 @@
 				AA000212 /* StockCategoryMarketplaceCatalog.swift in Sources */,
 				AA000213 /* StockMarketplaceConnectionsDemoView.swift in Sources */,
 				AA000214 /* MarketplaceGatewayService.swift in Sources */,
+				AA000221 /* AppTopBar.swift in Sources */,
+				AA000220 /* Shoe360View.swift in Sources */,
 				AA000219 /* CardsHubView.swift in Sources */,
 				AA000218 /* SaleReportView.swift in Sources */,
 				AA000217 /* CardPacks.swift in Sources */,
