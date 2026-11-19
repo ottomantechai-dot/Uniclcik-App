@@ -2788,10 +2788,10 @@ struct MarketplaceDots: View {
             ForEach(Array(brands.enumerated()), id: \.offset) { index, brand in
                 // StockX y GOAT enseñan solo su símbolo (la parte izquierda del logo); los demás, sus letras.
                 Group {
-                    if brand == "StockX" || brand == "GOAT" {
+                    if brand == "StockX" {
                         StylizedMarketplaceLogo(brand: brand)
-                            .frame(width: brand == "GOAT" ? 50 : 60, height: brand == "GOAT" ? 10 : 13, alignment: .leading)
-                            .frame(width: brand == "GOAT" ? 15 : 14, height: 13, alignment: .leading)
+                            .frame(width: 60, height: 13, alignment: .leading)
+                            .frame(width: 14, height: 13, alignment: .leading)
                             .clipped()
                     } else {
                         StylizedMarketplaceLogo(brand: brand).frame(width: size * 0.74, height: 9)

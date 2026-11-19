@@ -1187,11 +1187,11 @@ struct ClosetView: View {
         VStack(alignment: .leading, spacing: 8) {
             // Arriba: la marca a la izquierda y las plataformas a la derecha.
             HStack {
-                BrandLogoLabel(brand: brand, compact: true).frame(width: 30, height: 30)
+                BrandLogoLabel(brand: brand, compact: true).frame(width: 34, height: 34)
                     .background(.white, in: .circle)
                     .overlay { Circle().strokeBorder(Color.black.opacity(0.10), lineWidth: 0.5) }
                 Spacer(minLength: 0)
-                MarketplaceDots(brands: ["StockX", "GOAT", "eBay"])
+                MarketplaceDots(brands: ["StockX", "GOAT", "eBay"], size: 32)
             }
             photo().frame(maxWidth: .infinity).frame(height: 96).blendMode(.multiply)
             Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)

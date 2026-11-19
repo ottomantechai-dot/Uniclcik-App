@@ -1592,10 +1592,15 @@ struct StockBrowseFiltersSheet: View {
                                         .buttonStyle(.plain).accessibilityLabel(brand)
                                     }
                                 }
-                                .padding(.vertical, 2)
+                                .padding(.vertical, 2).padding(.horizontal, 16)
                             }
-                            // Las marcas se deslizan sin salirse del contenedor.
-                            .clipShape(.rect(cornerRadius: 16))
+                            // Las marcas llegan hasta los bordes del contenedor y se desvanecen ahí, sin corte.
+                            .mask {
+                                LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.06),
+                                                       .init(color: .black, location: 0.94), .init(color: .clear, location: 1)],
+                                               startPoint: .leading, endPoint: .trailing)
+                            }
+                            .padding(.horizontal, -16)
                         }
                     }
 
