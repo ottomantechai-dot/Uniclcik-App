@@ -2421,10 +2421,16 @@ struct HomeTrendingRow: View {
                                         .frame(width: 118, height: 90).blendMode(.multiply)
                                     Text(product.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
                                         .lineLimit(2).multilineTextAlignment(.leading).frame(width: 118, height: 34, alignment: .topLeading)
-                                    BrandLogoLabel(brand: product.brand ?? "")
                                 }
-                                .padding(12)
+                                .padding(12).padding(.top, 14)
                                 .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+                                .overlay(alignment: .topLeading) {
+                                    // La marca, en un círculo de cristal en la esquina.
+                                    BrandLogoLabel(brand: product.brand ?? "", compact: true)
+                                        .frame(width: 30, height: 30)
+                                        .glassEffect(.regular, in: .circle)
+                                        .padding(8)
+                                }
                             }
                             .buttonStyle(.plain)
                         }
@@ -2477,6 +2483,7 @@ struct HomeTrendingCardsRow: View {
                             }
                             .padding(12)
                             .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+                            .overlay(alignment: .topTrailing) { CardEditionBadge(card: card).padding(6) }
                         }
                         .buttonStyle(.plain)
                     }
@@ -2501,6 +2508,28 @@ struct BottomFade: ViewModifier {
                 .frame(height: 120)
                 .ignoresSafeArea(edges: .bottom)
                 .allowsHitTesting(false)
+        }
+    }
+}
+
+
+/// Etiqueta de cristal en la esquina de una carta: el logo de su edición (colección).
+struct CardEditionBadge: View {
+    let card: PokemonCardData
+    private static let logos: [String: URL] = {
+        var map: [String: URL] = [:]
+        for set in PokemonTCGClient.storedSets() { if let url = set.logoURL { map[set.name] = url } }
+        return map
+    }()
+
+    var body: some View {
+        if let url = Self.logos[card.setName] {
+            AsyncImage(url: url) { phase in
+                if let image = phase.image { image.resizable().scaledToFit() } else { Color.clear }
+            }
+            .frame(width: 44, height: 18)
+            .padding(.horizontal, 7).padding(.vertical, 5)
+            .glassEffect(.regular, in: .capsule)
         }
     }
 }

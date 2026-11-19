@@ -2392,6 +2392,8 @@ struct StockScanResultSheet: View {
 /// La marca del zapato con su logo (Nike, adidas, Jordan, New Balance, Puma, Dior); las demás, con su nombre.
 struct BrandLogoLabel: View {
     let brand: String
+    /// En pequeño, para ir dentro de un círculo: el logo o la inicial de la marca.
+    var compact = false
 
     private var asset: String? {
         let key = brand.lowercased().replacingOccurrences(of: " ", with: "")
@@ -2400,7 +2402,14 @@ struct BrandLogoLabel: View {
     }
 
     var body: some View {
-        if let asset {
+        if compact {
+            if let asset {
+                Image(asset).resizable().scaledToFit().frame(width: 18, height: 14).foregroundStyle(.black)
+                    .accessibilityLabel(brand)
+            } else {
+                Text(String(brand.prefix(1)).uppercased()).font(.system(size: 13, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+            }
+        } else if let asset {
             Image(asset).resizable().scaledToFit()
                 .frame(width: 34, height: 18, alignment: .leading)
                 .foregroundStyle(.black)

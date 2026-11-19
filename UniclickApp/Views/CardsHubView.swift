@@ -302,6 +302,7 @@ struct CardsMarketView: View {
         }
         .padding(6)
         .background(Color.white, in: .rect(cornerRadius: 12))
+        .overlay(alignment: .topTrailing) { CardEditionBadge(card: card).scaleEffect(0.8, anchor: .topTrailing).padding(3) }
     }
 
     private func reload() async {
