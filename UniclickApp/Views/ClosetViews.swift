@@ -516,11 +516,52 @@ struct ClosetView: View {
             if closetSelectionMode {
                 stockFilterSortToolbar.padding(.horizontal, 16)
             }
+            if brandNames.count > 1 { brandStrip }
         }
         .padding(.bottom, 10)
         .background {
             LinearGradient(colors: [.white, .white.opacity(0.92), .white.opacity(0)], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea(edges: .top)
+        }
+    }
+
+    /// Marcas presentes en la lista, de la que más zapatos tiene a la que menos.
+    private var brandNames: [String] {
+        var counts: [String: Int] = [:]
+        for product in catalogVM.products { if let brand = product.brand, !brand.isEmpty { counts[brand, default: 0] += 1 } }
+        return counts.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map(\.key)
+    }
+
+    /// Tira de marcas, como la de colecciones en Cards: «todas» en un círculo y cada marca con su logo.
+    private var brandStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            GlassEffectContainer(spacing: 10) {
+                HStack(spacing: 10) {
+                    let all = stockFilters.brands.isEmpty
+                    Button { stockFilters.brands = [] } label: {
+                        Image(systemName: "square.grid.2x2.fill").font(.system(size: 16, weight: .semibold)).foregroundStyle(.black)
+                            .frame(width: 44, height: 44)
+                            .background(all ? Color.white : Color.clear, in: .circle)
+                            .glassEffect(.regular.interactive(), in: .circle)
+                            .overlay { Circle().strokeBorder(all ? Color.black : .clear, lineWidth: 1.5) }
+                    }
+                    .buttonStyle(.plain).accessibilityLabel("All brands")
+                    ForEach(brandNames, id: \.self) { brand in
+                        let key = StockFilterEngine.brandKey(brand) ?? brand
+                        let on = stockFilters.brands.contains(key)
+                        Button { stockFilters.brands = on ? [] : [key] } label: {
+                            BrandLogoLabel(brand: brand, wide: true)
+                                .frame(width: 78, height: 32)
+                                .padding(.horizontal, 10).padding(.vertical, 6)
+                                .background(on ? Color.white : Color.clear, in: .rect(cornerRadius: 16))
+                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+                                .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(on ? Color.black : .clear, lineWidth: 1.5) }
+                        }
+                        .buttonStyle(.plain).accessibilityLabel(brand)
+                    }
+                }
+                .padding(.vertical, 4).padding(.horizontal, 16)
+            }
         }
     }
 
@@ -540,7 +581,7 @@ struct ClosetView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 8) {
                         Color.clear
-                            .frame(height: 60 + (stockSearchOpen ? 60 : 0) + (closetSelectionMode ? 44 : 0))
+                            .frame(height: 60 + (stockSearchOpen ? 60 : 0) + (closetSelectionMode ? 44 : 0) + (brandNames.count > 1 ? 62 : 0))
                             .id("stockScrollTop")
                         productsTabContent
                     }

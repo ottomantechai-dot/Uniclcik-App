@@ -75,6 +75,8 @@ struct CardSetFilterSheet: View {
     @ObservedObject var market: CardsMarketModel
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
+    @State private var searchOpen = false
+    @FocusState private var searchFocused: Bool
 
     private var groups: [(series: String, sets: [PokemonSetData])] {
         let shown = text.isEmpty ? market.sets : market.sets.filter { $0.name.localizedCaseInsensitiveContains(text) || $0.series.localizedCaseInsensitiveContains(text) }
@@ -113,10 +115,39 @@ struct CardSetFilterSheet: View {
                 }
             }
             .background(Color(red: 0.965, green: 0.965, blue: 0.975).ignoresSafeArea())
-            .searchable(text: $text, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search sets")
-            .navigationTitle("Sets")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Image(systemName: "xmark") } } }
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                // Misma cabecera que fuera: cerrar a la izquierda y la lupa redonda a la derecha.
+                VStack(spacing: 8) {
+                    HStack {
+                        Button { dismiss() } label: { TopBarGlassButton(systemImage: "xmark") }.buttonStyle(.plain)
+                        Spacer()
+                        Text("Sets").font(.system(size: 17, weight: .bold, design: .rounded)).foregroundStyle(.black)
+                        Spacer()
+                        Button {
+                            withAnimation(.snappy(duration: 0.28)) { searchOpen.toggle() }
+                            searchFocused = searchOpen
+                            if !searchOpen { text = "" }
+                        } label: { TopBarGlassButton(systemImage: searchOpen ? "xmark.circle" : "magnifyingglass") }
+                            .buttonStyle(.plain).accessibilityLabel("Search sets")
+                    }
+                    if searchOpen {
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                            TextField("Search sets", text: $text).autocorrectionDisabled().focused($searchFocused)
+                        }
+                        .padding(.horizontal, 14).frame(height: 46)
+                        .background(.white, in: .capsule)
+                        .glassEffect(.regular, in: .capsule)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
+                .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 10)
+                .background {
+                    LinearGradient(colors: [Color(red: 0.965, green: 0.965, blue: 0.975), Color(red: 0.965, green: 0.965, blue: 0.975).opacity(0)], startPoint: .center, endPoint: .bottom)
+                        .ignoresSafeArea(edges: .top)
+                }
+            }
             .task { if market.sets.isEmpty { market.sets = await PokemonTCGClient.fetchSets() } }
         }
         .preferredColorScheme(.light)

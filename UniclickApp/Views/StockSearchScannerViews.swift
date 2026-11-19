@@ -2394,6 +2394,8 @@ struct BrandLogoLabel: View {
     let brand: String
     /// En pequeño, para ir dentro de un círculo: el logo o la inicial de la marca.
     var compact = false
+    /// Para las fichas de la tira de marcas: logo más grande, o el nombre si no hay logo.
+    var wide = false
 
     private var asset: String? {
         let key = brand.lowercased().replacingOccurrences(of: " ", with: "")
@@ -2402,7 +2404,14 @@ struct BrandLogoLabel: View {
     }
 
     var body: some View {
-        if compact {
+        if wide {
+            if let asset {
+                Image(asset).resizable().scaledToFit().frame(width: 56, height: 24).foregroundStyle(.black)
+                    .accessibilityLabel(brand)
+            } else {
+                Text(brand).font(.system(size: 13, weight: .heavy, design: .rounded)).foregroundStyle(.black).lineLimit(1).minimumScaleFactor(0.7)
+            }
+        } else if compact {
             if let asset {
                 Image(asset).resizable().scaledToFit().frame(width: 18, height: 14).foregroundStyle(.black)
                     .accessibilityLabel(brand)
