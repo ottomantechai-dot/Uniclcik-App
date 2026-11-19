@@ -8,7 +8,11 @@ struct AuthRootView: View {
 
     var body: some View {
         Group {
-            if auth.isRestoringSession {
+            if Self.previewsNewSections {
+                // Solo en compilaciones de desarrollo y con el argumento -uniclickPreview: enseña las
+                // secciones nuevas sin iniciar sesión, para poder probarlas en el simulador.
+                NavigationStack { CardsHubView() }
+            } else if auth.isRestoringSession {
                 ZStack {
                     Color(.systemGroupedBackground)
                         .ignoresSafeArea()
@@ -24,6 +28,16 @@ struct AuthRootView: View {
         .onOpenURL { url in
             SupabaseClientProvider.shared.auth.handle(url)
         }
+    }
+}
+
+extension AuthRootView {
+    static var previewsNewSections: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-uniclickPreview")
+        #else
+        return false
+        #endif
     }
 }
 

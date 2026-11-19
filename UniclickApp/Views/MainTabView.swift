@@ -15,6 +15,7 @@ extension Notification.Name {
 enum UpsoledMainTab: Hashable {
     case home
     case closet
+    case cards
     case settings
 }
 
@@ -128,6 +129,12 @@ struct MainTabView: View {
             Tab(L10n.tr("tab.closet"), systemImage: "archivebox.fill", value: UpsoledMainTab.closet) {
                 NavigationStack {
                     ClosetView()
+                }
+            }
+
+            Tab("Cartas", systemImage: "rectangle.portrait.on.rectangle.portrait.fill", value: UpsoledMainTab.cards) {
+                NavigationStack {
+                    CardsHubView()
                 }
             }
 

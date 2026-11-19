@@ -622,7 +622,7 @@ struct ClosetView: View {
                 },
                 onDismiss: { scanLookupPayload = nil }
             )
-            .presentationDetents([.height(340), .medium])
+            .presentationDetents([.height(420), .large])
             .presentationDragIndicator(.visible)
         }
         .fullScreenCover(isPresented: $showStockBarcodeScanner) {
@@ -5471,6 +5471,8 @@ struct MarketComparatorView: View {
                 Text("Sin diferencia de precio entre plataformas para calcular margen.")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
+
+            ComparisonSaleReportButton(comparison: comp)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -6408,5 +6410,32 @@ private struct BulkStockCategorySheet: View {
             }
         }
         .preferredColorScheme(.light)
+    }
+}
+
+
+// MARK: - Informe de venta desde el comparador
+
+/// Botón que abre el informe de venta del producto comparado (con selector de talla).
+struct ComparisonSaleReportButton: View {
+    let comparison: MarketComparison
+    @State private var report: SaleReport?
+
+    var body: some View {
+        Button {
+            report = SaleReport.from(comparison: comparison)
+        } label: {
+            Label("Informe de venta y publicar", systemImage: "doc.text.magnifyingglass")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 46)
+                .background(Color.black, in: RoundedRectangle(cornerRadius: 13))
+        }
+        .buttonStyle(.plain)
+        .sheet(item: $report) { item in
+            SaleReportView(report: item, sizes: comparison.sizes) { size, cost in
+                SaleReport.from(comparison: comparison, size: size, costUSD: cost)
+            }
+        }
     }
 }

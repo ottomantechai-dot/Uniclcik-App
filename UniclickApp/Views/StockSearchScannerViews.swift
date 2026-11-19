@@ -2243,6 +2243,7 @@ struct StockScanResultSheet: View {
     let payload: StockScanLookupPayload
     var onViewStockItem: (UUID) -> Void
     var onDismiss: () -> Void
+    @State private var saleReport: SaleReport?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -2296,6 +2297,20 @@ struct StockScanResultSheet: View {
             }
             .padding(.horizontal, 18)
             .padding(.top, 18)
+
+            Button {
+                saleReport = SaleReport.from(payload: payload)
+            } label: {
+                Label("Ver informe de venta", systemImage: "doc.text.magnifyingglass")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.white)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(Color.black, in: RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+            .sheet(item: $saleReport) { SaleReportView(report: $0) }
 
             if let itemID = payload.matchingStockItemID {
                 Button {
