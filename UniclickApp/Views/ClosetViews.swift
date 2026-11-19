@@ -198,6 +198,7 @@ struct ClosetView: View {
     @State private var catalogSelectedIDs = Set<UUID>()
     @State private var showBulkCategorySheet = false
     @State private var catalogDetailBusy = false
+    @State private var openedCatalogProduct: UpsoledProduct?
     @State private var removalRequest: StockRemovalRequest?
     @State private var permanentDeleteItem: ClosetItem?
     @State private var marketPrefetchBusy = false
@@ -673,6 +674,9 @@ struct ClosetView: View {
             )
         }
         .navigationDestination(isPresented: $showSaleReports) { SaleReportsHistoryView() }
+        .navigationDestination(item: $openedCatalogProduct) { product in
+            CatalogShoePreview(product: product).toolbar(.hidden, for: .tabBar)
+        }
         .sheet(item: $scanLookupPayload) { payload in
             StockScanResultSheet(
                 payload: payload,
@@ -697,10 +701,10 @@ struct ClosetView: View {
             )
         }
         .overlay {
-            if scanLookupBusy || catalogDetailBusy {
+            if scanLookupBusy {
                 ZStack {
                     Color.black.opacity(0.25).ignoresSafeArea()
-                    ProgressView(catalogDetailBusy ? "Opening item…" : L10n.tr("price.searching"))
+                    ProgressView(L10n.tr("price.searching"))
                         .padding(20)
                         .background(RoundedRectangle(cornerRadius: 16).fill(Color.white))
                 }
@@ -937,13 +941,9 @@ struct ClosetView: View {
 
     @MainActor
     private func openCatalogDetail(_ product: UpsoledProduct) {
-        Task {
-            catalogDetailBusy = true
-            defer { catalogDetailBusy = false }
-            let item = await CatalogClosetBridge.ensureClosetItem(for: product, in: modelContext)
-            garmentDetailItemID = item.id
-            ClosetAnalytics.named("closet_item_detail_open")
-        }
+        // Se abre al instante la ficha del zapato; lo que tarde en llegar se ve en esqueleto.
+        openedCatalogProduct = product
+        ClosetAnalytics.named("closet_item_detail_open")
     }
 
     @MainActor
