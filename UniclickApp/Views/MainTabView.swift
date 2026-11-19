@@ -67,8 +67,8 @@ struct MainTabView: View {
         .environmentObject(invoiceHistory)
             .environmentObject(addClosetFlowVM)
             /// Ítem seleccionado: azul marca; ítems no seleccionados: negro (`MainTabBarAppearance`).
-            .accentColor(PremiumAccent.tabActive)
-            .tint(PremiumAccent.tabActive)
+            .accentColor(Color.black)
+            .tint(Color.black)
         .onAppear {
             ClosetInventoryRepair.restoreAllSoldToStock(in: modelContext)
             MainTabBarAppearance.applyBlackInactiveBlueSelected()
@@ -120,84 +120,35 @@ struct MainTabView: View {
 
     /// Solo el `TabView` con sus ítems; los `.environmentObject`/`task`/`onReceive` van en `mainTabChrome`.
     private var bareTabView: some View {
+        // Barra nativa de iOS: es la que tiene el cristal líquido de verdad (la burbuja que hace de lupa).
+        // Solo iconos, en negro: relleno en la pestaña abierta, contorno en las demás.
         TabView(selection: $tabRouter.selected) {
             Tab(value: UpsoledMainTab.home) {
                 NavigationStack {
                     DashboardView()
                         .safeAreaInset(edge: .top, spacing: 0) { AppTopBar(title: "Uniclick") }
                 }
-                .toolbar(.hidden, for: .tabBar)
+            } label: {
+                Image(tabRouter.selected == .home ? "TabInicio" : "TabInicioLinea").accessibilityLabel("Home")
             }
 
             Tab(value: UpsoledMainTab.closet) {
                 NavigationStack {
                     ClosetView()
                 }
-                .toolbar(.hidden, for: .tabBar)
+            } label: {
+                Image(tabRouter.selected == .closet ? "TabZapatos" : "TabZapatosLinea").accessibilityLabel("Sneakers")
             }
 
             Tab(value: UpsoledMainTab.cards) {
                 NavigationStack {
                     CardsHubView()
                 }
-                .toolbar(.hidden, for: .tabBar)
+            } label: {
+                Image(tabRouter.selected == .cards ? "TabCartas" : "TabCartasLinea").accessibilityLabel("Cards")
             }
         }
-        .overlay(alignment: .bottom) {
-            if !tabRouter.barHidden {
-                AppBottomBar(selected: $tabRouter.selected)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
-        .animation(.snappy(duration: 0.25), value: tabRouter.barHidden)
-    }
-}
-
-/// Barra de abajo propia: una cápsula de cristal compacta, en negro. El icono de la pestaña abierta
-/// va relleno; los demás, en contorno.
-struct AppBottomBar: View {
-    @Binding var selected: UpsoledMainTab
-    @Namespace private var pill
-
-    private let items: [(tab: UpsoledMainTab, icon: String, name: String)] = [
-        (.home, "TabInicio", "Home"), (.closet, "TabZapatos", "Sneakers"), (.cards, "TabCartas", "Cards"),
-    ]
-
-    var body: some View {
-        // Cristal líquido de verdad: la cápsula de fondo y la burbuja de la pestaña abierta son dos
-        // piezas de cristal que se funden al cambiar de pestaña.
-        GlassEffectContainer(spacing: 6) {
-            HStack(spacing: 4) {
-                ForEach(items, id: \.tab) { item in
-                    let on = selected == item.tab
-                    // La zapatilla es más ancha que alta: se dibuja un poco mayor para equilibrar.
-                    let side: CGFloat = item.tab == .closet ? 33 : 25
-                    Button {
-                        withAnimation(.bouncy(duration: 0.35)) { selected = item.tab }
-                    } label: {
-                        Image(on ? item.icon : item.icon + "Linea")
-                            .resizable().scaledToFit()
-                            .frame(width: side, height: side)
-                            .foregroundStyle(.black.opacity(on ? 1 : 0.6))
-                            .frame(width: 64, height: 44)
-                            .background {
-                                if on {
-                                    Capsule().fill(.clear)
-                                        .glassEffect(.clear.interactive(), in: .capsule)
-                                        .glassEffectID("burbuja", in: pill)
-                                }
-                            }
-                            .contentShape(.capsule)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(item.name)
-                    .accessibilityAddTraits(on ? .isSelected : [])
-                }
-            }
-            .padding(4)
-            .glassEffect(.regular, in: .capsule)
-        }
-        .padding(.bottom, 2)
+        .tint(.black)
     }
 }
 

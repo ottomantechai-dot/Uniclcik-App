@@ -596,7 +596,7 @@ struct ClosetView: View {
                 tabRouter.addTabOpenPipeline = false
             }
         }
-        .onChange(of: tabRouter.showAddStockFlow || garmentDetailItemID != nil) { _, detail in tabRouter.barHidden = detail }
+        .toolbar((tabRouter.showAddStockFlow || garmentDetailItemID != nil) ? .hidden : .visible, for: .tabBar)
         .navigationDestination(item: $garmentDetailItemID) { itemID in
             if let item = closetItems.first(where: { $0.id == itemID }) {
                 ClosetGarmentDetailView(item: item)
