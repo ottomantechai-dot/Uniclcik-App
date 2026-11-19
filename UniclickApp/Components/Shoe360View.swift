@@ -7,7 +7,7 @@ import UIKit
 
 @MainActor
 final class Shoe360Loader: ObservableObject {
-    static let frameCount = 36
+    nonisolated static let frameCount = 36
     @Published var frames: [UIImage?] = Array(repeating: nil, count: frameCount)
     @Published var available = false
     private var loadedTitle = ""
@@ -23,7 +23,7 @@ final class Shoe360Loader: ObservableObject {
     }
 
     nonisolated static func url(slug: String, frame: Int) -> URL? {
-        URL(string: String(format: "https://images.stockx.com/360/%@/Images/%@/Lv2/img%02d.jpg?w=700&q=60&fm=jpg", slug, slug, frame + 1))
+        URL(string: String(format: "https://images.stockx.com/360/%@/Images/%@/Lv2/img%02d.jpg?w=560&q=55&fm=jpg", slug, slug, frame + 1))
     }
 
     /// Prueba cada nombre (el de StockX primero) hasta dar con uno que tenga giro.
@@ -33,20 +33,12 @@ final class Shoe360Loader: ObservableObject {
         loadedTitle = key
         frames = Array(repeating: nil, count: Self.frameCount)
         available = false
-        var slugs: [String] = []
-        for title in titles {
-            for option in [Self.slug(title), Self.slug(title.replacingOccurrences(of: "Adidas", with: "adidas"))] where !option.isEmpty && !slugs.contains(option) {
-                slugs.append(option)
-            }
+        guard let slug = await Self.resolveSlug(titles: titles), loadedTitle == key else { return }
+        // La primera foto sale al instante (del disco si ya se vio antes); el resto llega en paralelo.
+        if let first = await Self.image(slug: slug, frame: 0) {
+            frames[0] = first
+            available = true
         }
-        var found: (slug: String, image: UIImage)?
-        for slug in slugs.prefix(6) {
-            if let first = await Self.image(slug: slug, frame: 0) { found = (slug, first); break }
-        }
-        guard let found, loadedTitle == key else { return }
-        frames[0] = found.image
-        available = true
-        let slug = found.slug
         await withTaskGroup(of: (Int, UIImage?).self) { group in
             for frame in 1..<Self.frameCount {
                 group.addTask { (frame, await Self.image(slug: slug, frame: frame)) }
@@ -57,14 +49,61 @@ final class Shoe360Loader: ObservableObject {
         }
     }
 
+    /// Descarga el giro por adelantado (lista del stock, tendencias) para que al abrir el zapato ya esté.
+    nonisolated static func prefetch(titles: [String]) async {
+        guard let slug = await resolveSlug(titles: titles) else { return }
+        await withTaskGroup(of: Void.self) { group in
+            for frame in 0..<frameCount {
+                group.addTask { _ = await image(slug: slug, frame: frame) }
+            }
+        }
+    }
+
+    // MARK: Qué nombre tiene giro (se recuerda entre aperturas)
+
+    private nonisolated static func resolveSlug(titles: [String]) async -> String? {
+        var slugs: [String] = []
+        for title in titles {
+            for option in [slug(title), slug(title.replacingOccurrences(of: "Adidas", with: "adidas"))] where !option.isEmpty && !slugs.contains(option) {
+                slugs.append(option)
+            }
+        }
+        let defaults = UserDefaults.standard
+        var known = (defaults.dictionary(forKey: "shoe360.slugs") as? [String: String]) ?? [:]
+        for option in slugs { if let hit = known[option], !hit.isEmpty { return hit } }
+        for option in slugs.prefix(6) where known[option] == nil {
+            if await image(slug: option, frame: 0) != nil {
+                for name in slugs { known[name] = option }
+                defaults.set(known, forKey: "shoe360.slugs")
+                return option
+            }
+        }
+        return nil
+    }
+
+    // MARK: Fotos (memoria → disco → red)
+
+    private nonisolated static let folder: URL = {
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("shoe360", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }()
+
     private nonisolated static func image(slug: String, frame: Int) async -> UIImage? {
+        let name = "\(slug)-\(frame).jpg" as NSString
+        if let hit = cache.object(forKey: name) { return hit }
+        let file = folder.appendingPathComponent(name as String)
+        if let data = try? Data(contentsOf: file), let image = UIImage(data: data) {
+            cache.setObject(image, forKey: name)
+            return image
+        }
         guard let url = url(slug: slug, frame: frame) else { return nil }
-        if let hit = cache.object(forKey: url.absoluteString as NSString) { return hit }
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               (response as? HTTPURLResponse)?.statusCode == 200, let image = UIImage(data: data) else { return nil }
-        cache.setObject(image, forKey: url.absoluteString as NSString)
+        cache.setObject(image, forKey: name)
+        try? data.write(to: file, options: .atomic)
         return image
     }
 }

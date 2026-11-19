@@ -66,72 +66,132 @@ struct HidesChromeOnScroll: ViewModifier {
 struct CardsMarketView: View {
     @Binding var chromeHidden: Bool
     @State private var query = ""
+    @State private var sets: [PokemonSetData] = []
+    @State private var selectedSet: PokemonSetData?
     @State private var cards: [PokemonCardData] = []
+    @State private var page = 0
+    @State private var reachedEnd = false
     @State private var loading = false
-    @State private var searched = false
     @State private var report: SaleReport?
+    @State private var loadToken = 0
+    @State private var failed = false
 
-    private let suggestions = ["Charizard", "Pikachu", "Mewtwo", "Umbreon", "Gengar", "Rayquaza"]
+    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
+    /// Lo que se pide al catálogo: nombre buscado, colección elegida, o todas las cartas.
+    private var catalogQuery: String {
+        var parts: [String] = []
+        let name = query.trimmingCharacters(in: .whitespaces)
+        if !name.isEmpty { parts.append("name:\"\(name)*\"") }
+        if let selectedSet { parts.append("set.id:\(selectedSet.id)") }
+        return parts.isEmpty ? "supertype:pokemon" : parts.joined(separator: " ")
+    }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            LazyVStack(alignment: .leading, spacing: 14) {
                 Color.clear.frame(height: 96)
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     TextField("Buscar una carta por nombre", text: $query)
                         .submitLabel(.search).autocorrectionDisabled()
-                        .onSubmit { Task { await search(query) } }
+                        .onSubmit { Task { await reload() } }
+                    if !query.isEmpty {
+                        Button { query = ""; Task { await reload() } } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    }
                 }
                 .padding(.horizontal, 14).frame(height: 46)
                 .background(Color.white, in: .rect(cornerRadius: 14))
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(suggestions, id: \.self) { name in
-                            Button(name) { query = name; Task { await search(name) } }
-                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
-                                .padding(.horizontal, 12).frame(height: 34)
-                                .background(Color.white, in: .capsule)
-                        }
+                if !sets.isEmpty { setsStrip }
+
+                HStack {
+                    Text(selectedSet?.name ?? (query.isEmpty ? "Todas las cartas" : "Resultados"))
+                        .font(.system(size: 17, weight: .bold)).foregroundStyle(.black)
+                    Spacer()
+                    if let selectedSet { Text("\(selectedSet.total) cartas · \(selectedSet.year)").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary) }
+                }
+
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(cards) { card in
+                        Button { report = SaleReport.from(card: card) } label: { tile(card) }
+                            .buttonStyle(.plain)
+                            .onAppear { if card.id == cards.last?.id { Task { await loadMore() } } }
                     }
                 }
 
                 if loading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
-                } else if cards.isEmpty {
-                    Text(searched ? "No encontramos cartas con ese nombre." : "Busca una carta para ver su precio de mercado y sacar su informe de venta.")
-                        .font(.system(size: 14)).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity).padding(.top, 40).multilineTextAlignment(.center)
-                } else {
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                        ForEach(cards) { card in
-                            Button { report = SaleReport.from(card: card) } label: { tile(card) }
-                                .buttonStyle(.plain)
-                        }
+                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 24)
+                } else if failed {
+                    VStack(spacing: 10) {
+                        Text("El catálogo de cartas no respondió.").font(.system(size: 14)).foregroundStyle(.secondary)
+                        Button("Reintentar") { Task { await loadMore() } }
+                            .font(.system(size: 14, weight: .semibold)).buttonStyle(.borderedProminent).tint(.black)
                     }
+                    .frame(maxWidth: .infinity).padding(.vertical, 24)
+                } else if cards.isEmpty {
+                    Text("No encontramos cartas con ese nombre.")
+                        .font(.system(size: 14)).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity).padding(.top, 30)
                 }
             }
             .padding(16)
         }
         .modifier(HidesChromeOnScroll(hidden: $chromeHidden))
-        .task { if cards.isEmpty { await search("Charizard") } }
+        .task {
+            if cards.isEmpty { await reload() }
+            if sets.isEmpty { sets = await PokemonTCGClient.fetchSets() }
+        }
         .sheet(item: $report) { SaleReportView(report: $0) }
+    }
+
+    private var setsStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 10) {
+                setChip(nil)
+                ForEach(sets) { setChip($0) }
+            }
+        }
+    }
+
+    private func setChip(_ set: PokemonSetData?) -> some View {
+        let on = selectedSet?.id == set?.id
+        return Button {
+            selectedSet = set
+            Task { await reload() }
+        } label: {
+            VStack(spacing: 6) {
+                if let set {
+                    AsyncImage(url: set.logoURL) { phase in
+                        if let image = phase.image { image.resizable().scaledToFit() } else { Color.clear }
+                    }
+                    .frame(width: 96, height: 40)
+                } else {
+                    Image(systemName: "square.grid.2x2.fill").font(.system(size: 22)).foregroundStyle(.black).frame(width: 96, height: 40)
+                }
+                Text(set?.name ?? "Todas").font(.system(size: 11, weight: .semibold)).foregroundStyle(.black).lineLimit(1).frame(width: 96)
+            }
+            .padding(10)
+            .background(Color.white, in: .rect(cornerRadius: 16))
+            .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(on ? Color.black : .clear, lineWidth: 2) }
+        }
+        .buttonStyle(.plain)
     }
 
     private func tile(_ card: PokemonCardData) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            AsyncImage(url: card.imageURL) { phase in
+            AsyncImage(url: card.thumbURL) { phase in
                 if let image = phase.image { image.resizable().scaledToFit() } else {
-                    RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.06)).aspectRatio(0.72, contentMode: .fit)
+                    RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.06))
                 }
             }
+            .aspectRatio(0.72, contentMode: .fit)
             .frame(maxWidth: .infinity)
             Text(card.name).font(.system(size: 14, weight: .bold)).foregroundStyle(.black).lineLimit(1)
             Text(card.setName).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             HStack {
                 Text(card.tcgMarketUSD.map(SaleReport.usd) ?? "Sin precio")
-                    .font(.system(size: 15, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                    .font(.system(size: 15, weight: .heavy, design: .rounded)).foregroundStyle(card.tcgMarketUSD == nil ? Color.secondary : .black)
                 Spacer()
                 if card.changePercent != 0 {
                     Text(String(format: "%+.0f%%", card.changePercent))
@@ -143,13 +203,28 @@ struct CardsMarketView: View {
         .background(Color.white, in: .rect(cornerRadius: 16))
     }
 
-    private func search(_ text: String) async {
-        let name = text.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
+    private func reload() async {
+        loadToken += 1
+        cards = []
+        page = 0
+        reachedEnd = false
+        failed = false
+        await loadMore()
+    }
+
+    private func loadMore() async {
+        guard !loading, !reachedEnd else { return }
         loading = true
-        cards = await PokemonTCGClient.fetchCards(query: "name:\"\(name)*\"", limit: 20)
+        let token = loadToken
+        let result = await PokemonTCGClient.fetchPage(query: catalogQuery, page: page + 1)
         loading = false
-        searched = true
+        guard token == loadToken else { await loadMore(); return }
+        guard let next = result else { failed = true; return }
+        failed = false
+        page += 1
+        if next.count < 30 { reachedEnd = true }
+        let known = Set(cards.map(\.id))
+        cards += next.filter { !known.contains($0.id) }
     }
 }
 
@@ -177,8 +252,8 @@ struct CardPacksView: View {
 
     private var packCard: some View {
         VStack(spacing: 14) {
-            PackArt().frame(width: 150, height: 210)
-                .shadow(color: .black.opacity(0.25), radius: 18, y: 10)
+            PackArt().frame(height: 250)
+                .shadow(color: Color(red: 0.42, green: 0.20, blue: 0.95).opacity(0.35), radius: 22, y: 12)
             Text(store.packs == 1 ? "Tienes 1 sobre" : "Tienes \(store.packs) sobres")
                 .font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.black)
             Text("Cada sobre trae \(CardPackStore.packSize) cartas y la última es rara o mejor. Ganas un sobre al día y otro por cada caja que escaneas.")
@@ -233,25 +308,24 @@ struct CardPacksView: View {
     }
 }
 
-/// El dibujo del sobre cerrado.
+/// El sobre cerrado (arte propio de Uniclick).
 struct PackArt: View {
+    static let ratio: CGFloat = 688.0 / 1024.0
     var body: some View {
-        RoundedRectangle(cornerRadius: 16)
-            .fill(LinearGradient(colors: [Color(red: 0.16, green: 0.44, blue: 0.98), Color(red: 0.42, green: 0.20, blue: 0.95), Color(red: 0.98, green: 0.36, blue: 0.55)],
-                                 startPoint: .topLeading, endPoint: .bottomTrailing))
-            .overlay {
-                VStack(spacing: 8) {
-                    Image(systemName: "shoe.2.fill").font(.system(size: 40, weight: .bold))
-                    Text("UNICLICK").font(.system(size: 17, weight: .black, design: .rounded)).tracking(2)
-                    Text("\(CardPackStore.packSize) CARTAS").font(.system(size: 10, weight: .heavy)).opacity(0.8)
-                }
-                .foregroundStyle(.white)
-            }
-            .overlay(alignment: .top) {
-                Rectangle().fill(.white.opacity(0.22)).frame(height: 16)
-                    .overlay(alignment: .bottom) { Rectangle().fill(.white.opacity(0.5)).frame(height: 1) }
-            }
-            .clipShape(.rect(cornerRadius: 16))
+        Image("PackFront").resizable().scaledToFill()
+            .aspectRatio(Self.ratio, contentMode: .fit)
+            .clipShape(.rect(cornerRadius: 10))
+    }
+}
+
+/// El reverso de las cartas.
+struct CardBackArt: View {
+    var body: some View {
+        GeometryReader { geo in
+            Image("CardBack").resizable().scaledToFill()
+                .frame(width: geo.size.width, height: geo.size.height)
+                .clipShape(.rect(cornerRadius: geo.size.width * 0.09))
+        }
     }
 }
 
@@ -312,12 +386,25 @@ struct PackOpeningView: View {
     private var pack: some View {
         VStack(spacing: 28) {
             Spacer()
-            PackArt().frame(width: 220, height: 308)
-                .rotationEffect(.degrees(shake ? 3 : -3))
-                .scaleEffect(stage == 1 ? 1.25 : 1).opacity(stage == 1 ? 0 : 1)
-                .shadow(color: Color(red: 0.42, green: 0.20, blue: 0.95).opacity(0.7), radius: 40)
-                .onAppear { withAnimation(.easeInOut(duration: 0.16).repeatForever(autoreverses: true)) { shake = true } }
-                .onTapGesture { open() }
+            ZStack {
+                // Destello que sale del sobre al rasgarlo.
+                Circle().fill(.white).frame(width: 60, height: 60).blur(radius: 40)
+                    .scaleEffect(stage == 1 ? 14 : 0.1).opacity(stage == 1 ? 0.95 : 0)
+                // Cuerpo del sobre.
+                PackArt().frame(height: 380)
+                    .mask(alignment: .bottom) { Rectangle().frame(height: 380 * 0.88) }
+                    .offset(y: stage == 1 ? 60 : 0).opacity(stage == 1 ? 0 : 1)
+                // La tira de arriba, que se arranca.
+                PackArt().frame(height: 380)
+                    .mask(alignment: .top) { Rectangle().frame(height: 380 * 0.12) }
+                    .rotationEffect(.degrees(stage == 1 ? 28 : 0), anchor: .topTrailing)
+                    .offset(x: stage == 1 ? 150 : 0, y: stage == 1 ? -140 : 0)
+                    .opacity(stage == 1 ? 0 : 1)
+            }
+            .rotationEffect(.degrees(stage == 0 ? (shake ? 2.5 : -2.5) : 0))
+            .shadow(color: Color(red: 0.42, green: 0.20, blue: 0.95).opacity(0.7), radius: 40)
+            .onAppear { withAnimation(.easeInOut(duration: 0.16).repeatForever(autoreverses: true)) { shake = true } }
+            .onTapGesture { open() }
             Text("Toca el sobre para abrirlo").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
                 .opacity(stage == 0 ? 1 : 0)
             Spacer()
@@ -327,8 +414,9 @@ struct PackOpeningView: View {
     private func open() {
         guard stage == 0 else { return }
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-        withAnimation(.easeIn(duration: 0.45)) { stage = 1 }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        withAnimation(.easeIn(duration: 0.55)) { stage = 1 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
             withAnimation(.spring(duration: 0.5)) { stage = 2 }
         }
     }
@@ -382,7 +470,7 @@ private struct FlipCard: View {
             UniCardFace(card: card)
                 .opacity(shown ? 1 : 0)
                 .rotation3DEffect(.degrees(shown ? 0 : -180), axis: (x: 0, y: 1, z: 0))
-            PackArt()
+            CardBackArt()
                 .opacity(shown ? 0 : 1)
                 .rotation3DEffect(.degrees(shown ? 180 : 0), axis: (x: 0, y: 1, z: 0))
         }

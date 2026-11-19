@@ -1072,6 +1072,15 @@ enum HomeFeaturedDataBuilder {
 
 // MARK: - Precios reales de cartas Pokémon (pokemontcg.io: TCGplayer + Cardmarket)
 
+struct PokemonSetData: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let series: String
+    let total: Int
+    let year: String
+    let logoURL: URL?
+}
+
 struct PokemonCardData: Identifiable {
     let id: String
     let name: String
@@ -1081,6 +1090,12 @@ struct PokemonCardData: Identifiable {
     let cardmarketEUR: Double?     // tendencia real Cardmarket (EUR)
     let changePercent: Double      // tendencia real (avg7 vs avg30 de Cardmarket)
     let imageURL: URL?
+
+    /// Versión pequeña de la imagen, para rejillas: pesa mucho menos y carga al instante.
+    var thumbURL: URL? {
+        guard let imageURL else { return nil }
+        return URL(string: imageURL.absoluteString.replacingOccurrences(of: "_hires.png", with: ".png"))
+    }
 }
 
 enum PokemonTCGClient {
@@ -1157,6 +1172,57 @@ enum PokemonTCGClient {
             .sorted { ($0.tcgMarketUSD ?? 0) > ($1.tcgMarketUSD ?? 0) }
         print("[Pokemon] fetchCards: \(cards.count) cartas con precio")
         return cards
+    }
+
+    // MARK: Catálogo completo (colecciones y páginas de cartas)
+
+    private struct SetEnv: Decodable { let data: [SetRow] }
+    private struct SetRow: Decodable {
+        let id: String; let name: String; let series: String?
+        let total: Int?; let releaseDate: String?
+        let images: SetImgs?
+    }
+    private struct SetImgs: Decodable { let logo: String?; let symbol: String? }
+
+    /// Todas las colecciones, de la más nueva a la más antigua.
+    static func fetchSets() async -> [PokemonSetData] {
+        guard let url = URL(string: "https://api.pokemontcg.io/v2/sets?orderBy=-releaseDate&pageSize=250") else { return [] }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 20
+        req.cachePolicy = .returnCacheDataElseLoad
+        guard let data = await dataWithRetry(req), let env = try? JSONDecoder().decode(SetEnv.self, from: data) else { return [] }
+        return env.data.map {
+            PokemonSetData(id: $0.id, name: $0.name, series: $0.series ?? "", total: $0.total ?? 0,
+                           year: String(($0.releaseDate ?? "").prefix(4)), logoURL: $0.images?.logo.flatMap { URL(string: $0) })
+        }
+    }
+
+    /// Una página de cartas (30 por página), con o sin precio, en el orden de la colección.
+    /// El catálogo a veces responde con error; se reintenta un par de veces antes de rendirse.
+    private static func dataWithRetry(_ request: URLRequest, attempts: Int = 3) async -> Data? {
+        for attempt in 0..<attempts {
+            if let (data, resp) = try? await URLSession.shared.data(for: request),
+               let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) { return data }
+            try? await Task.sleep(for: .milliseconds(500 * (attempt + 1)))
+        }
+        return nil
+    }
+
+    /// Devuelve `nil` si el catálogo no respondió (para ofrecer reintentar), y `[]` si no hay más cartas.
+    static func fetchPage(query: String, page: Int, pageSize: Int = 30) async -> [PokemonCardData]? {
+        guard var comps = URLComponents(string: "https://api.pokemontcg.io/v2/cards") else { return nil }
+        comps.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "page", value: String(page)),
+            URLQueryItem(name: "pageSize", value: String(pageSize)),
+            URLQueryItem(name: "orderBy", value: "-set.releaseDate,number"),
+            URLQueryItem(name: "select", value: "id,name,rarity,set,images,tcgplayer,cardmarket"),
+        ]
+        guard let url = comps.url else { return nil }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 20
+        guard let data = await dataWithRetry(req), let env = try? JSONDecoder().decode(Env.self, from: data) else { return nil }
+        return env.data.map(map)
     }
 
     private static func map(_ c: Card) -> PokemonCardData {
