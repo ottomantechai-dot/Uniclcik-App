@@ -396,7 +396,8 @@ struct PublishListingSheet: View {
     private func done(_ outcome: ListingPublisher.Outcome) -> some View {
         VStack(spacing: 18) {
             Spacer()
-            Image("IconAnuncio").resizable().scaledToFit().frame(width: 190, height: 190)
+            Image(systemName: "tag").font(.system(size: 44, weight: .semibold)).foregroundStyle(.black)
+                .frame(width: 124, height: 124).background(.white, in: .circle).glassEffect(.regular, in: .circle)
             Text(outcome == .published ? "Published on \(line.platform)!" : "Listing ready")
                 .font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundStyle(.black)
             Text(outcome == .published

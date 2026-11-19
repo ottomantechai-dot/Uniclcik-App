@@ -127,7 +127,8 @@ struct SellFlowView: View {
     @State private var size: String?
     @State private var sizesOpen = true
     @State private var priceText = ""
-    @State private var platform = "StockX"
+    /// Plataformas donde se publica: se pueden marcar varias.
+    @State private var selected: Set<String> = ["StockX"]
     @State private var confirmCondition = false
     @State private var confirmShipping = false
     @State private var working = false
@@ -139,7 +140,7 @@ struct SellFlowView: View {
     }
     private var platforms: [String] { item.kind == .card ? ["eBay", "StockX"] : ["StockX", "GOAT", "eBay"] }
     private var price: Double { Double(priceText.replacingOccurrences(of: ",", with: ".")) ?? 0 }
-    private var net: Double { PlatformFees.net(price: price, platform: platform) }
+    private var chosen: [String] { platforms.filter { selected.contains($0) } }
 
     // Referencias del mercado para la talla elegida (solo si hay datos reales).
     private var sellNow: Double? { item.snapshot?.bid(size) }
@@ -148,10 +149,8 @@ struct SellFlowView: View {
     private var earnMore: Double? { lowestAsk.map { max(1, $0 - 1) } }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 14) {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 14) {
                     if step < 3 { productCard }
                     switch step {
                     case 0: conditionStep
@@ -160,12 +159,12 @@ struct SellFlowView: View {
                     default: doneStep
                     }
                 }
-                .padding(.horizontal, 16).padding(.bottom, 120)
-            }
-            .scrollDismissesKeyboard(.interactively)
+            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 40)
         }
-        .background(sellGray.ignoresSafeArea())
+        .scrollDismissesKeyboard(.interactively)
+        .safeAreaInset(edge: .top, spacing: 0) { header }
         .safeAreaInset(edge: .bottom, spacing: 0) { footer }
+        .background(sellGray.ignoresSafeArea())
         .preferredColorScheme(.light)
         .swipeBackToDismiss()
     }
@@ -183,11 +182,14 @@ struct SellFlowView: View {
                         Capsule().fill(i <= step ? Color.black : Color.black.opacity(0.12)).frame(width: i == step ? 26 : 10, height: 6)
                     }
                 }
+                .padding(.horizontal, 14).frame(height: 30)
+                .background(.white, in: .capsule).glassEffect(.regular, in: .capsule)
             }
             Spacer()
             Color.clear.frame(width: 44, height: 44)
         }
-        .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 10)
+        .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 14)
+        .background { SellEdgeFade(edge: .top) }
     }
 
     private var productCard: some View {
@@ -257,8 +259,12 @@ struct SellFlowView: View {
             VStack(spacing: 0) {
                 Button { withAnimation(.snappy(duration: 0.3)) { sizesOpen.toggle() } } label: {
                     HStack {
-                        Label(item.kind == .card ? "Grade" : "Size (US)", systemImage: item.kind == .card ? "checkmark.seal" : "ruler")
-                            .font(.system(size: 15, weight: .medium)).foregroundStyle(.black)
+                        HStack(spacing: 8) {
+                            if item.kind == .card { Image(systemName: "checkmark.seal") }
+                            else { Image("IconTalla").renderingMode(.template).resizable().scaledToFit().frame(width: 22, height: 22) }
+                            Text(item.kind == .card ? "Grade" : "Size (US)")
+                        }
+                        .font(.system(size: 15, weight: .medium)).foregroundStyle(.black)
                         Spacer()
                         Text(size.map { item.kind == .card ? $0 : "US \($0)" } ?? "Select").font(.system(size: 15, weight: .bold)).foregroundStyle(.black)
                         Image(systemName: "chevron.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(.black.opacity(0.45))
@@ -367,37 +373,57 @@ struct SellFlowView: View {
     private var reviewStep: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Where to sell").font(.system(size: 17, weight: .bold, design: .rounded)).foregroundStyle(.black)
-                HStack(spacing: 10) {
-                    ForEach(platforms, id: \.self) { name in
-                        let on = platform == name
-                        Button { platform = name } label: {
-                            VStack(spacing: 6) {
-                                StylizedMarketplaceLogo(brand: name).frame(width: 44, height: 16)
-                                    .frame(width: 62, height: 62).background(.white, in: .circle)
-                                    .overlay { Circle().strokeBorder(on ? Color.black : Color.black.opacity(0.1), lineWidth: on ? 2 : 1) }
-                                Text(SaleReport.usd(PlatformFees.net(price: price, platform: name)))
-                                    .font(.system(size: 13, weight: .heavy, design: .rounded)).foregroundStyle(on ? .black : .black.opacity(0.5))
+                HStack {
+                    Text("Where to sell").font(.system(size: 17, weight: .bold, design: .rounded)).foregroundStyle(.black)
+                    Spacer()
+                    Text(chosen.isEmpty ? "Pick at least one" : "\(chosen.count) selected")
+                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(.black.opacity(0.45))
+                }
+                GlassEffectContainer(spacing: 10) {
+                    HStack(spacing: 10) {
+                        ForEach(platforms, id: \.self) { name in
+                            let on = selected.contains(name)
+                            Button {
+                                withAnimation(.snappy(duration: 0.2)) { if on { selected.remove(name) } else { selected.insert(name) } }
+                            } label: {
+                                VStack(spacing: 8) {
+                                    StylizedMarketplaceLogo(brand: name).frame(width: 46, height: 17)
+                                        .frame(width: 68, height: 68)
+                                        .background(.white, in: .circle)
+                                        .glassEffect(.regular.interactive(), in: .circle)
+                                        .padding(5)
+                                        .overlay { Circle().strokeBorder(Color.black, lineWidth: 2.5).opacity(on ? 1 : 0) }
+                                        .opacity(on ? 1 : 0.45)
+                                        .scaleEffect(on ? 1 : 0.94)
+                                    Text(SaleReport.usd(PlatformFees.net(price: price, platform: name)))
+                                        .font(.system(size: 14, weight: .heavy, design: .rounded)).foregroundStyle(on ? .black : .black.opacity(0.4))
+                                    Text("you keep").font(.system(size: 10, weight: .medium)).foregroundStyle(.black.opacity(0.4))
+                                }
+                                .frame(maxWidth: .infinity)
                             }
-                            .frame(maxWidth: .infinity)
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(name).accessibilityAddTraits(on ? .isSelected : [])
                         }
-                        .buttonStyle(.plain)
                     }
                 }
-                Text("Under each platform: what you keep after its fee.").font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.4))
             }
             .padding(16).frame(maxWidth: .infinity, alignment: .leading)
             .background(.white, in: .rect(cornerRadius: 22)).glassEffect(.regular, in: .rect(cornerRadius: 22))
 
             VStack(spacing: 0) {
-                fact("Your sale price", SaleReport.usd(price))
-                fact("\(platform) fee (\(PlatformFees.ratePercent(platform))%)", "−" + SaleReport.usd(max(0, price - net)))
-                HStack {
-                    Text("You keep").font(.system(size: 16, weight: .bold)).foregroundStyle(.black)
-                    Spacer()
-                    Text(SaleReport.usd(net)).font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(sellGreen)
+                fact("Your sale price", SaleReport.usd(price), last: chosen.isEmpty)
+                ForEach(Array(chosen.enumerated()), id: \.element) { index, name in
+                    let net = PlatformFees.net(price: price, platform: name)
+                    HStack(spacing: 10) {
+                        StylizedMarketplaceLogo(brand: name).frame(width: 52, height: 15, alignment: .leading)
+                        Text("fee \(PlatformFees.ratePercent(name))% · −\(SaleReport.usd(max(0, price - net)))")
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                        Spacer()
+                        Text(SaleReport.usd(net)).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(sellGreen)
+                    }
+                    .padding(.vertical, 12)
+                    if index < chosen.count - 1 { Divider() }
                 }
-                .padding(.top, 12)
             }
             .padding(16).background(.white, in: .rect(cornerRadius: 22)).glassEffect(.regular, in: .rect(cornerRadius: 22))
 
@@ -423,14 +449,32 @@ struct SellFlowView: View {
 
     // Resultado
     private var doneStep: some View {
-        VStack(spacing: 16) {
-            Image("IconAnuncio").resizable().scaledToFit().frame(width: 170, height: 170).padding(.top, 40)
-            Text("Listing ready").font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundStyle(.black)
-            Text("\(item.title) is saved at \(SaleReport.usd(price)) for \(platform). It publishes with one tap once the \(platform) seller account is connected.")
+        VStack(spacing: 18) {
+            // Icono sobrio: una etiqueta en un círculo de cristal, con su marca de hecho.
+            Image(systemName: "tag").font(.system(size: 44, weight: .semibold)).foregroundStyle(.black)
+                .frame(width: 124, height: 124)
+                .background(.white, in: .circle)
+                .glassEffect(.regular, in: .circle)
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "checkmark").font(.system(size: 15, weight: .heavy)).foregroundStyle(.white)
+                        .frame(width: 36, height: 36).background(.black, in: .circle)
+                        .overlay { Circle().strokeBorder(sellGray, lineWidth: 3) }
+                }
+                .padding(.top, 50)
+            Text(chosen.count == 1 ? "Listing ready" : "\(chosen.count) listings ready").font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+            Text("\(item.title) is saved at \(SaleReport.usd(price)). Each listing publishes with one tap once that seller account is connected.")
                 .font(.system(size: 15, weight: .medium)).foregroundStyle(.black.opacity(0.6)).multilineTextAlignment(.center).padding(.horizontal, 20)
-            Label("\(platform) seller account needed", systemImage: "link.badge.plus")
-                .font(.system(size: 13, weight: .semibold)).foregroundStyle(.orange)
-                .padding(.horizontal, 14).frame(height: 38).background(.white, in: .capsule).glassEffect(.regular, in: .capsule)
+            VStack(spacing: 8) {
+                ForEach(chosen, id: \.self) { name in
+                    HStack(spacing: 10) {
+                        StylizedMarketplaceLogo(brand: name).frame(width: 56, height: 16, alignment: .leading)
+                        Spacer()
+                        Label("Seller account needed", systemImage: "link").font(.system(size: 12, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
+                    }
+                    .padding(.horizontal, 16).frame(height: 50)
+                    .background(.white, in: .capsule).glassEffect(.regular, in: .capsule)
+                }
+            }
         }
         .frame(maxWidth: .infinity)
     }
@@ -439,7 +483,7 @@ struct SellFlowView: View {
         switch step {
         case 0: return true
         case 1: return size != nil && price > 0
-        case 2: return confirmCondition && confirmShipping
+        case 2: return confirmCondition && confirmShipping && !chosen.isEmpty
         default: return true
         }
     }
@@ -451,15 +495,17 @@ struct SellFlowView: View {
             if step < 2 { withAnimation(.snappy) { step += 1 }; return }
             Task {
                 working = true
-                let listing = MarketplaceListing(platform: platform, title: item.title, sku: item.subtitle, size: size ?? "", priceUSD: price,
-                                                 condition: condition, imageURL: item.imageURL?.absoluteString)
-                _ = await ListingPublisher.publish(listing)
+                for name in chosen {
+                    let listing = MarketplaceListing(platform: name, title: item.title, sku: item.subtitle, size: size ?? "", priceUSD: price,
+                                                     condition: condition, imageURL: item.imageURL?.absoluteString)
+                    _ = await ListingPublisher.publish(listing)
+                }
                 working = false
                 withAnimation(.spring(duration: 0.45)) { step = 3 }
             }
         } label: {
             Group {
-                if working { ProgressView().tint(.white) } else { Text(step == 0 ? "Next" : step == 1 ? "Review listing" : step == 2 ? "Submit listing" : "Done") }
+                if working { ProgressView().tint(.white) } else { Text(step == 0 ? "Next" : step == 1 ? "Review listing" : step == 2 ? (chosen.count > 1 ? "Submit \(chosen.count) listings" : "Submit listing") : "Done") }
             }
             .font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: 56)
@@ -467,7 +513,20 @@ struct SellFlowView: View {
         }
         .buttonStyle(.plain).disabled(!canContinue || working)
         .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 8)
-        .background { LinearGradient(colors: [sellGray.opacity(0), sellGray], startPoint: .top, endPoint: .center).ignoresSafeArea(edges: .bottom) }
+        .background { SellEdgeFade(edge: .bottom) }
+    }
+}
+
+/// Difuminado del borde: el contenido pasa por debajo de la cabecera (o del botón de abajo) y se
+/// desvanece, en vez de cortarse contra una franja opaca.
+struct SellEdgeFade: View {
+    let edge: VerticalEdge
+    var body: some View {
+        let stops: [Gradient.Stop] = [.init(color: sellGray.opacity(0.96), location: 0), .init(color: sellGray.opacity(0.8), location: 0.55), .init(color: sellGray.opacity(0), location: 1)]
+        LinearGradient(stops: stops, startPoint: edge == .top ? .top : .bottom, endPoint: edge == .top ? .bottom : .top)
+            .padding(edge == .top ? .bottom : .top, -22)
+            .ignoresSafeArea(edges: edge == .top ? .top : .bottom)
+            .allowsHitTesting(false)
     }
 }
 
@@ -521,7 +580,36 @@ struct MarketDataView: View {
     @State private var size: String?
 
     var body: some View {
-        VStack(spacing: 0) {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 8) {
+                switch tab {
+                case 0:
+                    ForEach(snapshot.asks.filter { size == nil || $0.size == size }) { row in
+                        line(SaleReport.usd(row.price), "US \(row.size)", "Qty \(row.quantity)")
+                    }
+                case 1:
+                    ForEach(snapshot.sizes.filter { size == nil || $0 == size }.compactMap { s in snapshot.highestBid[s].map { (s, $0) } }.sorted { $0.1 > $1.1 }, id: \.0) { s, bid in
+                        line(SaleReport.usd(bid), "US \(s)", "Highest bid")
+                    }
+                default:
+                    ForEach(snapshot.sales.filter { size == nil || $0.size == size }) { row in
+                        line(SaleReport.usd(row.price), "US \(row.size)", row.date ?? "")
+                    }
+                }
+                Text("Sample market snapshot · \(snapshot.asOf). Prices do not include fees.")
+                    .font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.4)).padding(.top, 8)
+            }
+            .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 60)
+        }
+        .safeAreaInset(edge: .top, spacing: 0) { top }
+        .overlay(alignment: .bottom) { SellEdgeFade(edge: .bottom).frame(height: 70) }
+        .background(sellGray.ignoresSafeArea())
+        .preferredColorScheme(.light)
+        .swipeBackToDismiss()
+    }
+
+    private var top: some View {
+        VStack(spacing: 10) {
             HStack {
                 Button { dismiss() } label: { TopBarGlassButton(systemImage: "xmark") }.buttonStyle(.plain)
                 Spacer()
@@ -529,62 +617,64 @@ struct MarketDataView: View {
                 Spacer()
                 Color.clear.frame(width: 44, height: 44)
             }
-            .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 8)
+            .padding(.horizontal, 16)
 
-            Picker("", selection: $tab) {
-                Text("Asks").tag(0); Text("Bids").tag(1); Text("Sales").tag(2)
-            }
-            .pickerStyle(.segmented).padding(.horizontal, 16)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    pill("All sizes", on: size == nil) { size = nil }
-                    ForEach(snapshot.sizes, id: \.self) { s in pill("US \(s)", on: size == s) { size = s } }
-                }
-                .padding(.horizontal, 16).padding(.vertical, 12)
-            }
-
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 8) {
-                    switch tab {
-                    case 0:
-                        ForEach(snapshot.asks.filter { size == nil || $0.size == size }) { row in
-                            line(SaleReport.usd(row.price), "US \(row.size)", "Qty \(row.quantity)")
+            GlassEffectContainer(spacing: 6) {
+                HStack(spacing: 6) {
+                    ForEach(Array(["Asks", "Bids", "Sales"].enumerated()), id: \.offset) { index, name in
+                        Button { withAnimation(.snappy(duration: 0.2)) { tab = index } } label: {
+                            Text(name).font(.system(size: 14, weight: .bold)).foregroundStyle(tab == index ? .white : .black)
+                                .frame(maxWidth: .infinity, minHeight: 40)
+                                .background(tab == index ? Color.black : Color.white, in: .capsule)
+                                .glassEffect(.regular.interactive(), in: .capsule)
                         }
-                    case 1:
-                        ForEach(snapshot.sizes.filter { size == nil || $0 == size }.compactMap { s in snapshot.highestBid[s].map { (s, $0) } }.sorted { $0.1 > $1.1 }, id: \.0) { s, bid in
-                            line(SaleReport.usd(bid), "US \(s)", "Highest bid")
-                        }
-                    default:
-                        ForEach(snapshot.sales.filter { size == nil || $0.size == size }) { row in
-                            line(SaleReport.usd(row.price), "New · US \(row.size)", row.date ?? "")
-                        }
+                        .buttonStyle(.plain)
                     }
-                    Text("Sample market snapshot · \(snapshot.asOf). Prices do not include fees.")
-                        .font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.4)).padding(.top, 8)
                 }
-                .padding(.horizontal, 16).padding(.bottom, 30)
             }
+            .padding(.horizontal, 16)
+
+            // Tallas: el icono deja claro qué se está filtrando.
+            HStack(spacing: 8) {
+                Image("IconTalla").renderingMode(.template).resizable().scaledToFit().foregroundStyle(.black)
+                    .frame(width: 24, height: 24).frame(width: 40, height: 40)
+                    .background(.white, in: .circle).glassEffect(.regular, in: .circle)
+                    .accessibilityLabel("Sizes")
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        pill("All", on: size == nil) { size = nil }
+                        ForEach(snapshot.sizes, id: \.self) { s in pill("US \(s)", on: size == s) { size = s } }
+                    }
+                    .padding(.trailing, 16).padding(.vertical, 2)
+                }
+                .mask { LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.04), .init(color: .black, location: 0.92), .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing) }
+            }
+            .padding(.leading, 16)
         }
-        .background(sellGray.ignoresSafeArea())
-        .preferredColorScheme(.light)
-        .swipeBackToDismiss()
+        .padding(.top, 4).padding(.bottom, 14)
+        .background { SellEdgeFade(edge: .top) }
     }
 
     private func pill(_ text: String, on: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(text).font(.system(size: 13, weight: .bold)).foregroundStyle(on ? .white : .black)
-                .padding(.horizontal, 14).frame(height: 36)
+                .padding(.horizontal, 14).frame(height: 38)
                 .background(on ? Color.black : Color.white, in: .capsule)
-                .overlay { Capsule().strokeBorder(Color.black.opacity(on ? 0 : 0.1)) }
+                .glassEffect(.regular.interactive(), in: .capsule)
         }
         .buttonStyle(.plain)
     }
 
     private func line(_ price: String, _ detail: String, _ trailing: String) -> some View {
-        HStack {
+        HStack(spacing: 10) {
             Text(price).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.black)
-            Text(detail).font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.55))
+                .frame(minWidth: 48, alignment: .leading)
+            HStack(spacing: 5) {
+                Image("IconTalla").renderingMode(.template).resizable().scaledToFit().frame(width: 16, height: 16)
+                Text(detail).font(.system(size: 12, weight: .bold))
+            }
+            .foregroundStyle(.black.opacity(0.7))
+            .padding(.horizontal, 9).frame(height: 28).background(Color.black.opacity(0.05), in: .capsule)
             Spacer()
             Text(trailing).font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.55))
         }
