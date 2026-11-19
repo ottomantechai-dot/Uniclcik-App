@@ -159,7 +159,6 @@ struct Shoe360View: View {
     @StateObject private var loader = Shoe360Loader()
     @State private var index = 0
     @State private var dragStart = 0
-    @State private var didIntro = false
 
     private var ready: Int { loader.frames.compactMap { $0 }.count }
 
@@ -198,18 +197,6 @@ struct Shoe360View: View {
         .frame(maxWidth: .infinity)
         .task(id: titles + queries + [fallbackURL?.absoluteString ?? ""]) {
             await loader.load(titles: titles, imageURLs: [fallbackURL].compactMap { $0 }, queries: queries)
-        }
-        .onChange(of: ready) { _, count in
-            // Cuando están todas las fotos, da una vuelta sola para enseñar que gira.
-            guard count == Shoe360Loader.frameCount, !didIntro else { return }
-            didIntro = true
-            Task {
-                for step in 1...Shoe360Loader.frameCount {
-                    try? await Task.sleep(for: .milliseconds(45))
-                    index = step % Shoe360Loader.frameCount
-                }
-                dragStart = index
-            }
         }
     }
 }
