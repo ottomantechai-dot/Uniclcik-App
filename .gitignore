@@ -49,3 +49,4 @@ fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
 .derivedDataDevice
+build-archive/
