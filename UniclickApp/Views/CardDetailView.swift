@@ -105,21 +105,18 @@ struct CardDetailView: View {
                 .id(card.id)
             }
             .background(Color(red: 0.965, green: 0.965, blue: 0.975).ignoresSafeArea())
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) { Color.clear.frame(height: 52) }
-            .overlay(alignment: .top) {
-                HStack {
-                    Button { dismiss() } label: { TopBarGlassButton(systemImage: "chevron.left") }.buttonStyle(.plain)
-                    Spacer()
+            // Barra nativa (transparente): así el gesto de volver funciona igual que en la ficha de un zapato
+            // y se ve la pantalla anterior por detrás al deslizar.
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
                     CardImage(url: setLogo, placeholder: false).frame(width: 96, height: 30)
-                    Spacer()
-                    Color.clear.frame(width: 44, height: 44)
                 }
-                .padding(.horizontal, 16).padding(.bottom, 14)
-                .background {
-                    LinearGradient(colors: [gray, gray.opacity(0.92), gray.opacity(0)], startPoint: .top, endPoint: .bottom)
-                        .ignoresSafeArea(edges: .top)
-                }
+            }
+            .overlay(alignment: .top) {
+                LinearGradient(colors: [gray, gray.opacity(0.9), gray.opacity(0)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 110).ignoresSafeArea(edges: .top).allowsHitTesting(false)
             }
             .modifier(BottomFade(color: gray))
             .task(id: card.setName) {
@@ -133,7 +130,6 @@ struct CardDetailView: View {
         }
         .preferredColorScheme(.light)
         .toolbar(.hidden, for: .tabBar)
-        .swipeBackToDismiss()
     }
 
     private func select(_ other: PokemonCardData) {
@@ -201,8 +197,10 @@ struct CardDetailView: View {
                 Image("LogoPSAMark").resizable().scaledToFit().frame(height: 11).foregroundStyle(Color(red: 0.93, green: 0.05, blue: 0.05))
                     .frame(width: 58, height: 38).background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
                 ForEach(["Collectr", "TCGplayer", "Cardmarket"], id: \.self) { name in
-                    Text(name).font(.system(size: 10, weight: .heavy)).foregroundStyle(.black).lineLimit(1).minimumScaleFactor(0.8)
+                    Image("Logo" + name).resizable().scaledToFit()
+                        .frame(width: 24, height: 24).clipShape(.rect(cornerRadius: 6))
                         .frame(maxWidth: .infinity, minHeight: 38).background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
+                        .accessibilityLabel(name)
                 }
             }
             ForEach(["Raw", "8", "9", "10"], id: \.self) { grade in
@@ -234,9 +232,8 @@ struct CardDetailView: View {
 
     private func source(name: String, logo: String?, value: String?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let logo {
-                StylizedMarketplaceLogo(brand: logo).frame(height: 14).frame(maxWidth: 62, alignment: .leading)
-            } else {
+            HStack(spacing: 8) {
+                Image("Logo" + name).resizable().scaledToFit().frame(width: 24, height: 24).clipShape(.rect(cornerRadius: 6))
                 Text(name).font(.system(size: 13, weight: .heavy)).foregroundStyle(.black)
             }
             Text(value ?? "—").font(.system(size: 19, weight: .heavy, design: .rounded))

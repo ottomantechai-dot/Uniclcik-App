@@ -1853,8 +1853,11 @@ struct DashboardMarketPricesSection: View {
                             BrandLogoLabel(brand: featured.brand ?? "", compact: true)
                                 .frame(width: 30, height: 30).glassEffect(.regular, in: .circle)
                         }
-                    Text(featured.name).font(.system(size: 16, weight: .bold)).foregroundStyle(.black)
-                        .lineLimit(2).multilineTextAlignment(.leading)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(featured.name).font(.system(size: 16, weight: .bold)).foregroundStyle(.black)
+                            .lineLimit(2).multilineTextAlignment(.leading)
+                        MarketplaceDots(brands: ["StockX", "GOAT", "eBay", "Flight Club"], size: 30)
+                    }
                     Spacer(minLength: 0)
                 }
             }
@@ -2482,27 +2485,7 @@ struct HomeTrendingRow: View {
                                         .padding(8)
                                 }
                                 .overlay(alignment: .topTrailing) {
-                                    // Dónde se vende: StockX, GOAT y eBay, en círculos de cristal montados uno sobre otro.
-                                    HStack(spacing: -5) {
-                                        ForEach(Array(["StockX", "GOAT", "eBay"].enumerated()), id: \.offset) { index, brand in
-                                            // StockX y GOAT enseñan solo su símbolo (la parte izquierda del logo); eBay, sus letras.
-                                            Group {
-                                                if brand == "eBay" {
-                                                    StylizedMarketplaceLogo(brand: brand).frame(width: 19, height: 9)
-                                                } else {
-                                                    StylizedMarketplaceLogo(brand: brand)
-                                                        .frame(width: brand == "GOAT" ? 50 : 60, height: brand == "GOAT" ? 10 : 13, alignment: .leading)
-                                                        .frame(width: brand == "GOAT" ? 15 : 14, height: 13, alignment: .leading)
-                                                        .clipped()
-                                                }
-                                            }
-                                                .frame(width: 26, height: 26)
-                                                .background(.white, in: .circle)
-                                                .glassEffect(.regular, in: .circle)
-                                                .zIndex(Double(index))
-                                                .accessibilityLabel(brand)
-                                        }
-                                    }
+                                    MarketplaceDots(brands: ["StockX", "GOAT", "eBay"])
                                     .padding(.top, 11).padding(.trailing, 8)
                                 }
                             }
@@ -2789,5 +2772,35 @@ struct CardsShowcase: View {
         if d > count / 2 { d -= count }
         if d < -count / 2 { d += count }
         return d
+    }
+}
+
+
+/// Plataformas donde se vende, en círculos de cristal montados uno sobre otro.
+struct MarketplaceDots: View {
+    let brands: [String]
+    var size: CGFloat = 26
+
+    var body: some View {
+        HStack(spacing: -5) {
+            ForEach(Array(brands.enumerated()), id: \.offset) { index, brand in
+                // StockX y GOAT enseñan solo su símbolo (la parte izquierda del logo); los demás, sus letras.
+                Group {
+                    if brand == "StockX" || brand == "GOAT" {
+                        StylizedMarketplaceLogo(brand: brand)
+                            .frame(width: brand == "GOAT" ? 50 : 60, height: brand == "GOAT" ? 10 : 13, alignment: .leading)
+                            .frame(width: brand == "GOAT" ? 15 : 14, height: 13, alignment: .leading)
+                            .clipped()
+                    } else {
+                        StylizedMarketplaceLogo(brand: brand).frame(width: size * 0.74, height: 9)
+                    }
+                }
+                .frame(width: size, height: size)
+                .background(.white, in: .circle)
+                .glassEffect(.regular, in: .circle)
+                .zIndex(Double(index))
+                .accessibilityLabel(brand)
+            }
+        }
     }
 }
