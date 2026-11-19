@@ -2493,7 +2493,19 @@ struct HomeTrendingCardsRow: View {
             .scrollClipDisabled()
         }
         .task {
-            if cards.isEmpty { cards = Array((await PokemonTCGClient.fetchPage(query: "supertype:pokemon", page: 1) ?? []).prefix(12)) }
+            guard cards.isEmpty else { return }
+            // Surtido: cartas conocidas de muchas ediciones, y solo una por edición.
+            let query = "(name:charizard OR name:pikachu OR name:mewtwo OR name:umbreon OR name:gengar OR name:rayquaza OR name:lugia OR name:eevee)"
+            let found = await PokemonTCGClient.fetchPage(query: query, page: 1, pageSize: 80) ?? []
+            var seenSets = Set<String>(), seenNames = [String: Int](), picked: [PokemonCardData] = []
+            for card in found where !seenSets.contains(card.setName) {
+                let base = card.name.split(separator: " ").first.map(String.init) ?? card.name
+                guard seenNames[base, default: 0] < 2 else { continue }
+                seenSets.insert(card.setName); seenNames[base, default: 0] += 1
+                picked.append(card)
+                if picked.count == 12 { break }
+            }
+            cards = picked.isEmpty ? Array(found.prefix(12)) : picked
         }
         .fullScreenCover(item: $report) { SaleReportView(report: $0) }
     }
