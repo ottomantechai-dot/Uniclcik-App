@@ -2249,6 +2249,7 @@ struct BrandLogoLabel: View {
 
     private var asset: String? {
         let key = brand.lowercased().replacingOccurrences(of: " ", with: "")
+        if key == "on" || key == "onrunning" { return "BrandLogo-on" }   // «On» va aparte: su nombre está dentro de otros
         for name in ["nike", "adidas", "jordan", "newbalance", "puma", "dior", "vans", "crocs", "asics", "ugg", "salomon", "timberland"] where key.contains(name) { return "BrandLogo-" + name }
         return nil
     }
