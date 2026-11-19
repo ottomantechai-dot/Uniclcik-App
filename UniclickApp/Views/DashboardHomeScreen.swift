@@ -338,6 +338,7 @@ struct DashboardHomeScreen: View {
             )
         }
         .onChange(of: tabRouter.homeSearchTick) { _, _ in showSearch = true }
+        .onReceive(NotificationCenter.default.publisher(for: .homeOpenCards)) { _ in tabRouter.selected = .cards }
         .fullScreenCover(isPresented: $showMarketComparator) {
             if let item = selectedTrendingItem {
                 ShoeMarketDetailView(item: item)
@@ -1338,7 +1339,7 @@ private struct DashboardHomeBottomGrid: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            PokemonCardsStrip()
+            HomeTrendingCardsRow(title: "Trading Cards", icon: "rectangle.portrait.on.rectangle.portrait.fill", onViewAll: { NotificationCenter.default.post(name: .homeOpenCards, object: nil) })
         }
     }
 
@@ -1837,31 +1838,37 @@ struct DashboardMarketPricesSection: View {
             }
 
             if tableRows.isEmpty {
-                // Sin precios todavía: la tabla sale con sus plataformas y tallas, a la espera de datos.
-                VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        Text("Size").font(.system(size: 11, weight: .bold)).foregroundStyle(Color.black.opacity(0.45))
-                            .frame(width: 44, alignment: .leading)
+                // Sin precios todavía: la tabla sale montada, con cada plataforma y cada talla en su casilla.
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "ruler").font(.system(size: 11, weight: .bold))
+                            Text("US").font(.system(size: 11, weight: .heavy))
+                        }
+                        .foregroundStyle(Color.black.opacity(0.55))
+                        .frame(width: 52, height: 38)
+                        .background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
                         ForEach(["StockX", "GOAT", "eBay", "Flight Club"], id: \.self) { brand in
-                            StylizedMarketplaceLogo(brand: brand).frame(height: 14).frame(maxWidth: .infinity)
+                            StylizedMarketplaceLogo(brand: brand).frame(height: 13).padding(.horizontal, 6)
+                                .frame(maxWidth: .infinity, minHeight: 38)
+                                .background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
                         }
                     }
-                    .padding(.bottom, 10)
                     ForEach(["8", "9", "10", "11"], id: \.self) { size in
-                        Divider()
-                        HStack(spacing: 0) {
-                            Text(size).font(.system(size: 14, weight: .bold, design: .rounded)).foregroundStyle(.black)
-                                .frame(width: 44, alignment: .leading)
+                        HStack(spacing: 8) {
+                            Text(size).font(.system(size: 14, weight: .heavy, design: .rounded)).foregroundStyle(.white)
+                                .frame(width: 52, height: 40)
+                                .background(Color.black, in: .rect(cornerRadius: 11))
                             ForEach(0..<4, id: \.self) { _ in
                                 Text("—").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.black.opacity(0.25))
-                                    .frame(maxWidth: .infinity)
+                                    .frame(maxWidth: .infinity, minHeight: 40)
+                                    .background { RoundedRectangle(cornerRadius: 11).strokeBorder(Color.black.opacity(0.08)) }
                             }
                         }
-                        .padding(.vertical, 11)
                     }
                     Text("Prices appear here as soon as the market responds")
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.black.opacity(0.45))
-                        .frame(maxWidth: .infinity).padding(.top, 10)
+                        .frame(maxWidth: .infinity).padding(.top, 4)
                 }
             } else {
                 HomeMarketPriceGridTable(
@@ -2445,7 +2452,11 @@ struct HomeTrendingRow: View {
 
 
 /// «Trending Now» con cartas: las mismas fichas que los zapatos, con cartas reales del catálogo.
+extension Notification.Name { static let homeOpenCards = Notification.Name("Uniclick.homeOpenCards") }
+
 struct HomeTrendingCardsRow: View {
+    var title = "Trending Now"
+    var icon = "flame.fill"
     var onViewAll: () -> Void
     @State private var cards: [PokemonCardData] = []
     @State private var report: SaleReport?
@@ -2453,8 +2464,8 @@ struct HomeTrendingCardsRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: "flame.fill").foregroundStyle(.black)
-                Text("Trending Now").font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                Image(systemName: icon).foregroundStyle(.black)
+                Text(title).font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                 Spacer()
                 Button(action: onViewAll) {
                     HStack(spacing: 4) { Text("View all"); Image(systemName: "arrow.right").font(.system(size: 11, weight: .bold)) }
