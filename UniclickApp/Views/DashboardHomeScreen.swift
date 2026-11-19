@@ -2701,15 +2701,17 @@ struct CardsShowcase: View {
                     ForEach(Array(cards.enumerated()), id: \.offset) { index, name in
                         let d = offset(of: index)
                         let depth = min(abs(d), 2.5)
+                        // Fondo blanco opaco: la funda no deja ver la carta de detrás.
                         Image(name).resizable().scaledToFit()
                             .frame(height: 250)
+                            .background(.white)
                             .clipShape(.rect(cornerRadius: 10))
                             .shadow(color: .black.opacity(0.22 - depth * 0.05), radius: 10, y: 6)
                             .scaleEffect(1 - depth * 0.19)
                             .rotation3DEffect(.degrees(-d * 16), axis: (x: 0, y: 1, z: 0), perspective: 0.6)
                             .offset(x: sin(d * 0.62) * 150, y: depth * 4)
-                            .opacity(depth > 2.2 ? 0 : 1 - depth * 0.16)
-                            .zIndex(10 - depth)
+                            .opacity(depth > 2.3 ? 0 : 1)
+                            .zIndex(100 - depth * 10)   // la más cercana al centro, siempre por encima
                     }
                 }
                 .padding(.bottom, 8)
@@ -2720,15 +2722,20 @@ struct CardsShowcase: View {
             .gesture(
                 DragGesture(minimumDistance: 6)
                     .onChanged { value in
-                        if dragStart == nil { dragStart = position }
-                        position = (dragStart ?? 0) - value.translation.width / 110
+                        if dragStart == nil { dragStart = position.rounded() }
+                        // Mientras se arrastra, como mucho una carta a cada lado.
+                        let moved = max(-1, min(1, -value.translation.width / 130))
+                        position = (dragStart ?? 0) + moved
                         lastTouch = Date()
                     }
                     .onEnded { value in
-                        let target = ((dragStart ?? position) - value.predictedEndTranslation.width / 110).rounded()
+                        // Un gesto = una carta, por rápido que sea: el carrusel nunca se salta ninguna.
+                        let start = dragStart ?? position.rounded()
+                        let push = -value.predictedEndTranslation.width
+                        let step: Double = push > 45 ? 1 : (push < -45 ? -1 : 0)
                         dragStart = nil
                         lastTouch = Date()
-                        withAnimation(.spring(duration: 0.5, bounce: 0.25)) { position = target }
+                        withAnimation(.spring(duration: 0.45, bounce: 0.2)) { position = start + step }
                     }
             )
             .onTapGesture { onViewAll() }
