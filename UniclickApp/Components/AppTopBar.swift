@@ -30,7 +30,7 @@ struct AppTopBar<Extra: View>: View {
                         .glassEffect(.regular.interactive(), in: .circle)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Perfil y ajustes")
+                .accessibilityLabel("Profile and settings")
             }
         }
         .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 8)

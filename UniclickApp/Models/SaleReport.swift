@@ -50,32 +50,32 @@ struct SaleReport: Identifiable, Codable, Equatable {
     }
 
     var recommendation: String {
-        guard let best else { return "Todavía no hay precios de mercado para este producto." }
-        var text = "Publica en \(best.platform): a \(Self.usd(best.priceUSD)) te quedan \(Self.usd(best.netUSD)) después de comisiones."
+        guard let best else { return "There are no market prices for this product yet." }
+        var text = "List on \(best.platform): at \(Self.usd(best.priceUSD)) you keep \(Self.usd(best.netUSD)) after fees."
         if let gain = profit(best) {
-            text += gain >= 0 ? " Ganas \(Self.usd(gain)) sobre lo que te costó." : " Pierdes \(Self.usd(-gain)) sobre lo que te costó."
+            text += gain >= 0 ? " You make \(Self.usd(gain)) over what you paid." : " You lose \(Self.usd(-gain)) against what you paid."
         }
         if let spread = spreadUSD, spread >= 1, let worst {
-            text += " Son \(Self.usd(spread)) más que en \(worst.platform)."
+            text += " That is \(Self.usd(spread)) more than on \(worst.platform)."
         }
         return text
     }
 
     /// Texto del informe para mandarlo por WhatsApp, correo, etc.
     var shareText: String {
-        var out: [String] = ["INFORME DE VENTA · Uniclick", title]
+        var out: [String] = ["SALE REPORT · Uniclick", title]
         if !sku.isEmpty { out.append("SKU: \(sku)") }
-        if let size, !size.isEmpty { out.append("Talla: \(size)") }
-        if let costUSD { out.append("Coste: \(Self.usd(costUSD))") }
+        if let size, !size.isEmpty { out.append("Size: \(size)") }
+        if let costUSD { out.append("Cost: \(Self.usd(costUSD))") }
         out.append("")
         for line in lines.sorted(by: { $0.netUSD > $1.netUSD }) {
             var row = "\(line.platform): precio \(Self.usd(line.priceUSD)) · comisión \(Self.usd(line.feeUSD)) · te quedan \(Self.usd(line.netUSD))"
-            if let gain = profit(line) { row += " · ganancia \(Self.usd(gain))" }
+            if let gain = profit(line) { row += " · profit \(Self.usd(gain))" }
             out.append(row)
         }
         out.append("")
         out.append(recommendation)
-        if priceIsEstimate { out.append("Precio estimado de mercado; las comisiones son aproximadas.") }
+        if priceIsEstimate { out.append("Estimated market price; fees are approximate.") }
         out.append(createdAt.formatted(date: .abbreviated, time: .shortened))
         return out.joined(separator: "\n")
     }

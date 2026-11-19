@@ -149,7 +149,7 @@ struct Shoe360View: View {
                     )
                 HStack(spacing: 6) {
                     Image(systemName: "rotate.3d")
-                    Text(ready < Shoe360Loader.frameCount ? "Cargando giro…" : "Arrastra para girar · 360°")
+                    Text(ready < Shoe360Loader.frameCount ? "Loading spin…" : "Drag to spin · 360°")
                 }
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.black.opacity(0.65))

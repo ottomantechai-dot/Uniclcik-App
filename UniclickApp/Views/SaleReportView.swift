@@ -40,11 +40,11 @@ struct SaleReportView: View {
                 .padding(.bottom, 28)
             }
             .background(Color(red: 0.96, green: 0.96, blue: 0.97))
-            .navigationTitle("Informe de venta")
+            .navigationTitle("Sale report")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cerrar") { dismiss() }
+                    Button("Close") { dismiss() }
                 }
                 ToolbarItem(placement: .primaryAction) {
                     ShareLink(item: report.shareText) { Image(systemName: "square.and.arrow.up") }
@@ -57,8 +57,7 @@ struct SaleReportView: View {
                 if let cost = report.costUSD { costText = SaleReport.usd(cost).replacingOccurrences(of: "$", with: "") }
                 guard !saved, !report.lines.isEmpty else { return }
                 saved = true
-                // Cada caja escaneada con informe regala un sobre de cartas.
-                if store.save(report) { CardPackStore.shared.earnPack() }
+                store.save(report)
             }
         }
         .preferredColorScheme(.light)
@@ -86,7 +85,7 @@ struct SaleReportView: View {
                     .multilineTextAlignment(.center).lineLimit(3)
                 HStack(spacing: 8) {
                     if !report.sku.isEmpty { chip(report.kind == .card ? report.sku : "SKU \(report.sku)") }
-                    if let size = report.size, !size.isEmpty { chip(report.kind == .card ? size : "Talla \(size)") }
+                    if let size = report.size, !size.isEmpty { chip(report.kind == .card ? size : "Size \(size)") }
                 }
             }
         }
@@ -101,22 +100,22 @@ struct SaleReportView: View {
     private var emptyCard: some View {
         card {
             Image("IconInforme").resizable().scaledToFit().frame(height: 120).frame(maxWidth: .infinity)
-            Text("Sin precios confirmados").font(.system(size: 17, weight: .bold)).foregroundStyle(ink).frame(maxWidth: .infinity)
-            Text("Ninguna plataforma ha dado precio para este producto ahora mismo, y aquí no se inventan cifras. Búscalo por su nombre o su código de estilo en el comparador.")
+            Text("No confirmed prices").font(.system(size: 17, weight: .bold)).foregroundStyle(ink).frame(maxWidth: .infinity)
+            Text("No platform returned a price for this product right now, and we never make numbers up. Search it by name or style code in the comparator.")
                 .font(.system(size: 13)).foregroundStyle(ink.opacity(0.6)).multilineTextAlignment(.center)
         }
     }
 
     private var recommendationCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("DÓNDE VENDER").font(.system(size: 11, weight: .heavy)).foregroundStyle(.white.opacity(0.7))
+            Text("WHERE TO SELL").font(.system(size: 11, weight: .heavy)).foregroundStyle(.white.opacity(0.7))
             if let best = report.best {
                 HStack(alignment: .firstTextBaseline) {
                     Text(best.platform).font(.system(size: 26, weight: .heavy, design: .rounded))
                     Spacer()
                     VStack(alignment: .trailing, spacing: 0) {
                         Text(SaleReport.usd(best.netUSD)).font(.system(size: 26, weight: .heavy, design: .rounded))
-                        Text("te quedan").font(.system(size: 11, weight: .semibold)).opacity(0.7)
+                        Text("you keep").font(.system(size: 11, weight: .semibold)).opacity(0.7)
                     }
                 }
             }
@@ -130,30 +129,30 @@ struct SaleReportView: View {
 
     private var platformsCard: some View {
         card {
-            Text("Plataforma por plataforma").font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
+            Text("Platform by platform").font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
             ForEach(report.lines.sorted { $0.netUSD > $1.netUSD }) { line in
                 VStack(spacing: 8) {
                     HStack(spacing: 10) {
                         Circle().fill(PlatformPrice.brandColor(for: line.platform)).frame(width: 10, height: 10)
                         Text(line.platform).font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
                         if line.platform == report.best?.platform {
-                            Text("MEJOR").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
+                            Text("BEST").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
                                 .padding(.horizontal, 6).padding(.vertical, 3).background(green, in: .capsule)
                         }
                         Spacer()
                         Text(SaleReport.usd(line.netUSD)).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(ink)
                     }
                     HStack {
-                        fact("Precio", SaleReport.usd(line.priceUSD))
-                        fact("Comisión \(line.feePercent)%" + (line.feeFixedUSD > 0 ? " + \(SaleReport.usd(line.feeFixedUSD))" : ""), "−" + SaleReport.usd(line.feeUSD))
+                        fact("Price", SaleReport.usd(line.priceUSD))
+                        fact("Fee \(line.feePercent)%" + (line.feeFixedUSD > 0 ? " + \(SaleReport.usd(line.feeFixedUSD))" : ""), "−" + SaleReport.usd(line.feeUSD))
                         if let gain = report.profit(line) {
-                            fact("Ganancia", (gain >= 0 ? "+" : "−") + SaleReport.usd(abs(gain)), color: gain >= 0 ? green : .red)
+                            fact("Profit", (gain >= 0 ? "+" : "−") + SaleReport.usd(abs(gain)), color: gain >= 0 ? green : .red)
                         }
                         Spacer(minLength: 0)
                     }
                     Button { publishing = line } label: {
                         let done = listings.listings.contains { $0.platform == line.platform && $0.title == report.title && $0.sku == report.sku }
-                        Label(done ? "Anuncio preparado · editar" : "Preparar anuncio en \(line.platform)", systemImage: done ? "checkmark.circle.fill" : "tag")
+                        Label(done ? "Listing ready · edit" : "Prepare \(line.platform) listing", systemImage: done ? "checkmark.circle.fill" : "tag")
                             .font(.system(size: 13, weight: .semibold))
                             .frame(maxWidth: .infinity, minHeight: 40)
                             .foregroundStyle(done ? green : ink)
@@ -177,23 +176,23 @@ struct SaleReportView: View {
 
     private var costCard: some View {
         card {
-            Text("Lo que te costó").font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
+            Text("What you paid").font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
             HStack {
                 Text("$").font(.system(size: 20, weight: .bold, design: .rounded)).foregroundStyle(ink.opacity(0.4))
                 TextField("0", text: $costText)
                     .keyboardType(.decimalPad).focused($costFocused)
                     .font(.system(size: 20, weight: .bold, design: .rounded)).foregroundStyle(ink)
-                Button("Calcular") { applyCost() }
+                Button("Calculate") { applyCost() }
                     .font(.system(size: 14, weight: .semibold)).buttonStyle(.borderedProminent).tint(ink)
             }
-            Text("Con el coste, el informe te dice la ganancia real en cada plataforma.")
+            Text("With your cost, the report shows your real profit on each platform.")
                 .font(.system(size: 12)).foregroundStyle(ink.opacity(0.55))
         }
     }
 
     private var sizeCard: some View {
         card {
-            Text("Talla").font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
+            Text("Size").font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(sizes, id: \.self) { size in
@@ -216,14 +215,14 @@ struct SaleReportView: View {
         let mine = listings.listings.filter { $0.title == report.title && $0.sku == report.sku }
         if !mine.isEmpty {
             card {
-                Text("Anuncios de este producto").font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
+                Text("Listings for this product").font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
                 ForEach(mine) { listing in ListingRow(listing: listing) }
             }
         }
     }
 
     private var footnote: some View {
-        Text((report.kind == .card ? "Precio de mercado real de TCGplayer; lo que te queda se calcula vendiendo a ese precio en cada plataforma. " : "Precios más bajos publicados ahora mismo en cada plataforma. ") + "Las comisiones son aproximadas y no incluyen envío.")
+        Text((report.kind == .card ? "Real TCGplayer market price; your payout is calculated selling at that price on each platform. " : "Lowest asks listed right now on each platform. ") + "Fees are approximate and do not include shipping.")
             .font(.system(size: 11)).foregroundStyle(ink.opacity(0.45))
             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
     }
@@ -293,7 +292,7 @@ struct PublishListingSheet: View {
                     Spacer()
                     HStack(spacing: 7) {
                         Circle().fill(brand).frame(width: 9, height: 9)
-                        Text("Anuncio en \(line.platform)").font(.system(size: 15, weight: .bold, design: .rounded)).foregroundStyle(.black)
+                        Text("\(line.platform) listing").font(.system(size: 15, weight: .bold, design: .rounded)).foregroundStyle(.black)
                     }
                     .padding(.horizontal, 14).frame(height: 44).glassEffect(.regular, in: .capsule)
                     Spacer()
@@ -319,32 +318,32 @@ struct PublishListingSheet: View {
                 }
 
                 VStack(spacing: 2) {
-                    Text("TU PRECIO").font(.system(size: 11, weight: .heavy)).foregroundStyle(.black.opacity(0.45))
+                    Text("YOUR PRICE").font(.system(size: 11, weight: .heavy)).foregroundStyle(.black.opacity(0.45))
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
                         Text("$").font(.system(size: 28, weight: .bold, design: .rounded)).foregroundStyle(.black.opacity(0.35))
                         TextField("0", text: $priceText).keyboardType(.decimalPad).focused($focused)
                             .font(.system(size: 46, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                             .multilineTextAlignment(.center).fixedSize()
                     }
-                    Text(report.kind == .card ? "Precio de mercado ahora: \(SaleReport.usd(line.priceUSD))" : "Más bajo publicado ahora en \(line.platform): \(SaleReport.usd(line.priceUSD))")
+                    Text(report.kind == .card ? "Market price now: \(SaleReport.usd(line.priceUSD))" : "Lowest ask on \(line.platform) now: \(SaleReport.usd(line.priceUSD))")
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.5))
                 }
                 .padding(.vertical, 16).frame(maxWidth: .infinity)
                 .background(.white, in: .rect(cornerRadius: 24))
 
                 HStack(spacing: 10) {
-                    stat("Comisión \(line.feePercent)%", "−" + SaleReport.usd(max(0, price - net)), color: .black)
-                    stat("Te quedan", SaleReport.usd(net), color: Color(red: 0.13, green: 0.55, blue: 0.30))
+                    stat("Fee \(line.feePercent)%", "−" + SaleReport.usd(max(0, price - net)), color: .black)
+                    stat("You keep", SaleReport.usd(net), color: Color(red: 0.13, green: 0.55, blue: 0.30))
                     if let cost = report.costUSD {
                         let gain = net - cost
-                        stat("Ganancia", (gain >= 0 ? "+" : "−") + SaleReport.usd(abs(gain)), color: gain >= 0 ? Color(red: 0.13, green: 0.55, blue: 0.30) : .red)
+                        stat("Profit", (gain >= 0 ? "+" : "−") + SaleReport.usd(abs(gain)), color: gain >= 0 ? Color(red: 0.13, green: 0.55, blue: 0.30) : .red)
                     }
                 }
 
                 if report.kind == .shoe {
                     VStack(spacing: 0) {
                         HStack {
-                            Label("Talla (US)", systemImage: "ruler").font(.system(size: 15, weight: .medium)).foregroundStyle(.black)
+                            Label("Size (US)", systemImage: "ruler").font(.system(size: 15, weight: .medium)).foregroundStyle(.black)
                             Spacer()
                             TextField("9.5", text: $size).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
                                 .font(.system(size: 16, weight: .bold, design: .rounded)).frame(width: 80)
@@ -352,7 +351,7 @@ struct PublishListingSheet: View {
                         .padding(.horizontal, 16).frame(height: 54)
                         Divider().padding(.leading, 16)
                         HStack {
-                            Label("Estado", systemImage: "shippingbox").font(.system(size: 15, weight: .medium)).foregroundStyle(.black)
+                            Label("Condition", systemImage: "shippingbox").font(.system(size: 15, weight: .medium)).foregroundStyle(.black)
                             Spacer()
                             Picker("", selection: $condition) {
                                 ForEach(MarketplaceListing.Condition.allCases) { Text($0.rawValue).tag($0) }
@@ -372,7 +371,7 @@ struct PublishListingSheet: View {
                 HStack(spacing: 8) {
                     if working { ProgressView().tint(.white) } else {
                         Image(systemName: "paperplane.fill")
-                        Text("Publicar en \(line.platform)")
+                        Text("Publish on \(line.platform)")
                     }
                 }
                 .font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
@@ -398,21 +397,21 @@ struct PublishListingSheet: View {
         VStack(spacing: 18) {
             Spacer()
             Image("IconAnuncio").resizable().scaledToFit().frame(width: 190, height: 190)
-            Text(outcome == .published ? "¡Publicado en \(line.platform)!" : "Anuncio listo")
+            Text(outcome == .published ? "Published on \(line.platform)!" : "Listing ready")
                 .font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundStyle(.black)
             Text(outcome == .published
-                 ? "Tu anuncio ya está a la venta por \(SaleReport.usd(price))."
-                 : "Quedó guardado a \(SaleReport.usd(price)). En cuanto se conecte la cuenta de vendedor de \(line.platform), se publica con un toque.")
+                 ? "Your listing is live at \(SaleReport.usd(price))."
+                 : "Saved at \(SaleReport.usd(price)). Once the \(line.platform) seller account is connected, it publishes with one tap.")
                 .font(.system(size: 15, weight: .medium)).foregroundStyle(.black.opacity(0.6))
                 .multilineTextAlignment(.center).padding(.horizontal, 34)
             if outcome != .published {
-                Label("Falta la cuenta de vendedor de \(line.platform)", systemImage: "link.badge.plus")
+                Label("\(line.platform) seller account needed", systemImage: "link.badge.plus")
                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(.orange)
                     .padding(.horizontal, 14).frame(height: 38).glassEffect(.regular, in: .capsule)
             }
             Spacer()
             Button { dismiss() } label: {
-                Text("Entendido").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                Text("Got it").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
                     .frame(maxWidth: .infinity, minHeight: 56).background(.black, in: .capsule)
             }
             .buttonStyle(.plain).padding(.horizontal, 20).padding(.bottom, 8)
@@ -439,7 +438,7 @@ struct ListingRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(listing.platform + (listing.size.isEmpty ? "" : " · \(listing.size)"))
                     .font(.system(size: 14, weight: .bold)).foregroundStyle(.black)
-                Text(listing.status == .published ? "Publicado" : "Listo para publicar · falta la cuenta de vendedor")
+                Text(listing.status == .published ? "Published" : "Ready to publish · seller account needed")
                     .font(.system(size: 11)).foregroundStyle(listing.status == .published ? .green : .orange)
             }
             Spacer()
@@ -458,7 +457,7 @@ struct SaleReportsHistoryView: View {
     var body: some View {
         List {
             if !listings.listings.isEmpty {
-                Section("Anuncios preparados") {
+                Section("Ready listings") {
                     ForEach(listings.listings) { listing in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(listing.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
@@ -468,9 +467,9 @@ struct SaleReportsHistoryView: View {
                     .onDelete { offsets in offsets.map { listings.listings[$0] }.forEach(listings.delete) }
                 }
             }
-            Section("Informes") {
+            Section("Reports") {
                 if store.reports.isEmpty {
-                    Text("Escanea una caja y aquí se guarda su informe.").foregroundStyle(.secondary)
+                    Text("Scan a box and its report is saved here.").foregroundStyle(.secondary)
                 }
                 ForEach(store.reports) { report in
                     Button { open = report } label: {
@@ -492,7 +491,7 @@ struct SaleReportsHistoryView: View {
                 .onDelete { offsets in offsets.map { store.reports[$0] }.forEach(store.delete) }
             }
         }
-        .navigationTitle("Informes")
+        .navigationTitle("Reports")
         .fullScreenCover(item: $open) { SaleReportView(report: $0) }
     }
 }

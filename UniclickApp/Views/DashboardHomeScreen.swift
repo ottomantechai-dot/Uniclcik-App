@@ -283,7 +283,7 @@ struct DashboardHomeScreen: View {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(DashboardHomePalette.accentBlue)
-                    Text("Buscar cualquier zapato y su precio")
+                    Text("Search any sneaker and its price")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(DashboardHomePalette.labelMuted)
                     Spacer()
@@ -454,7 +454,7 @@ struct ShoeMarketDetailView: View {
                     startPoint: .top, endPoint: .bottom
                 ).ignoresSafeArea()
             )
-            .navigationTitle("Detalle de precios")
+            .navigationTitle("Price details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -467,7 +467,7 @@ struct ShoeMarketDetailView: View {
                         }
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) { Button("Cerrar") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) { Button("Close") { dismiss() } }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Listo") { costFocused = false }
@@ -887,7 +887,7 @@ struct ShoeMarketDetailView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: 160, height: 160)
-            Text("sube tu primer zapato")
+            Text("add your first sneaker")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color.black.opacity(0.6))
         }
@@ -1256,13 +1256,13 @@ struct PokemonCardsStrip: View {
             HStack(spacing: 6) {
                 Image(systemName: "bolt.fill").font(.system(size: 13))
                     .foregroundStyle(Color(red: 0.95, green: 0.78, blue: 0.12))
-                Text("POKÉMON · CARTAS")
+                Text("POKÉMON · CARDS")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(DashboardHomePalette.textPrimary)
                 Spacer()
                 HStack(spacing: 4) {
                     Circle().fill(DashboardHomePalette.accentGreen).frame(width: 6, height: 6)
-                    Text("precios reales").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
+                    Text("real prices").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
                 }
             }
 
@@ -1514,61 +1514,45 @@ private struct DashboardTrendingSneakersSection: View {
                 action: onViewAll
             )
 
-            HStack(alignment: .top, spacing: columnSpacing) {
-                ForEach(visibleItems) { item in
-                    Button {
-                        onSelect(item)
-                    } label: {
-                        trendingCard(item, isSelected: selectedID == item.id)
-                            .frame(maxWidth: .infinity)
+            // Dos zapatos por fila, en fichas de cristal, solo con el nombre.
+            GlassEffectContainer(spacing: 10) {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    ForEach(visibleItems) { item in
+                        Button {
+                            onSelect(item)
+                        } label: {
+                            trendingCard(item, isSelected: selectedID == item.id)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
     }
 
     private func trendingCard(_ item: HomeSneakerHighlight, isSelected: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 8) {
             highlightImage(item)
                 .frame(maxWidth: .infinity)
-                .frame(height: 78)
-                .padding(.top, 8)
-                .padding(.horizontal, 6)
+                .frame(height: 96)
+                .blendMode(.multiply)   // el fondo blanco de la foto se funde con el cristal
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(DashboardHomePalette.textPrimary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if !item.subtitle.isEmpty {
-                    Text(item.subtitle)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(DashboardHomePalette.labelMuted)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.top, 6)
-            .padding(.bottom, 10)
+            Text(item.title)
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundStyle(DashboardHomePalette.textPrimary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, minHeight: 34, alignment: .top)
         }
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(
-                            isSelected ? DashboardHomePalette.accentPurple : DashboardHomePalette.cardBorder,
-                            lineWidth: isSelected ? 2 : 1
-                        )
-                }
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(isSelected ? Color.black : .clear, lineWidth: 2)
         }
-        .animation(.easeOut(duration: 0.18), value: isSelected)
     }
 
     @ViewBuilder
@@ -1860,7 +1844,7 @@ struct DashboardMarketPricesSection: View {
                         .resizable()
                         .scaledToFit()
                         .frame(width: 160, height: 160)
-                    Text("sube tu primer zapato")
+                    Text("add your first sneaker")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.black.opacity(0.6))
                 }
@@ -2234,7 +2218,7 @@ struct WatchlistView: View {
             .navigationTitle("Watchlist")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { Button("Cerrar") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) { Button("Close") { dismiss() } }
             }
         }
         .preferredColorScheme(.light)

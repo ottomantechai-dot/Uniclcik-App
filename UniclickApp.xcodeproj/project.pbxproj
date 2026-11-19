@@ -129,7 +129,6 @@
 		AA000214 /* MarketplaceGatewayService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000214 /* MarketplaceGatewayService.swift */; };
 		AA000215 /* SaleReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000215 /* SaleReport.swift */; };
 		AA000216 /* MarketplaceListing.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000216 /* MarketplaceListing.swift */; };
-		AA000217 /* CardPacks.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000217 /* CardPacks.swift */; };
 		AA000218 /* SaleReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000218 /* SaleReportView.swift */; };
 		AA000219 /* CardsHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000219 /* CardsHubView.swift */; };
 		AA000220 /* Shoe360View.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000220 /* Shoe360View.swift */; };
@@ -263,7 +262,6 @@
 		AB000214 /* MarketplaceGatewayService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketplaceGatewayService.swift; sourceTree = "<group>"; };
 		AB000215 /* SaleReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaleReport.swift; sourceTree = "<group>"; };
 		AB000216 /* MarketplaceListing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketplaceListing.swift; sourceTree = "<group>"; };
-		AB000217 /* CardPacks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardPacks.swift; sourceTree = "<group>"; };
 		AB000218 /* SaleReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaleReportView.swift; sourceTree = "<group>"; };
 		AB000219 /* CardsHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardsHubView.swift; sourceTree = "<group>"; };
 		AB000220 /* Shoe360View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shoe360View.swift; sourceTree = "<group>"; };
@@ -314,7 +312,6 @@
 		AD000003 /* Models */ = {
 			isa = PBXGroup;
 			children = (
-				AB000217 /* CardPacks.swift */,
 				AB000216 /* MarketplaceListing.swift */,
 				AB000215 /* SaleReport.swift */,
 				AB000002 /* Car.swift */,
@@ -687,7 +684,6 @@
 				AA000220 /* Shoe360View.swift in Sources */,
 				AA000219 /* CardsHubView.swift in Sources */,
 				AA000218 /* SaleReportView.swift in Sources */,
-				AA000217 /* CardPacks.swift in Sources */,
 				AA000216 /* MarketplaceListing.swift in Sources */,
 				AA000215 /* SaleReport.swift in Sources */,
 				AA000200 /* UpsoledProduct.swift in Sources */,

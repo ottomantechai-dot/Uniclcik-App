@@ -2295,7 +2295,7 @@ struct StockScanResultSheet: View {
             Button {
                 saleReport = SaleReport.from(payload: payload)
             } label: {
-                Label("Ver informe de venta", systemImage: "doc.text.magnifyingglass")
+                Label("View sale report", systemImage: "doc.text.magnifyingglass")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.white)
                     .frame(maxWidth: .infinity, minHeight: 52)

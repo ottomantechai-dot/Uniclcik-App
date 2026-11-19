@@ -11,9 +11,9 @@ struct MarketplaceListing: Identifiable, Codable, Equatable {
         case published   // publicado de verdad en la plataforma
     }
     enum Condition: String, Codable, CaseIterable, Identifiable {
-        case new = "Nuevo, con caja"
-        case newNoBox = "Nuevo, sin caja"
-        case used = "Usado"
+        case new = "New, with box"
+        case newNoBox = "New, no box"
+        case used = "Used"
         var id: String { rawValue }
     }
 
@@ -49,7 +49,7 @@ enum ListingPublisher {
         guard sellerAccountConnected(listing.platform) else {
             saved.status = .ready
             ListingStore.shared.save(saved)
-            return .needsSellerAccount("Falta conectar la cuenta de vendedor de \(listing.platform). El anuncio queda guardado y listo para publicar.")
+            return .needsSellerAccount("The \(listing.platform) seller account is not connected yet. The listing is saved and ready to publish.")
         }
         // Aquí va la llamada real a la plataforma (por la pasarela segura de Supabase) cuando exista.
         saved.status = .published

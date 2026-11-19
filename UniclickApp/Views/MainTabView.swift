@@ -21,6 +21,8 @@ enum UpsoledMainTab: Hashable {
 @MainActor
 final class MainTabRouter: ObservableObject {
     @Published var selected: UpsoledMainTab = .home
+    /// La barra de abajo se esconde en pantallas de detalle (ficha de un zapato, añadir al stock).
+    @Published var barHidden = false
     /// Presenta el flujo «Añadir al stock» desde Your stock (antes era una pestaña).
     @Published var showAddStockFlow = false
     /// Abre el pipeline de revisión al entrar en Añadir (p. ej. borradores desde stock).
@@ -124,29 +126,78 @@ struct MainTabView: View {
                     DashboardView()
                         .safeAreaInset(edge: .top, spacing: 0) { AppTopBar(title: "Uniclick") }
                 }
-            } label: {
-                // Solo el icono, sin texto debajo.
-                Image("TabInicio").accessibilityLabel("Inicio")
+                .toolbar(.hidden, for: .tabBar)
             }
 
             Tab(value: UpsoledMainTab.closet) {
                 NavigationStack {
                     ClosetView()
                 }
-            } label: {
-                // Solo el icono, sin texto debajo.
-                Image("TabZapatos").accessibilityLabel("Zapatos")
+                .toolbar(.hidden, for: .tabBar)
             }
 
             Tab(value: UpsoledMainTab.cards) {
                 NavigationStack {
                     CardsHubView()
                 }
-            } label: {
-                // Solo el icono, sin texto debajo.
-                Image("TabCartas").accessibilityLabel("Cartas")
+                .toolbar(.hidden, for: .tabBar)
             }
         }
+        .overlay(alignment: .bottom) {
+            if !tabRouter.barHidden {
+                AppBottomBar(selected: $tabRouter.selected)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy(duration: 0.25), value: tabRouter.barHidden)
+    }
+}
+
+/// Barra de abajo propia: una cápsula de cristal compacta, en negro. El icono de la pestaña abierta
+/// va relleno; los demás, en contorno.
+struct AppBottomBar: View {
+    @Binding var selected: UpsoledMainTab
+    @Namespace private var pill
+
+    private let items: [(tab: UpsoledMainTab, icon: String, name: String)] = [
+        (.home, "TabInicio", "Home"), (.closet, "TabZapatos", "Sneakers"), (.cards, "TabCartas", "Cards"),
+    ]
+
+    var body: some View {
+        // Cristal líquido de verdad: la cápsula de fondo y la burbuja de la pestaña abierta son dos
+        // piezas de cristal que se funden al cambiar de pestaña.
+        GlassEffectContainer(spacing: 6) {
+            HStack(spacing: 4) {
+                ForEach(items, id: \.tab) { item in
+                    let on = selected == item.tab
+                    // La zapatilla es más ancha que alta: se dibuja un poco mayor para equilibrar.
+                    let side: CGFloat = item.tab == .closet ? 33 : 25
+                    Button {
+                        withAnimation(.bouncy(duration: 0.35)) { selected = item.tab }
+                    } label: {
+                        Image(on ? item.icon : item.icon + "Linea")
+                            .resizable().scaledToFit()
+                            .frame(width: side, height: side)
+                            .foregroundStyle(.black.opacity(on ? 1 : 0.6))
+                            .frame(width: 64, height: 44)
+                            .background {
+                                if on {
+                                    Capsule().fill(.clear)
+                                        .glassEffect(.clear.interactive(), in: .capsule)
+                                        .glassEffectID("burbuja", in: pill)
+                                }
+                            }
+                            .contentShape(.capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(item.name)
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                }
+            }
+            .padding(4)
+            .glassEffect(.regular, in: .capsule)
+        }
+        .padding(.bottom, 2)
     }
 }
 

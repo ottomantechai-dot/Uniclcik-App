@@ -469,7 +469,7 @@ struct ClosetView: View {
     /// redondos junto a la foto de perfil; el campo de búsqueda solo aparece al tocar la lupa.
     private var stockTopChrome: some View {
         VStack(spacing: 8) {
-            AppTopBar(title: "Zapatos") {
+            AppTopBar(title: "Sneakers") {
                 if hasAnyStockContent {
                     Button {
                         withAnimation(.snappy(duration: 0.28)) { stockSearchOpen.toggle() }
@@ -477,12 +477,12 @@ struct ClosetView: View {
                         if !stockSearchOpen { stockSearchText = "" }
                     } label: { TopBarGlassButton(systemImage: stockSearchOpen ? "xmark" : "magnifyingglass") }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Buscar")
+                        .accessibilityLabel("Search")
                     Menu {
-                        Button { showStockFiltersSheet = true } label: { Label("Filtros", systemImage: "line.3.horizontal.decrease") }
-                        Button { showStockBarcodeScanner = true } label: { Label("Escanear una caja", systemImage: "barcode.viewfinder") }
-                        NavigationLink { SaleReportsHistoryView() } label: { Label("Informes de venta", systemImage: "doc.text.magnifyingglass") }
-                        Section("Ordenar") {
+                        Button { showStockFiltersSheet = true } label: { Label("Filters", systemImage: "line.3.horizontal.decrease") }
+                        Button { showStockBarcodeScanner = true } label: { Label("Scan a box", systemImage: "barcode.viewfinder") }
+                        NavigationLink { SaleReportsHistoryView() } label: { Label("Sale reports", systemImage: "doc.text.magnifyingglass") }
+                        Section("Sort") {
                             ForEach(StockSortOrder.allCases) { order in
                                 Button { stockFilters.sort = order } label: {
                                     if stockFilters.sort == order { Label(order.menuLabel, systemImage: "checkmark") } else { Text(order.menuLabel) }
@@ -490,7 +490,7 @@ struct ClosetView: View {
                             }
                         }
                     } label: { TopBarGlassButton(systemImage: "slider.horizontal.3") }
-                        .accessibilityLabel("Filtros y orden")
+                        .accessibilityLabel("Filters and sort")
                 }
             }
             if hasAnyStockContent, stockSearchOpen {
@@ -596,7 +596,7 @@ struct ClosetView: View {
                 tabRouter.addTabOpenPipeline = false
             }
         }
-        .toolbar((tabRouter.showAddStockFlow || garmentDetailItemID != nil) ? .hidden : .visible, for: .tabBar)
+        .onChange(of: tabRouter.showAddStockFlow || garmentDetailItemID != nil) { _, detail in tabRouter.barHidden = detail }
         .navigationDestination(item: $garmentDetailItemID) { itemID in
             if let item = closetItems.first(where: { $0.id == itemID }) {
                 ClosetGarmentDetailView(item: item)
@@ -4744,7 +4744,7 @@ struct OpportunitiesView: View {
             .navigationTitle("Oportunidades")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { Button("Cerrar") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) { Button("Close") { dismiss() } }
                 ToolbarItem(placement: .topBarLeading) {
                     Button { Task { await scan() } } label: {
                         if loading { ProgressView() } else { Image(systemName: "arrow.clockwise") }
@@ -4945,7 +4945,7 @@ struct MarketComparatorView: View {
                     .accessibilityLabel("Lo que aprendió la IA")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Cerrar") { dismiss() }
+                    Button("Close") { dismiss() }
                 }
             }
             .sheet(isPresented: $showCorrections) { ScanCorrectionsView() }
@@ -6125,7 +6125,7 @@ struct ScanCorrectionsView: View {
             .navigationTitle("Lo que aprendió la IA")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Cerrar") { dismiss() } }
+                ToolbarItem(placement: .topBarLeading) { Button("Close") { dismiss() } }
                 if !store.items.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Borrar todo", role: .destructive) { store.clearAll() }
@@ -6289,7 +6289,7 @@ struct CreatePriceAlertSheet: View {
     }
 
     private var sizePicker: some View {
-        Picker("Talla", selection: $selectedSize) {
+        Picker("Size", selection: $selectedSize) {
             Text("Cualquiera").tag("")
             ForEach(sizes, id: \.self) { Text($0).tag($0) }
         }
@@ -6348,7 +6348,7 @@ struct PriceAlertsListView: View {
             .navigationTitle("Alertas")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Cerrar") { dismiss() } }
+                ToolbarItem(placement: .topBarLeading) { Button("Close") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Task { checking = true; await PriceAlertChecker.checkAll(store: store); checking = false }
@@ -6446,7 +6446,7 @@ struct ComparisonSaleReportButton: View {
         Button {
             report = SaleReport.from(comparison: comparison)
         } label: {
-            Label("Informe de venta y publicar", systemImage: "doc.text.magnifyingglass")
+            Label("Sale report and listing", systemImage: "doc.text.magnifyingglass")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity, minHeight: 46)
