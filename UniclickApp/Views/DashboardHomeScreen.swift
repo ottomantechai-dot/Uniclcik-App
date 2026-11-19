@@ -263,6 +263,9 @@ struct DashboardHomeScreen: View {
     @State private var showMarketComparator = false
     @State private var showWatchlist = false
     @State private var showSearch = false
+    /// En Inicio, la fila de tendencias enseña zapatos o cartas según el acceso elegido.
+    @State private var homeShowsCards = false
+    @EnvironmentObject private var tabRouter: MainTabRouter
     @State private var showOpportunities = false
     @ObservedObject private var watchlist = WatchlistStore.shared
 
@@ -277,35 +280,20 @@ struct DashboardHomeScreen: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Buscador de cualquier zapato: precio real por talla en todas las plataformas.
-            Button { showSearch = true } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(DashboardHomePalette.accentBlue)
-                    Text("Buscar cualquier zapato y su precio")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(DashboardHomePalette.labelMuted)
-                    Spacer()
-                }
-                .padding(.horizontal, 14).padding(.vertical, 13)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.white)
-                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(DashboardHomePalette.cardBorder, lineWidth: 1))
-                        .shadow(color: DashboardHomePalette.cardShadow, radius: 8, x: 0, y: 3)
-                )
-            }
-            .buttonStyle(.plain)
 
-            if !trending.isEmpty {
-                DashboardTrendingSneakersSection(
-                    items: trending,
-                    selectedID: selectedTrendingID,
-                    onSelect: { item in selectedTrendingID = item.id },
-                    onViewAll: onViewStock
-                )
+            HomeBentoGrid(closetItems: closetItems, catalogProducts: catalogProducts,
+                          showsCards: $homeShowsCards,
+                          onSneakers: onViewStock,
+                          onScan: { tabRouter.scanRequested = true; tabRouter.selected = .closet },
+                          onCards: { tabRouter.selected = .cards })
+
+            CardsShowcase(onViewAll: { tabRouter.selected = .cards })
+
+            if homeShowsCards {
+                HomeTrendingCardsRow(onViewAll: { tabRouter.selected = .cards })
+            } else {
+                // Solo zapatos cuyo nombre cabe entero en la ficha (dos líneas), para que no se corte.
+                HomeTrendingRow(products: Array(catalogProducts.filter { $0.name.count <= 29 }.prefix(12)), onViewAll: onViewStock)
             }
 
             if !watchlist.items.isEmpty {
@@ -328,7 +316,7 @@ struct DashboardHomeScreen: View {
                     Button { showOpportunities = true } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "target").font(.system(size: 13)).foregroundStyle(DashboardHomePalette.accentGreen)
-                            Text("Oportunidades").font(.system(size: 13, weight: .bold))
+                            Text("Opportunities").font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(DashboardHomePalette.textPrimary)
                             Spacer(minLength: 2)
                             Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
@@ -343,7 +331,9 @@ struct DashboardHomeScreen: View {
             }
 
             DashboardMarketPricesSection(
-                comparison: marketComparison
+                comparison: marketComparison,
+                // Un zapato distinto de los que ya salen en «Trending Now».
+                featured: marketComparison == nil ? (catalogProducts.filter { $0.name.count <= 29 }.dropFirst(12).first ?? catalogProducts.last) : nil
             )
 
             DashboardHomeBottomGrid(
@@ -352,7 +342,9 @@ struct DashboardHomeScreen: View {
                 onViewStock: onViewStock
             )
         }
-        .sheet(isPresented: $showMarketComparator) {
+        .onChange(of: tabRouter.homeSearchTick) { _, _ in showSearch = true }
+        .onReceive(NotificationCenter.default.publisher(for: .homeOpenCards)) { _ in tabRouter.selected = .cards }
+        .fullScreenCover(isPresented: $showMarketComparator) {
             if let item = selectedTrendingItem {
                 ShoeMarketDetailView(item: item)
             } else {
@@ -362,7 +354,7 @@ struct DashboardHomeScreen: View {
         .sheet(isPresented: $showWatchlist) {
             WatchlistView()
         }
-        .sheet(isPresented: $showSearch) {
+        .fullScreenCover(isPresented: $showSearch) {
             MarketComparatorView()
         }
         .sheet(isPresented: $showOpportunities) {
@@ -425,6 +417,10 @@ struct ShoeMarketDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
+                    Shoe360View(titles: (comparison?.spinTitles ?? []) + [item.displayName], fallbackURL: comparison?.imageURL, queries: [item.marketLookup?.query].compactMap { $0 })
+                        .frame(height: 220)
+                        .padding(.vertical, 6)
+                        .background(Color.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                     if loading {
                         loadingSkeleton
                     } else if let comp = comparison, !comp.rows.isEmpty {
@@ -450,7 +446,7 @@ struct ShoeMarketDetailView: View {
                     startPoint: .top, endPoint: .bottom
                 ).ignoresSafeArea()
             )
-            .navigationTitle("Detalle de precios")
+            .navigationTitle("Price details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -463,7 +459,7 @@ struct ShoeMarketDetailView: View {
                         }
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) { Button("Cerrar") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) { Button("Close") { dismiss() } }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Listo") { costFocused = false }
@@ -493,7 +489,7 @@ struct ShoeMarketDetailView: View {
             // Los DOS precios reales que de verdad importan, lado a lado (sin promedios que confunden).
             HStack(alignment: .top, spacing: 28) {
                 if let ask = comparison?.bestBuyOverall {
-                    headerPrice(label: "ASK MÁS BAJO", value: Self.usd(ask.price), sub: "comprar ya · \(ask.platform)")
+                    headerPrice(label: "LOWEST ASK", value: Self.usd(ask.price), sub: "buy now · \(ask.platform)")
                 }
                 if let last = sales.last {
                     headerPrice(label: "ÚLTIMA VENTA", value: Self.usd(last.avg), sub: "venta real")
@@ -879,11 +875,8 @@ struct ShoeMarketDetailView: View {
 
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Image("AuthSneakerHero")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 160, height: 160)
-            Text("sube tu primer zapato")
+            Image(systemName: "chart.bar.xaxis").font(.system(size: 28, weight: .semibold)).foregroundStyle(Color.black.opacity(0.25))
+            Text("No market prices yet")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color.black.opacity(0.6))
         }
@@ -1068,7 +1061,16 @@ enum HomeFeaturedDataBuilder {
 
 // MARK: - Precios reales de cartas Pokémon (pokemontcg.io: TCGplayer + Cardmarket)
 
-struct PokemonCardData: Identifiable {
+struct PokemonSetData: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let series: String
+    let total: Int
+    let year: String
+    let logoURL: URL?
+}
+
+struct PokemonCardData: Identifiable, Hashable {
     let id: String
     let name: String
     let setName: String
@@ -1077,6 +1079,15 @@ struct PokemonCardData: Identifiable {
     let cardmarketEUR: Double?     // tendencia real Cardmarket (EUR)
     let changePercent: Double      // tendencia real (avg7 vs avg30 de Cardmarket)
     let imageURL: URL?
+
+    /// Versión pequeña de la imagen, para rejillas: pesa mucho menos y carga al instante.
+    var thumbURL: URL? {
+        guard let imageURL else { return nil }
+        let text = imageURL.absoluteString
+        // Las cartas nuevas van en otro servidor: «…/large» (casi 1 MB) frente a «…/small» (50 KB).
+        if text.hasSuffix("/large") { return URL(string: String(text.dropLast("large".count)) + "small") }
+        return URL(string: text.replacingOccurrences(of: "_hires.png", with: ".png"))
+    }
 }
 
 enum PokemonTCGClient {
@@ -1155,6 +1166,82 @@ enum PokemonTCGClient {
         return cards
     }
 
+    // MARK: Catálogo completo (colecciones y páginas de cartas)
+
+    private struct SetEnv: Decodable { let data: [SetRow] }
+    private struct SetRow: Decodable {
+        let id: String; let name: String; let series: String?
+        let total: Int?; let releaseDate: String?
+        let images: SetImgs?
+    }
+    private struct SetImgs: Decodable { let logo: String?; let symbol: String? }
+
+    private struct SeedSet: Codable { let id: String; let name: String; let series: String; let total: Int; let year: String; let logo: String }
+    private static let cacheFolder: URL = {
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("cards", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }()
+    private static func sets(from data: Data?) -> [PokemonSetData] {
+        guard let data, let rows = try? JSONDecoder().decode([SeedSet].self, from: data) else { return [] }
+        return rows.map { PokemonSetData(id: $0.id, name: $0.name, series: $0.series, total: $0.total, year: $0.year, logoURL: URL(string: $0.logo)) }
+    }
+
+    /// Colecciones disponibles al instante: las últimas guardadas en el teléfono o las incluidas en la app.
+    static func storedSets() -> [PokemonSetData] {
+        let saved = sets(from: try? Data(contentsOf: cacheFolder.appendingPathComponent("sets.json")))
+        return saved.isEmpty ? sets(from: CardSetsSeed.json.data(using: .utf8)) : saved
+    }
+
+    /// Todas las colecciones, de la más nueva a la más antigua. Si el catálogo falla, las guardadas.
+    static func fetchSets() async -> [PokemonSetData] {
+        guard let url = URL(string: "https://api.pokemontcg.io/v2/sets?orderBy=-releaseDate&pageSize=250") else { return storedSets() }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 12
+        guard let data = await dataWithRetry(req), let env = try? JSONDecoder().decode(SetEnv.self, from: data), !env.data.isEmpty else { return storedSets() }
+        let rows = env.data.map { SeedSet(id: $0.id, name: $0.name, series: $0.series ?? "", total: $0.total ?? 0, year: String(($0.releaseDate ?? "").prefix(4)), logo: $0.images?.logo ?? "") }
+        if let encoded = try? JSONEncoder().encode(rows) {
+            try? encoded.write(to: cacheFolder.appendingPathComponent("sets.json"), options: .atomic)
+            return sets(from: encoded)
+        }
+        return storedSets()
+    }
+
+    /// El catálogo a veces responde con error; se reintenta un par de veces antes de rendirse.
+    private static func dataWithRetry(_ request: URLRequest, attempts: Int = 3) async -> Data? {
+        for attempt in 0..<attempts {
+            if let (data, resp) = try? await URLSession.shared.data(for: request),
+               let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) { return data }
+            try? await Task.sleep(for: .milliseconds(500 * (attempt + 1)))
+        }
+        return nil
+    }
+
+    /// Devuelve `nil` si el catálogo no respondió (para ofrecer reintentar), y `[]` si no hay más cartas.
+    static func fetchPage(query: String, page: Int, pageSize: Int = 30) async -> [PokemonCardData]? {
+        guard var comps = URLComponents(string: "https://api.pokemontcg.io/v2/cards") else { return nil }
+        comps.queryItems = [
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "page", value: String(page)),
+            URLQueryItem(name: "pageSize", value: String(pageSize)),
+            URLQueryItem(name: "orderBy", value: "-set.releaseDate,number"),
+            URLQueryItem(name: "select", value: "id,name,rarity,set,images,tcgplayer,cardmarket"),
+        ]
+        guard let url = comps.url else { return nil }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 20
+        req.timeoutInterval = 12
+        let key = Data((query + "|\(page)|\(pageSize)").utf8).base64EncodedString().replacingOccurrences(of: "/", with: "_").prefix(120)
+        let file = cacheFolder.appendingPathComponent("page-\(key).json")
+        if let data = await dataWithRetry(req, attempts: 4), let env = try? JSONDecoder().decode(Env.self, from: data) {
+            try? data.write(to: file, options: .atomic)
+            return env.data.map(map)
+        }
+        // El catálogo no respondió: se enseña lo último que se guardó de esta misma página.
+        if let data = try? Data(contentsOf: file), let env = try? JSONDecoder().decode(Env.self, from: data) { return env.data.map(map) }
+        return nil
+    }
+
     private static func map(_ c: Card) -> PokemonCardData {
         let market = (c.tcgplayer?.prices ?? [:]).values.compactMap(\.market).max()
         let cm = c.cardmarket?.prices?.trendPrice ?? c.cardmarket?.prices?.averageSellPrice
@@ -1186,13 +1273,13 @@ struct PokemonCardsStrip: View {
             HStack(spacing: 6) {
                 Image(systemName: "bolt.fill").font(.system(size: 13))
                     .foregroundStyle(Color(red: 0.95, green: 0.78, blue: 0.12))
-                Text("POKÉMON · CARTAS")
+                Text("POKÉMON · CARDS")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(DashboardHomePalette.textPrimary)
                 Spacer()
                 HStack(spacing: 4) {
                     Circle().fill(DashboardHomePalette.accentGreen).frame(width: 6, height: 6)
-                    Text("precios reales").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
+                    Text("real prices").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
                 }
             }
 
@@ -1260,17 +1347,7 @@ private struct DashboardHomeBottomGrid: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            PokemonCardsStrip()
-            DashboardHomeCategoryCard(
-                icon: "tshirt.fill",
-                iconColor: DashboardHomePalette.accentGreen,
-                title: "STREETWEAR & APPAREL",
-                product: streetwear,
-                actionColor: DashboardHomePalette.accentGreen,
-                onViewAll: onViewStock
-            ) {
-                streetwearImage(streetwear)
-            }
+            HomeTrendingCardsRow(title: "Card Catalog", icon: "rectangle.portrait.on.rectangle.portrait.fill", onViewAll: { NotificationCenter.default.post(name: .homeOpenCards, object: nil) })
         }
     }
 
@@ -1318,7 +1395,7 @@ private struct DashboardHomeCategoryCard<ImageContent: View>: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(product.name)
+                    Text(product.name.firstUppercased)
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(DashboardHomePalette.textPrimary)
                         .lineLimit(2)
@@ -1444,61 +1521,45 @@ private struct DashboardTrendingSneakersSection: View {
                 action: onViewAll
             )
 
-            HStack(alignment: .top, spacing: columnSpacing) {
-                ForEach(visibleItems) { item in
-                    Button {
-                        onSelect(item)
-                    } label: {
-                        trendingCard(item, isSelected: selectedID == item.id)
-                            .frame(maxWidth: .infinity)
+            // Dos zapatos por fila, en fichas de cristal, solo con el nombre.
+            GlassEffectContainer(spacing: 10) {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    ForEach(visibleItems) { item in
+                        Button {
+                            onSelect(item)
+                        } label: {
+                            trendingCard(item, isSelected: selectedID == item.id)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
     }
 
     private func trendingCard(_ item: HomeSneakerHighlight, isSelected: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 8) {
             highlightImage(item)
                 .frame(maxWidth: .infinity)
-                .frame(height: 78)
-                .padding(.top, 8)
-                .padding(.horizontal, 6)
+                .frame(height: 96)
+                .blendMode(.multiply)   // el fondo blanco de la foto se funde con el cristal
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(DashboardHomePalette.textPrimary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if !item.subtitle.isEmpty {
-                    Text(item.subtitle)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(DashboardHomePalette.labelMuted)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.top, 6)
-            .padding(.bottom, 10)
+            Text(item.title)
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundStyle(DashboardHomePalette.textPrimary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, minHeight: 34, alignment: .top)
         }
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(
-                            isSelected ? DashboardHomePalette.accentPurple : DashboardHomePalette.cardBorder,
-                            lineWidth: isSelected ? 2 : 1
-                        )
-                }
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity)
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(isSelected ? Color.black : .clear, lineWidth: 2)
         }
-        .animation(.easeOut(duration: 0.18), value: isSelected)
     }
 
     @ViewBuilder
@@ -1764,6 +1825,8 @@ enum HomeMarketTableBuilder {
 struct DashboardMarketPricesSection: View {
     let comparison: MarketComparison?
     var maxVisibleRows: Int? = 3
+    /// Zapato del que se enseñan los precios (en Inicio): su foto, su marca y su nombre encabezan la tabla.
+    var featured: UpsoledProduct?
 
     private let platforms = HomeMarketTableBuilder.homePlatforms
     private let rowHeight: CGFloat = 52
@@ -1780,22 +1843,63 @@ struct DashboardMarketPricesSection: View {
         VStack(alignment: .leading, spacing: 16) {
             tableHeader
 
+            if let featured {
+                HStack(alignment: .top, spacing: 12) {
+                    StockCachedRemoteImage(url: featured.primaryImageURL, maxPixelSide: 320, fillFrame: false)
+                        .frame(width: 120, height: 88).blendMode(.multiply)
+                        .padding(.top, 10).padding(.trailing, 14)
+                        .overlay(alignment: .topTrailing) {
+                            // La marca, arriba a la derecha del zapato.
+                            BrandLogoLabel(brand: featured.brand ?? "", compact: true)
+                                .frame(width: 30, height: 30).glassEffect(.regular, in: .circle)
+                        }
+                    // Las plataformas van arriba, a la misma altura que el círculo de la marca; debajo, el nombre.
+                    VStack(alignment: .leading, spacing: 10) {
+                        MarketplaceDots(brands: ["StockX", "GOAT", "eBay", "Flight Club"], size: 30)
+                        Text(featured.name.firstUppercased).font(.system(size: 16, weight: .bold)).foregroundStyle(.black)
+                            .lineLimit(2).multilineTextAlignment(.leading)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+
             if comparison?.bestBuyOverall != nil || lastSale != nil {
                 priceSummary
             }
 
             if tableRows.isEmpty {
-                VStack(spacing: 10) {
-                    Image("AuthSneakerHero")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 160, height: 160)
-                    Text("sube tu primer zapato")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.black.opacity(0.6))
+                // Sin precios todavía: la tabla sale montada, con cada plataforma y cada talla en su casilla.
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "ruler").font(.system(size: 11, weight: .bold))
+                            Text("US").font(.system(size: 11, weight: .heavy))
+                        }
+                        .foregroundStyle(Color.black.opacity(0.55))
+                        .frame(width: 52, height: 38)
+                        .background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
+                        ForEach(["StockX", "GOAT", "eBay", "Flight Club"], id: \.self) { brand in
+                            StylizedMarketplaceLogo(brand: brand).frame(height: 13).padding(.horizontal, 6)
+                                .frame(maxWidth: .infinity, minHeight: 38)
+                                .background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
+                        }
+                    }
+                    ForEach(featured == nil ? ["8", "9", "10", "11"] : ["7", "8", "9", "10", "11", "12"], id: \.self) { size in
+                        HStack(spacing: 8) {
+                            DotMatrixText(text: size)
+                                .frame(width: 52, height: 40)
+                                .background(Color.black, in: .rect(cornerRadius: 11))
+                            ForEach(0..<4, id: \.self) { _ in
+                                Text("—").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.black.opacity(0.25))
+                                    .frame(maxWidth: .infinity, minHeight: 40)
+                                    .background { RoundedRectangle(cornerRadius: 11).strokeBorder(Color.black.opacity(0.08)) }
+                            }
+                        }
+                    }
+                    Text("Prices appear here as soon as the market responds")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.black.opacity(0.45))
+                        .frame(maxWidth: .infinity).padding(.top, 4)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 28)
             } else {
                 HomeMarketPriceGridTable(
                     platforms: platforms,
@@ -1807,7 +1911,8 @@ struct DashboardMarketPricesSection: View {
         .padding(.horizontal, 18)
         .padding(.top, 18)
         .padding(.bottom, 16)
-        .background(homeCardBackground)
+        .background(.white, in: .rect(cornerRadius: 26))
+        .glassEffect(.regular, in: .rect(cornerRadius: 26))
         .task(id: comparison?.matchedSKU ?? comparison?.query ?? "") { await loadLastSale() }
     }
 
@@ -1815,9 +1920,9 @@ struct DashboardMarketPricesSection: View {
     private var priceSummary: some View {
         HStack(spacing: 0) {
             if let ask = comparison?.bestBuyOverall {
-                summaryCol(label: "ASK MÁS BAJO",
+                summaryCol(label: "LOWEST ASK",
                            value: PieceMarketPrice.formatUSD(Int(ask.price.rounded())),
-                           sub: "comprar ya · \(ask.platform)",
+                           sub: "buy now · \(ask.platform)",
                            color: DashboardHomePalette.accentGreen)
             }
             if let ls = lastSale {
@@ -1855,23 +1960,13 @@ struct DashboardMarketPricesSection: View {
     private var tableHeader: some View {
         HStack {
             HStack(spacing: 7) {
-                Image(systemName: "globe")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DashboardHomePalette.accentBlue)
+                Image("IconMercado").resizable().scaledToFit().frame(width: 20, height: 20).foregroundStyle(.black)
                 Text("MARKET PRICES")
                     .font(.system(size: 12, weight: .heavy))
                     .tracking(0.9)
                     .foregroundStyle(Color.black.opacity(0.88))
             }
             Spacer(minLength: 0)
-            HStack(spacing: 6) {
-                Text("Live prices")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.42))
-                Circle()
-                    .fill(DashboardHomePalette.accentGreen)
-                    .frame(width: 7, height: 7)
-            }
         }
     }
 }
@@ -2031,7 +2126,7 @@ private struct HomeMarketPriceGridTable: View {
         if normalized == "Avg" { return "Avg" }
         // Tallas ≥ 27 no existen en US (la US llega ~18): son europeas → etiquetar EU.
         if let n = Double(normalized.replacingOccurrences(of: ",", with: ".")), n >= 27 {
-            return "EU \(normalized)"
+            return "US \(normalized)"
         }
         return "US \(normalized)"
     }
@@ -2164,7 +2259,7 @@ struct WatchlistView: View {
             .navigationTitle("Watchlist")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { Button("Cerrar") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) { Button("Close") { dismiss() } }
             }
         }
         .preferredColorScheme(.light)
@@ -2205,6 +2300,507 @@ struct WatchRow: View {
         if let comp = (try? await KicksDBClient.fetchComparison(query: item.query)) ?? nil,
            let v = comp.bestBuyOverall?.price {
             price = v
+        }
+    }
+}
+
+
+// MARK: - Inicio en mosaico de cristal
+
+/// Inicio: banner, cifras reales del negocio, accesos por categoría.
+struct HomeBentoGrid: View {
+    let closetItems: [ClosetItem]
+    let catalogProducts: [UpsoledProduct]
+    @Binding var showsCards: Bool
+    var onSneakers: () -> Void
+    var onScan: () -> Void
+    var onCards: () -> Void
+    @ObservedObject private var reports = SaleReportStore.shared
+    @ObservedObject private var listings = ListingStore.shared
+    @State private var showReports = false
+
+    private var stock: [ClosetItem] { closetItems.filter(\.isActiveInStock) }
+    private var sold: [ClosetItem] { closetItems.filter(\.isSold) }
+    private var stockValue: Double { stock.reduce(0) { $0 + $1.stockValueUSD } }
+    private var earnings: Double { sold.reduce(0) { $0 + $1.stockValueUSD } }
+    private let purple = Color.black
+
+    private func money(_ value: Double) -> String { value > 0 ? SaleReport.usd(value.rounded()) : "$0" }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            // Banner de cartas
+            Button(action: onCards) {
+                ZStack(alignment: .leading) {
+                    // Tres cartas gradadas en abanico, a la derecha, que se difuminan hacia el texto y hacia abajo.
+                    HStack(spacing: -30) {
+                        bannerCard("BannerCard1", angle: -7, y: 8)
+                        bannerCard("BannerCard2", angle: 7, y: 8).zIndex(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 0)
+                    .offset(x: 6, y: 34)
+                    .mask {
+                        LinearGradient(stops: [.init(color: .clear, location: 0.40), .init(color: .black, location: 0.54)], startPoint: .leading, endPoint: .trailing)
+                    }
+                    .mask {
+                        LinearGradient(stops: [.init(color: .black, location: 0.78), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom)
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Trading Cards").font(.system(size: 24, weight: .heavy, design: .rounded)).foregroundStyle(.white)
+                        Text("Buy · Sell · Track value").font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.85))
+                        HStack(spacing: 6) {
+                            Text("Explore").font(.system(size: 14, weight: .bold))
+                            Image(systemName: "arrow.right").font(.system(size: 12, weight: .bold))
+                        }
+                        .foregroundStyle(.black).padding(.horizontal, 16).frame(height: 36)
+                        .background(.white, in: .capsule).padding(.top, 6)
+                    }
+                    .padding(.leading, 18)
+                }
+                .frame(maxWidth: .infinity, minHeight: Self.bigScreen ? 176 : 150, maxHeight: Self.bigScreen ? 176 : 150)
+                // Rojo sólido de fondo y, encima, el cristal teñido: se nota el color sin perder el brillo.
+                .background(Color(red: 0.93, green: 0.05, blue: 0.05))
+                .clipShape(.rect(cornerRadius: 26))
+                .glassEffect(.clear.tint(Color(red: 0.93, green: 0.05, blue: 0.05).opacity(0.35)).interactive(), in: .rect(cornerRadius: 26))
+            }
+            .buttonStyle(.plain)
+
+            GlassEffectContainer(spacing: 10) {
+                VStack(spacing: 10) {
+                    HStack(spacing: 10) {
+                        bigStat(icon: "wallet.bifold", title: "Total Earnings", value: money(earnings))
+                            .frame(maxWidth: .infinity)
+                        bigStat(icon: "shippingbox", title: "Pairs Sold", value: "\(sold.count)")
+                            .frame(width: 130)
+                    }
+                    HStack(spacing: 10) {
+                        Button(action: onSneakers) { smallStat(icon: "shoe.2", title: "Inventory", value: "\(stock.count)") }.buttonStyle(.plain)
+                        Button(action: onSneakers) { smallStat(icon: "chart.bar", title: "Stock Value", value: money(stockValue)) }.buttonStyle(.plain)
+                        Button { showReports = true } label: { smallStat(icon: "tag", title: "Listings", value: "\(listings.listings.count)") }.buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $showReports) {
+            NavigationStack {
+                SaleReportsHistoryView()
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button { showReports = false } label: { Image(systemName: "xmark") } } }
+            }
+        }
+    }
+
+    /// iPhone grande (Pro Max / Plus): el banner y sus cartas crecen.
+    private static var bigScreen: Bool { UIScreen.main.bounds.width >= 428 }
+
+    private func bannerCard(_ name: String, angle: Double, y: CGFloat) -> some View {
+        Image(name).resizable().scaledToFit()
+            .frame(width: Self.bigScreen ? 132 : 106)
+            .clipShape(.rect(cornerRadius: 8))
+            .shadow(color: .black.opacity(0.22), radius: 8, y: 4)
+            .rotationEffect(.degrees(angle))
+            .offset(y: y)
+    }
+
+    private func bigStat(icon: String, title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: icon).font(.system(size: 17, weight: .semibold)).foregroundStyle(.black)
+                Text(title).font(.system(size: 14, weight: .medium)).foregroundStyle(.black.opacity(0.7)).lineLimit(1)
+            }
+            Text(value).font(.system(size: 28, weight: .heavy, design: .rounded)).foregroundStyle(.black).minimumScaleFactor(0.5).lineLimit(1)
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white, in: .rect(cornerRadius: 22))
+        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+    }
+
+    private func smallStat(icon: String, title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 13, weight: .semibold))
+                Text(title).font(.system(size: 11, weight: .medium)).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(.black.opacity(0.7))
+            HStack {
+                Text(value).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.black).minimumScaleFactor(0.6).lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(.black.opacity(0.4))
+            }
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect(cornerRadius: 18))
+        .background(.white, in: .rect(cornerRadius: 18))
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
+    }
+
+    private func category(_ icon: String, _ title: String, highlighted: Bool = false) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon).font(.system(size: 22, weight: .medium)).foregroundStyle(highlighted ? purple : .black).frame(height: 26)
+            Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(.black).lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, minHeight: 78)
+        .contentShape(.rect(cornerRadius: 18))
+        .background(highlighted ? Color(white: 0.90) : .white, in: .rect(cornerRadius: 18))
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
+    }
+}
+
+/// «Trending Now»: fila de zapatos del catálogo que se desliza hacia la derecha.
+struct HomeTrendingRow: View {
+    let products: [UpsoledProduct]
+    var onViewAll: () -> Void
+
+    var body: some View {
+        if !products.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    AnimatedFlame()
+                    Text("Trending Now").font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                    Spacer()
+                    Button(action: onViewAll) {
+                        HStack(spacing: 4) { Text("View all"); Image(systemName: "arrow.right").font(.system(size: 11, weight: .bold)) }
+                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
+                    }
+                    .buttonStyle(.plain)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 10) {
+                        ForEach(products) { product in
+                            NavigationLink { CatalogShoePreview(product: product) } label: {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 320, fillFrame: false)
+                                        .frame(width: 118, height: 90).blendMode(.multiply)
+                                    Text(product.name.firstUppercased).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
+                                        .lineLimit(2).multilineTextAlignment(.leading).frame(width: 118, height: 34, alignment: .topLeading)
+                                }
+                                .padding(12).padding(.top, 14)
+                                .background(.white, in: .rect(cornerRadius: 20))
+                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+                                .overlay(alignment: .topLeading) {
+                                    // La marca, en un círculo de cristal en la esquina.
+                                    BrandLogoLabel(brand: product.brand ?? "", compact: true)
+                                        .frame(width: 30, height: 30)
+                                        .glassEffect(.regular, in: .circle)
+                                        .padding(8)
+                                }
+                                .overlay(alignment: .topTrailing) {
+                                    MarketplaceDots(brands: ["StockX", "GOAT", "eBay"])
+                                    .padding(.top, 11).padding(.trailing, 8)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .scrollClipDisabled()
+            }
+        }
+    }
+}
+
+
+/// «Trending Now» con cartas: las mismas fichas que los zapatos, con cartas reales del catálogo.
+extension Notification.Name { static let homeOpenCards = Notification.Name("Uniclick.homeOpenCards") }
+
+struct HomeTrendingCardsRow: View {
+    var title = "Trending Now"
+    var icon = "flame.fill"
+    var onViewAll: () -> Void
+    @State private var cards: [PokemonCardData] = []
+    @State private var report: SaleReport?
+    @State private var openedCard: PokemonCardData?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                if icon == "flame.fill" { AnimatedFlame() } else { Image("IconSlab").resizable().scaledToFit().frame(width: 22, height: 22).foregroundStyle(.black) }
+                Text(title).font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                Spacer()
+                Button(action: onViewAll) {
+                    HStack(spacing: 4) { Text("View all"); Image(systemName: "arrow.right").font(.system(size: 11, weight: .bold)) }
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
+                }
+                .buttonStyle(.plain)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 10) {
+                    if cards.isEmpty {
+                        ForEach(0..<4, id: \.self) { _ in Skeleton(corner: 20).frame(width: 142, height: 200) }
+                    }
+                    ForEach(cards) { card in
+                        Button { openedCard = card } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                CardImage(url: card.thumbURL)
+                                .frame(width: 118, height: 150)
+                                .overlay(alignment: .bottomLeading) { CardSourceDots(size: 20).padding(.leading, 2).padding(.bottom, 3) }
+                                Text(card.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black).lineLimit(1).frame(width: 118, alignment: .leading)
+                                Text(card.tcgMarketUSD.map(SaleReport.usd) ?? card.setName)
+                                    .font(.system(size: 12, weight: card.tcgMarketUSD == nil ? .medium : .heavy, design: .rounded))
+                                    .foregroundStyle(card.tcgMarketUSD == nil ? Color.black.opacity(0.5) : .black).lineLimit(1).frame(width: 118, alignment: .leading)
+                            }
+                            .padding(12)
+                            .background(.white, in: .rect(cornerRadius: 20))
+                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+                            .overlay(alignment: .topTrailing) { CardEditionBadge(card: card).padding(6) }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            .scrollClipDisabled()
+        }
+        .task {
+            guard cards.isEmpty else { return }
+            // Surtido: cartas conocidas de muchas ediciones, y solo una por edición.
+            let query = "(name:charizard OR name:pikachu OR name:mewtwo OR name:umbreon OR name:gengar OR name:rayquaza OR name:lugia OR name:eevee)"
+            let found = await PokemonTCGClient.fetchPage(query: query, page: 1, pageSize: 80) ?? []
+            var seenSets = Set<String>(), seenNames = [String: Int](), picked: [PokemonCardData] = []
+            for card in found where !seenSets.contains(card.setName) {
+                let base = card.name.split(separator: " ").first.map(String.init) ?? card.name
+                guard seenNames[base, default: 0] < 2 else { continue }
+                seenSets.insert(card.setName); seenNames[base, default: 0] += 1
+                picked.append(card)
+                if picked.count == 12 { break }
+            }
+            cards = picked.isEmpty ? Array(found.prefix(12)) : picked
+            CardImage.prefetch(cards.compactMap(\.thumbURL) + cards.compactMap(\.imageURL))
+        }
+        .fullScreenCover(item: $report) { SaleReportView(report: $0) }
+        .navigationDestination(item: $openedCard) { CardDetailView(card: $0) }
+    }
+}
+
+/// Difuminado en la parte de abajo, como el de la cabecera: el contenido se pierde bajo la barra.
+struct BottomFade: ViewModifier {
+    var color: Color = .white
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .bottom) {
+            LinearGradient(colors: [color.opacity(0), color.opacity(0.9), color], startPoint: .top, endPoint: .bottom)
+                .frame(height: 120)
+                .ignoresSafeArea(edges: .bottom)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+
+/// Etiqueta de cristal en la esquina de una carta: el logo de su edición (colección).
+struct CardEditionBadge: View {
+    let card: PokemonCardData
+    private static let logos: [String: URL] = {
+        var map: [String: URL] = [:]
+        for set in PokemonTCGClient.storedSets() { if let url = set.logoURL { map[set.name] = url } }
+        return map
+    }()
+
+    var body: some View {
+        if let url = Self.logos[card.setName] {
+            AsyncImage(url: url) { phase in
+                if let image = phase.image { image.resizable().scaledToFit() } else { Color.clear }
+            }
+            .frame(width: 44, height: 18)
+            .padding(.horizontal, 7).padding(.vertical, 5)
+            .glassEffect(.regular, in: .capsule)
+        }
+    }
+}
+
+
+/// Llama animada, pequeña y centrada: el icono negro de siempre, que «respira» desde su base a
+/// saltos como un GIF mientras se enciende en rojo, con una llamita interior.
+struct AnimatedFlame: View {
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1.0 / 10)) { context in
+            let t = (context.date.timeIntervalSinceReferenceDate * 10).rounded() / 10
+            let heat = (sin(t * 2.4) + 1) / 2
+            let outer = sin(t * 11) * 0.6 + sin(t * 17.3) * 0.4
+            let inner = sin(t * 13 + 1.7) * 0.6 + sin(t * 7.1) * 0.4
+            ZStack(alignment: .bottom) {
+                Image(systemName: "flame.fill")
+                    .resizable().scaledToFit()
+                    .frame(width: 15, height: 18)
+                    .foregroundStyle(Color(red: 0.92 * heat, green: 0.06 * heat, blue: 0.03 * heat))
+                    .scaleEffect(x: 1, y: 1 + outer * 0.07, anchor: .bottom)
+                Image(systemName: "flame.fill")
+                    .resizable().scaledToFit()
+                    .frame(width: 7, height: 9)
+                    .foregroundStyle(Color(red: 1, green: 0.5 + 0.3 * heat, blue: 0.1).opacity(0.2 + 0.8 * heat))
+                    .scaleEffect(x: 1, y: 1 + inner * 0.18, anchor: .bottom)
+                    .padding(.bottom, 1.5)
+            }
+            .frame(width: 18, height: 21, alignment: .bottom)
+        }
+        .frame(width: 18, height: 21)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Número en matriz de puntos, como un marcador luminoso.
+struct DotMatrixText: View {
+    let text: String
+    var dot: CGFloat = 2.1
+    var color: Color = .white
+
+    private static let glyphs: [Character: [String]] = [
+        "0": ["01110","10001","10011","10101","11001","10001","01110"],
+        "1": ["00100","01100","00100","00100","00100","00100","01110"],
+        "2": ["01110","10001","00001","00010","00100","01000","11111"],
+        "3": ["11110","00001","00001","01110","00001","00001","11110"],
+        "4": ["00010","00110","01010","10010","11111","00010","00010"],
+        "5": ["11111","10000","11110","00001","00001","10001","01110"],
+        "6": ["00110","01000","10000","11110","10001","10001","01110"],
+        "7": ["11111","00001","00010","00100","01000","01000","01000"],
+        "8": ["01110","10001","10001","01110","10001","10001","01110"],
+        "9": ["01110","10001","10001","01111","00001","00010","01100"],
+        ".": ["0","0","0","0","0","0","1"],
+    ]
+
+    var body: some View {
+        let chars = text.compactMap { Self.glyphs[$0] }
+        let step = dot * 1.45
+        let width = chars.reduce(CGFloat(0)) { $0 + CGFloat($1[0].count) * step } + CGFloat(max(0, chars.count - 1)) * step
+        Canvas { context, _ in
+            var x: CGFloat = 0
+            for glyph in chars {
+                for (row, line) in glyph.enumerated() {
+                    for (col, bit) in line.enumerated() where bit == "1" {
+                        let rect = CGRect(x: x + CGFloat(col) * step, y: CGFloat(row) * step, width: dot, height: dot)
+                        context.fill(Path(ellipseIn: rect), with: .color(color))
+                    }
+                }
+                x += CGFloat(glyph[0].count + 1) * step
+            }
+        }
+        .frame(width: width, height: 7 * step)
+        .accessibilityLabel(text)
+    }
+}
+
+
+// MARK: - Escaparate giratorio de cartas
+
+/// Cartas gradadas en un carrusel que gira: la del centro va grande y de frente; las demás se
+/// alejan hacia los lados. Se arrastra para girar y, si no se toca, avanza solo.
+struct CardsShowcase: View {
+    var onViewAll: () -> Void
+    private let cards = ["ShowCard1", "ShowCard2", "ShowCard3", "ShowCard4", "ShowCard5"]
+    private let red = Color(red: 0.93, green: 0.05, blue: 0.05)
+
+    @State private var position: Double = 0      // carta que está en el centro (puede ser fraccionaria)
+    @State private var dragStart: Double?
+    @State private var lastTouch = Date.distantPast
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                // Las letras del logo de PSA (sacadas del archivo original), en rojo y sin recuadro.
+                Image("LogoPSAMark").resizable().scaledToFit()
+                    .frame(height: 20)
+                    .foregroundStyle(red)
+                    .padding(.leading, 12)   // a la misma altura que el contenido de las fichas de arriba
+                    .accessibilityLabel("PSA trading cards")
+                Spacer()
+                Button(action: onViewAll) {
+                    HStack(spacing: 4) { Text("View all"); Image(systemName: "arrow.right").font(.system(size: 11, weight: .bold)) }
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
+                }
+                .buttonStyle(.plain)
+            }
+
+            ZStack(alignment: .bottom) {
+                ZStack {
+                    ForEach(Array(cards.enumerated()), id: \.offset) { index, name in
+                        let d = offset(of: index)
+                        let depth = min(abs(d), 2.5)
+                        // Fondo blanco opaco: la funda no deja ver la carta de detrás.
+                        Image(name).resizable().scaledToFit()
+                            .frame(height: 250)
+                            .background(.white)
+                            .clipShape(.rect(cornerRadius: 10))
+                            .shadow(color: .black.opacity(0.22 - depth * 0.05), radius: 10, y: 6)
+                            .scaleEffect(1 - depth * 0.19)
+                            .rotation3DEffect(.degrees(-d * 16), axis: (x: 0, y: 1, z: 0), perspective: 0.6)
+                            .offset(x: sin(d * 0.62) * 150, y: depth * 4)
+                            .opacity(depth > 2.3 ? 0 : 1)
+                            .zIndex(100 - depth * 10)   // la más cercana al centro, siempre por encima
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 276)
+            .contentShape(.rect)
+            .gesture(
+                DragGesture(minimumDistance: 6)
+                    .onChanged { value in
+                        if dragStart == nil { dragStart = position.rounded() }
+                        // Mientras se arrastra, como mucho una carta a cada lado.
+                        let moved = max(-1, min(1, -value.translation.width / 130))
+                        position = (dragStart ?? 0) + moved
+                        lastTouch = Date()
+                    }
+                    .onEnded { value in
+                        // Un gesto = una carta, por rápido que sea: el carrusel nunca se salta ninguna.
+                        let start = dragStart ?? position.rounded()
+                        let push = -value.predictedEndTranslation.width
+                        let step: Double = push > 45 ? 1 : (push < -45 ? -1 : 0)
+                        dragStart = nil
+                        lastTouch = Date()
+                        withAnimation(.spring(duration: 0.45, bounce: 0.2)) { position = start + step }
+                    }
+            )
+            .onTapGesture { onViewAll() }
+        }
+        .task {
+            // Si nadie lo toca, gira solo a la siguiente carta cada pocos segundos.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                guard dragStart == nil, Date().timeIntervalSince(lastTouch) > 4 else { continue }
+                withAnimation(.spring(duration: 0.8, bounce: 0.15)) { position = position.rounded() + 1 }
+            }
+        }
+    }
+
+    /// Distancia de la carta al centro, dando la vuelta (de −2,5 a 2,5 con cinco cartas).
+    private func offset(of index: Int) -> Double {
+        let count = Double(cards.count)
+        var d = (Double(index) - position).truncatingRemainder(dividingBy: count)
+        if d > count / 2 { d -= count }
+        if d < -count / 2 { d += count }
+        return d
+    }
+}
+
+
+/// Plataformas donde se vende, en círculos de cristal montados uno sobre otro.
+struct MarketplaceDots: View {
+    let brands: [String]
+    var size: CGFloat = 26
+
+    var body: some View {
+        HStack(spacing: -5) {
+            ForEach(Array(brands.enumerated()), id: \.offset) { index, brand in
+                // StockX y GOAT enseñan solo su símbolo (la parte izquierda del logo); los demás, sus letras.
+                Group {
+                    if brand == "StockX" {
+                        StylizedMarketplaceLogo(brand: brand)
+                            .frame(width: 60, height: 13, alignment: .leading)
+                            .frame(width: 14, height: 13, alignment: .leading)
+                            .clipped()
+                    } else {
+                        StylizedMarketplaceLogo(brand: brand).frame(width: size * 0.74, height: 9)
+                    }
+                }
+                .frame(width: size, height: size)
+                .background(.white, in: .circle)
+                .overlay { Circle().strokeBorder(Color.black.opacity(0.10), lineWidth: 0.5) }
+                .zIndex(Double(index))
+                .accessibilityLabel(brand)
+            }
         }
     }
 }

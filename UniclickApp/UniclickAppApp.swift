@@ -22,6 +22,8 @@ struct UniclickAppApp: App {
 
     init() {
         AppSandboxDirectories.ensureApplicationSupportAndClosetRoots()
+        // Caché grande en disco: las fotos de cartas y zapatos ya vistas cargan al instante.
+        URLCache.shared = URLCache(memoryCapacity: 80 * 1024 * 1024, diskCapacity: 600 * 1024 * 1024)
     }
 
     private static let appModelContainer: ModelContainer = {

@@ -15,12 +15,18 @@ extension Notification.Name {
 enum UpsoledMainTab: Hashable {
     case home
     case closet
-    case settings
+    case cards
 }
 
 @MainActor
 final class MainTabRouter: ObservableObject {
     @Published var selected: UpsoledMainTab = .home
+    /// La barra de abajo se esconde en pantallas de detalle (ficha de un zapato, añadir al stock).
+    @Published var barHidden = false
+    /// Sube cada vez que se toca la lupa de Inicio: abre el buscador de zapatos.
+    @Published var homeSearchTick = 0
+    /// Abre el escáner de cajas al entrar en Sneakers.
+    @Published var scanRequested = false
     /// Presenta el flujo «Añadir al stock» desde Your stock (antes era una pestaña).
     @Published var showAddStockFlow = false
     /// Abre el pipeline de revisión al entrar en Añadir (p. ej. borradores desde stock).
@@ -65,8 +71,8 @@ struct MainTabView: View {
         .environmentObject(invoiceHistory)
             .environmentObject(addClosetFlowVM)
             /// Ítem seleccionado: azul marca; ítems no seleccionados: negro (`MainTabBarAppearance`).
-            .accentColor(PremiumAccent.tabActive)
-            .tint(PremiumAccent.tabActive)
+            .accentColor(Color.black)
+            .tint(Color.black)
         .onAppear {
             ClosetInventoryRepair.restoreAllSoldToStock(in: modelContext)
             MainTabBarAppearance.applyBlackInactiveBlueSelected()
@@ -118,25 +124,48 @@ struct MainTabView: View {
 
     /// Solo el `TabView` con sus ítems; los `.environmentObject`/`task`/`onReceive` van en `mainTabChrome`.
     private var bareTabView: some View {
+        // Barra nativa de iOS: es la que tiene el cristal líquido de verdad (la burbuja que hace de lupa).
+        // Solo iconos, en negro: relleno en la pestaña abierta, contorno en las demás.
         TabView(selection: $tabRouter.selected) {
-            Tab(L10n.tr("tab.dashboard"), systemImage: "square.grid.2x2.fill", value: UpsoledMainTab.home) {
+            Tab(value: UpsoledMainTab.home) {
                 NavigationStack {
                     DashboardView()
+                        .safeAreaInset(edge: .top, spacing: 0) {
+                            AppTopBar(title: "Uniclick") {
+                                Button { tabRouter.homeSearchTick += 1 } label: { TopBarGlassButton(systemImage: "magnifyingglass") }
+                                    .buttonStyle(.plain).accessibilityLabel("Search sneakers")
+                                Button {
+                                    tabRouter.scanRequested = true
+                                    tabRouter.selected = .closet
+                                } label: { TopBarGlassButton(systemImage: "barcode.viewfinder") }
+                                    .buttonStyle(.plain).accessibilityLabel("Scan a box barcode")
+                            }
+                        }
                 }
+                .modifier(BottomFade(color: Color(red: 0.965, green: 0.965, blue: 0.975)))
+            } label: {
+                Image(tabRouter.selected == .home ? "TabInicio" : "TabInicioLinea").accessibilityLabel("Home")
             }
 
-            Tab(L10n.tr("tab.closet"), systemImage: "archivebox.fill", value: UpsoledMainTab.closet) {
+            Tab(value: UpsoledMainTab.closet) {
                 NavigationStack {
                     ClosetView()
                 }
+                .modifier(BottomFade())
+            } label: {
+                Image(tabRouter.selected == .closet ? "TabZapatos" : "TabZapatosLinea").accessibilityLabel("Shop")
             }
 
-            Tab(L10n.tr("tab.settings"), systemImage: "gearshape.fill", value: UpsoledMainTab.settings) {
-        NavigationStack {
-                    SettingsView()
+            Tab(value: UpsoledMainTab.cards) {
+                NavigationStack {
+                    CardsHubView()
                 }
+                .modifier(BottomFade(color: Color(red: 0.965, green: 0.965, blue: 0.975)))
+            } label: {
+                Image(tabRouter.selected == .cards ? "TabCartas" : "TabCartasLinea").accessibilityLabel("Cards")
             }
         }
+        .tint(.black)
     }
 }
 
@@ -617,7 +646,7 @@ private struct AddStockStepHeader: View {
 private enum MainTabBarAppearance {
     static func applyBlackInactiveBlueSelected() {
         let inactive = UIColor.black
-        let selected = UIColor(red: 0.16, green: 0.44, blue: 0.98, alpha: 1.0)
+        let selected = UIColor.black   // el color principal de la barra es el negro
 
         let item = UITabBarItemAppearance()
         item.normal.iconColor = inactive

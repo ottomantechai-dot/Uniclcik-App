@@ -273,39 +273,51 @@ struct SettingsView: View {
 
     @State private var showProfilePhotoSheet = false
 
+    @Environment(\.dismiss) private var dismiss
+    private let pageGray = Color(red: 0.965, green: 0.965, blue: 0.975)
+
     var body: some View {
-        ZStack {
-            Color.white.ignoresSafeArea()
-
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 18) {
+        ScrollView(.vertical, showsIndicators: false) {
+            GlassEffectContainer(spacing: 12) {
+                VStack(spacing: 14) {
                     profileHeroSection
-                        .padding(.top, 8)
+                        .padding(.top, 8).padding(.bottom, 6)
 
-                    Group {
-                        sectionTitle(L10n.tr("settings.personalInfo"))
-                        generalInfoSection
+                    glassCard {
+                        glassRow(icon: "envelope", title: "Email", value: auth.session?.user.email ?? "—")
+                        Divider().padding(.leading, 58)
+                        glassRow(icon: "phone", title: "Phone", value: "+1 (305) 555-0100")
                     }
 
-                    Group {
-                        sectionTitle("Marketplaces")
-                        MarketplaceSellerAccountsCard()
+                    platformGroup("Sneaker platforms", icon: "shoe.2", brands: ["StockX", "GOAT", "eBay", "Flight Club"])
+                    platformGroup("Card platforms", icon: "rectangle.portrait.on.rectangle.portrait", brands: ["Collectr", "TCGplayer", "eBay"])
+                    platformGroup("Coming soon", icon: "clock", brands: ["Poshmark", "Grailed", "Mercari", "Whatnot", "Facebook Marketplace"], dimmed: true)
+
+                    glassCard {
+                        glassRow(icon: "info.circle", title: "Version", value: "\(settingsVM.appVersion) (\(settingsVM.buildNumber))")
                     }
 
-                    Group {
-                        sectionTitle(L10n.tr("settings.platforms"))
-                        marketplaceLogosGallerySection
+                    Button { Task { await auth.signOut() } } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                            Text("Log out")
+                        }
+                        .font(.system(size: 16, weight: .bold)).foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, minHeight: 54)
+                        .background(.white, in: .capsule)
+                        .glassEffect(.regular.interactive(), in: .capsule)
                     }
-
-                    accountSection
-                    aboutSection
+                    .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-                .padding(.bottom, 24)
-                .frame(minWidth: 0, maxWidth: .infinity)
+                .padding(.horizontal, 16).padding(.top, 56).padding(.bottom, 30)
             }
-            .frame(maxWidth: .infinity)
+        }
+        .background(pageGray.ignoresSafeArea())
+        .overlay(alignment: .topTrailing) {
+            // X para salir del perfil.
+            Button { dismiss() } label: { TopBarGlassButton(systemImage: "xmark") }
+                .buttonStyle(.plain).padding(.trailing, 16).padding(.top, 4)
+                .accessibilityLabel("Close")
         }
         .preferredColorScheme(.light)
         .environment(\.dashboardLightSurface, true)
@@ -317,6 +329,59 @@ struct SettingsView: View {
             .presentationDragIndicator(Visibility.visible)
             .presentationDetents([.medium])
         }
+    }
+
+    /// Un grupo de plataformas: cada una en su círculo de cristal con el nombre debajo.
+    private func platformGroup(_ title: String, icon: String, brands: [String], dimmed: Bool = false) -> some View {
+        glassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
+                        .frame(width: 32, height: 32).background(Color.black.opacity(0.05), in: .circle)
+                    Text(title).font(.system(size: 16, weight: .bold, design: .rounded)).foregroundStyle(.black)
+                    Spacer()
+                }
+                HStack(alignment: .top, spacing: 0) {
+                    ForEach(brands, id: \.self) { brand in
+                        VStack(spacing: 6) {
+                            Group {
+                                if UIImage(named: "Logo" + brand.replacingOccurrences(of: " ", with: "")) != nil {
+                                    Image("Logo" + brand.replacingOccurrences(of: " ", with: "")).resizable().scaledToFit().frame(width: 30, height: 30).clipShape(.rect(cornerRadius: 8))
+                                } else {
+                                    StylizedMarketplaceLogo(brand: brand).frame(width: 38, height: 22)
+                                }
+                            }
+                            .frame(width: 54, height: 54)
+                            .background(.white, in: .circle)
+                            .overlay { Circle().strokeBorder(Color.black.opacity(0.08), lineWidth: 1) }
+                            .opacity(dimmed ? 0.8 : 1)
+                            Text(brand == "Facebook Marketplace" ? "Marketplace" : brand).font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(dimmed ? 0.45 : 0.75)).lineLimit(1).minimumScaleFactor(0.7)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+            .padding(14)
+        }
+    }
+
+    private func glassCard<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(spacing: 0, content: content)
+            .frame(maxWidth: .infinity)
+            .background(.white, in: .rect(cornerRadius: 24))
+            .glassEffect(.regular, in: .rect(cornerRadius: 24))
+    }
+
+    private func glassRow(icon: String, title: String, value: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
+                .frame(width: 34, height: 34)
+                .background(Color.black.opacity(0.05), in: .circle)
+            Text(title).font(.system(size: 15, weight: .medium)).foregroundStyle(.black)
+            Spacer(minLength: 8)
+            Text(value).font(.system(size: 14, weight: .medium)).foregroundStyle(.black.opacity(0.55)).lineLimit(1).minimumScaleFactor(0.7)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
     }
 
     // Profile hero — avatar grande centrado + nombre + email
@@ -333,8 +398,8 @@ struct SettingsView: View {
                             .fill(
                                 LinearGradient(
                                     colors: [
-                                        Color(red: 0.30, green: 0.55, blue: 0.95),
-                                        Color(red: 0.14, green: 0.36, blue: 0.85),
+                                        Color(white: 0.25),
+                                        Color.black,
                                     ],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
@@ -347,21 +412,8 @@ struct SettingsView: View {
                 }
                 .frame(width: 108, height: 108)
                 .clipShape(Circle())
-                .overlay {
-                    Circle()
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.30, green: 0.55, blue: 0.95).opacity(0.50),
-                                    Color(red: 0.14, green: 0.36, blue: 0.85).opacity(0.15),
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 2
-                        )
-                }
-                .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.25), radius: 18, y: 8)
+                .overlay { Circle().strokeBorder(Color.white, lineWidth: 3) }
+                .shadow(color: .black.opacity(0.10), radius: 12, y: 6)
 
                 if auth.isUploadingProfileAvatar {
                     Circle()
@@ -376,27 +428,11 @@ struct SettingsView: View {
                     guard auth.isAuthenticated else { return }
                     showProfilePhotoSheet = true
                 } label: {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.30, green: 0.55, blue: 0.95),
-                                        Color(red: 0.14, green: 0.36, blue: 0.85),
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 34, height: 34)
-                            .overlay {
-                                Circle().strokeBorder(Color.white, lineWidth: 2.5)
-                            }
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                    .shadow(color: Color(red: 0.20, green: 0.45, blue: 0.85).opacity(0.40), radius: 6, y: 3)
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 13, weight: .bold)).foregroundStyle(.black)
+                        .frame(width: 36, height: 36)
+                        .background(.white, in: .circle)
+                        .glassEffect(.regular.interactive(), in: .circle)
                 }
                 .buttonStyle(.plain)
                 .disabled(!auth.isAuthenticated || auth.isUploadingProfileAvatar)

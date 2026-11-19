@@ -1,0 +1,591 @@
+import SwiftUI
+
+// MARK: - Informe de venta (pantalla)
+// Se abre al escanear una caja, desde el comparador o desde una carta. Enseña cuánto queda en
+// cada plataforma, recomienda dónde vender y deja preparar el anuncio.
+
+struct SaleReportView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var store = SaleReportStore.shared
+    @ObservedObject private var listings = ListingStore.shared
+
+    @State var report: SaleReport
+    /// Tallas disponibles (del comparador) para recalcular el informe por talla.
+    var sizes: [String] = []
+    var rebuild: ((String?, Double?) -> SaleReport)?
+
+    @State private var costText = ""
+    @State private var publishing: SaleReport.Line?
+    @State private var saved = false
+    @FocusState private var costFocused: Bool
+
+    private let ink = Color.black
+    private let green = Color(red: 0.13, green: 0.55, blue: 0.30)
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 14) {
+                    header
+                    if report.lines.isEmpty { emptyCard } else {
+                        recommendationCard
+                        platformsCard
+                    }
+                    costCard
+                    if !sizes.isEmpty { sizeCard }
+                    listingsCard
+                    footnote
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 28)
+            }
+            .background(Color(red: 0.96, green: 0.96, blue: 0.97))
+            .navigationTitle("Sale report")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    ShareLink(item: report.shareText) { Image(systemName: "square.and.arrow.up") }
+                }
+            }
+            .fullScreenCover(item: $publishing) { line in
+                PublishListingSheet(report: report, line: line)
+            }
+            .onAppear {
+                if let cost = report.costUSD { costText = SaleReport.usd(cost).replacingOccurrences(of: "$", with: "") }
+                guard !saved, !report.lines.isEmpty else { return }
+                saved = true
+                store.save(report)
+            }
+        }
+        .preferredColorScheme(.light)
+        .swipeBackToDismiss()
+    }
+
+    private var header: some View {
+        VStack(spacing: 10) {
+            Group {
+                if report.kind == .shoe {
+                    Shoe360View(title: report.title, fallbackURL: report.imageURL.flatMap(URL.init(string:)), queries: [report.sku, report.title].filter { !$0.isEmpty })
+                } else {
+                    AsyncImage(url: report.imageURL.flatMap(URL.init(string:))) { phase in
+                        if let image = phase.image { image.resizable().scaledToFit() } else {
+                            Image(systemName: "rectangle.portrait.on.rectangle.portrait").font(.system(size: 30)).foregroundStyle(ink.opacity(0.25))
+                        }
+                    }
+                }
+            }
+            .frame(height: 200).frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(Color.white, in: .rect(cornerRadius: 24))
+
+            VStack(spacing: 4) {
+                Text(report.title).font(.system(size: 21, weight: .heavy, design: .rounded)).foregroundStyle(ink)
+                    .multilineTextAlignment(.center).lineLimit(3)
+                HStack(spacing: 8) {
+                    if !report.sku.isEmpty { chip(report.kind == .card ? report.sku : "SKU \(report.sku)") }
+                    if let size = report.size, !size.isEmpty { chip(report.kind == .card ? size : "Size \(size)") }
+                }
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private func chip(_ text: String) -> some View {
+        Text(text).font(.system(size: 12, weight: .semibold)).foregroundStyle(ink.opacity(0.6))
+            .padding(.horizontal, 10).frame(height: 26).background(Color.black.opacity(0.06), in: .capsule)
+    }
+
+    private var emptyCard: some View {
+        card {
+            Image("IconInforme").resizable().scaledToFit().frame(height: 120).frame(maxWidth: .infinity)
+            Text("No confirmed prices").font(.system(size: 17, weight: .bold)).foregroundStyle(ink).frame(maxWidth: .infinity)
+            Text("No platform returned a price for this product right now, and we never make numbers up. Search it by name or style code in the comparator.")
+                .font(.system(size: 13)).foregroundStyle(ink.opacity(0.6)).multilineTextAlignment(.center)
+        }
+    }
+
+    private var recommendationCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("WHERE TO SELL").font(.system(size: 11, weight: .heavy)).foregroundStyle(.white.opacity(0.7))
+            if let best = report.best {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(best.platform).font(.system(size: 26, weight: .heavy, design: .rounded))
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text(SaleReport.usd(best.netUSD)).font(.system(size: 26, weight: .heavy, design: .rounded))
+                        Text("you keep").font(.system(size: 11, weight: .semibold)).opacity(0.7)
+                    }
+                }
+            }
+            Text(report.recommendation).font(.system(size: 13, weight: .medium)).opacity(0.9)
+        }
+        .foregroundStyle(.white)
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(green, in: .rect(cornerRadius: 22))
+    }
+
+    private var platformsCard: some View {
+        card {
+            Text("Platform by platform").font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
+            ForEach(report.lines.sorted { $0.netUSD > $1.netUSD }) { line in
+                VStack(spacing: 8) {
+                    HStack(spacing: 10) {
+                        PlatformLogoMark(platform: line.platform)
+                        if line.platform == report.best?.platform {
+                            Text("BEST").font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
+                                .padding(.horizontal, 6).padding(.vertical, 3).background(green, in: .capsule)
+                        }
+                        Spacer()
+                        Text(SaleReport.usd(line.netUSD)).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(ink)
+                    }
+                    HStack {
+                        fact("Price", SaleReport.usd(line.priceUSD))
+                        fact("Fee \(line.feePercent)%" + (line.feeFixedUSD > 0 ? " + \(SaleReport.usd(line.feeFixedUSD))" : ""), "−" + SaleReport.usd(line.feeUSD))
+                        if let gain = report.profit(line) {
+                            fact("Profit", (gain >= 0 ? "+" : "−") + SaleReport.usd(abs(gain)), color: gain >= 0 ? green : .red)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    Button { publishing = line } label: {
+                        let done = listings.listings.contains { $0.platform == line.platform && $0.title == report.title && $0.sku == report.sku }
+                        Label(done ? "Listing ready · edit" : "Prepare \(line.platform) listing", systemImage: done ? "checkmark.circle.fill" : "tag")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .foregroundStyle(done ? green : ink)
+                            .background(Color.black.opacity(0.05), in: .rect(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.vertical, 6)
+                if line.id != report.lines.sorted(by: { $0.netUSD > $1.netUSD }).last?.id { Divider() }
+            }
+        }
+    }
+
+    private func fact(_ title: String, _ value: String, color: Color? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title).font(.system(size: 10, weight: .medium)).foregroundStyle(ink.opacity(0.5))
+            Text(value).font(.system(size: 13, weight: .bold, design: .rounded)).foregroundStyle(color ?? ink)
+        }
+        .padding(.trailing, 14)
+    }
+
+    private var costCard: some View {
+        card {
+            Text("What you paid").font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
+            HStack {
+                Text("$").font(.system(size: 20, weight: .bold, design: .rounded)).foregroundStyle(ink.opacity(0.4))
+                TextField("0", text: $costText)
+                    .keyboardType(.decimalPad).focused($costFocused)
+                    .font(.system(size: 20, weight: .bold, design: .rounded)).foregroundStyle(ink)
+                Button("Calculate") { applyCost() }
+                    .font(.system(size: 14, weight: .semibold)).buttonStyle(.borderedProminent).tint(ink)
+            }
+            Text("With your cost, the report shows your real profit on each platform.")
+                .font(.system(size: 12)).foregroundStyle(ink.opacity(0.55))
+        }
+    }
+
+    private var sizeCard: some View {
+        card {
+            Text("Size").font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(sizes, id: \.self) { size in
+                        let on = report.size == size
+                        Button { regenerate(size: size) } label: {
+                            Text(size).font(.system(size: 14, weight: .bold, design: .rounded))
+                                .foregroundStyle(on ? .white : ink)
+                                .frame(minWidth: 44, minHeight: 38).padding(.horizontal, 4)
+                                .background(on ? ink : Color.black.opacity(0.06), in: .rect(cornerRadius: 11))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var listingsCard: some View {
+        let mine = listings.listings.filter { $0.title == report.title && $0.sku == report.sku }
+        if !mine.isEmpty {
+            card {
+                Text("Listings for this product").font(.system(size: 15, weight: .bold)).foregroundStyle(ink)
+                ForEach(mine) { listing in ListingRow(listing: listing) }
+            }
+        }
+    }
+
+    private var footnote: some View {
+        Text((report.kind == .card ? "Real TCGplayer market price; your payout is calculated selling at that price on each platform. " : "Lowest asks listed right now on each platform. ") + "Fees are approximate and do not include shipping.")
+            .font(.system(size: 11)).foregroundStyle(ink.opacity(0.45))
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
+    }
+
+    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10, content: content)
+            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white, in: .rect(cornerRadius: 20))
+    }
+
+    private var typedCost: Double? {
+        Double(costText.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)).flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    private func applyCost() {
+        costFocused = false
+        report.costUSD = typedCost
+        store.save(report)
+    }
+
+    private func regenerate(size: String) {
+        guard let rebuild else { return }
+        var next = rebuild(size, typedCost ?? report.costUSD)
+        next.id = report.id
+        next.createdAt = report.createdAt
+        report = next
+        store.save(report)
+    }
+}
+
+// MARK: - Preparar anuncio (pantalla completa)
+
+struct PublishListingSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let report: SaleReport
+    let line: SaleReport.Line
+
+    @State private var priceText = ""
+    @State private var size = ""
+    @State private var condition: MarketplaceListing.Condition = .new
+    @State private var outcome: ListingPublisher.Outcome?
+    @State private var working = false
+    @FocusState private var focused: Bool
+
+    private var price: Double { Double(priceText.replacingOccurrences(of: ",", with: ".")) ?? 0 }
+    private var net: Double { PlatformFees.net(price: price, platform: line.platform) }
+    private var brand: Color { PlatformPrice.brandColor(for: line.platform) }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [brand.opacity(0.16), Color(red: 0.96, green: 0.96, blue: 0.98)], startPoint: .top, endPoint: .center)
+                .ignoresSafeArea()
+            if let outcome { done(outcome) } else { form }
+        }
+        .preferredColorScheme(.light)
+        .onAppear {
+            priceText = SaleReport.usd(line.priceUSD).replacingOccurrences(of: "$", with: "")
+            size = report.size ?? ""
+        }
+    }
+
+    private var form: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                HStack {
+                    Button { dismiss() } label: { TopBarGlassButton(systemImage: "xmark") }.buttonStyle(.plain)
+                    Spacer()
+                    HStack(spacing: 7) {
+                        Circle().fill(brand).frame(width: 9, height: 9)
+                        Text("\(line.platform) listing").font(.system(size: 15, weight: .bold, design: .rounded)).foregroundStyle(.black)
+                    }
+                    .padding(.horizontal, 14).frame(height: 44).glassEffect(.regular, in: .capsule)
+                    Spacer()
+                    Color.clear.frame(width: 44, height: 44)
+                }
+
+                Group {
+                    if report.kind == .shoe {
+                        Shoe360View(title: report.title, fallbackURL: report.imageURL.flatMap(URL.init(string:)), queries: [report.sku, report.title].filter { !$0.isEmpty })
+                    } else {
+                        AsyncImage(url: report.imageURL.flatMap(URL.init(string:))) { phase in
+                            if let image = phase.image { image.resizable().scaledToFit() } else { Color.clear }
+                        }
+                    }
+                }
+                .frame(height: 220)
+
+                VStack(spacing: 4) {
+                    Text(report.title).font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.black).multilineTextAlignment(.center)
+                    if !report.sku.isEmpty {
+                        Text(report.kind == .card ? report.sku : "SKU \(report.sku)").font(.system(size: 12, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
+                    }
+                }
+
+                VStack(spacing: 2) {
+                    Text("YOUR PRICE").font(.system(size: 11, weight: .heavy)).foregroundStyle(.black.opacity(0.45))
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("$").font(.system(size: 28, weight: .bold, design: .rounded)).foregroundStyle(.black.opacity(0.35))
+                        TextField("0", text: $priceText).keyboardType(.decimalPad).focused($focused)
+                            .font(.system(size: 46, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                            .multilineTextAlignment(.center).fixedSize()
+                    }
+                    Text(report.kind == .card ? "Market price now: \(SaleReport.usd(line.priceUSD))" : "Lowest ask on \(line.platform) now: \(SaleReport.usd(line.priceUSD))")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                }
+                .padding(.vertical, 16).frame(maxWidth: .infinity)
+                .background(.white, in: .rect(cornerRadius: 24))
+
+                HStack(spacing: 10) {
+                    stat("Fee \(line.feePercent)%", "−" + SaleReport.usd(max(0, price - net)), color: .black)
+                    stat("You keep", SaleReport.usd(net), color: Color(red: 0.13, green: 0.55, blue: 0.30))
+                    if let cost = report.costUSD {
+                        let gain = net - cost
+                        stat("Profit", (gain >= 0 ? "+" : "−") + SaleReport.usd(abs(gain)), color: gain >= 0 ? Color(red: 0.13, green: 0.55, blue: 0.30) : .red)
+                    }
+                }
+
+                if report.kind == .shoe {
+                    VStack(spacing: 0) {
+                        HStack {
+                            Label("Size (US)", systemImage: "ruler").font(.system(size: 15, weight: .medium)).foregroundStyle(.black)
+                            Spacer()
+                            TextField("9.5", text: $size).keyboardType(.decimalPad).multilineTextAlignment(.trailing)
+                                .font(.system(size: 16, weight: .bold, design: .rounded)).frame(width: 80)
+                        }
+                        .padding(.horizontal, 16).frame(height: 54)
+                        Divider().padding(.leading, 16)
+                        HStack {
+                            Label("Condition", systemImage: "shippingbox").font(.system(size: 15, weight: .medium)).foregroundStyle(.black)
+                            Spacer()
+                            Picker("", selection: $condition) {
+                                ForEach(MarketplaceListing.Condition.allCases) { Text($0.rawValue).tag($0) }
+                            }
+                            .tint(.black)
+                        }
+                        .padding(.leading, 16).padding(.trailing, 6).frame(height: 54)
+                    }
+                    .background(.white, in: .rect(cornerRadius: 22))
+                }
+            }
+            .padding(.horizontal, 16).padding(.bottom, 110)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .safeAreaInset(edge: .bottom) {
+            Button { Task { await publish() } } label: {
+                HStack(spacing: 8) {
+                    if working { ProgressView().tint(.white) } else {
+                        Image(systemName: "paperplane.fill")
+                        Text("Publish on \(line.platform)")
+                    }
+                }
+                .font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 56)
+                .background(price > 0 ? Color.black : Color.black.opacity(0.3), in: .capsule)
+            }
+            .buttonStyle(.plain).disabled(price <= 0 || working)
+            .padding(.horizontal, 20).padding(.bottom, 8)
+        }
+    }
+
+    private func stat(_ title: String, _ value: String, color: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
+            Text(value).font(.system(size: 18, weight: .heavy, design: .rounded)).foregroundStyle(color).minimumScaleFactor(0.7).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 14)
+        .background(.white, in: .rect(cornerRadius: 20))
+    }
+
+    /// Pantalla de resultado: publicado, o preparado a la espera de la cuenta de vendedor.
+    private func done(_ outcome: ListingPublisher.Outcome) -> some View {
+        VStack(spacing: 18) {
+            Spacer()
+            Image(systemName: "tag").font(.system(size: 44, weight: .semibold)).foregroundStyle(.black)
+                .frame(width: 124, height: 124).background(.white, in: .circle).glassEffect(.regular, in: .circle)
+            Text(outcome == .published ? "Published on \(line.platform)!" : "Listing ready")
+                .font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+            Text(outcome == .published
+                 ? "Your listing is live at \(SaleReport.usd(price))."
+                 : "Saved at \(SaleReport.usd(price)). Once the \(line.platform) seller account is connected, it publishes with one tap.")
+                .font(.system(size: 15, weight: .medium)).foregroundStyle(.black.opacity(0.6))
+                .multilineTextAlignment(.center).padding(.horizontal, 34)
+            if outcome != .published {
+                Label("\(line.platform) seller account needed", systemImage: "link.badge.plus")
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(.orange)
+                    .padding(.horizontal, 14).frame(height: 38).glassEffect(.regular, in: .capsule)
+            }
+            Spacer()
+            Button { dismiss() } label: {
+                Text("Got it").font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 56).background(.black, in: .capsule)
+            }
+            .buttonStyle(.plain).padding(.horizontal, 20).padding(.bottom, 8)
+        }
+    }
+
+    private func publish() async {
+        focused = false
+        working = true
+        let listing = MarketplaceListing(platform: line.platform, title: report.title, sku: report.sku, size: size,
+                                         priceUSD: price, condition: condition, imageURL: report.imageURL)
+        let result = await ListingPublisher.publish(listing)
+        working = false
+        withAnimation(.spring(duration: 0.45)) { outcome = result }
+    }
+}
+
+struct ListingRow: View {
+    let listing: MarketplaceListing
+
+    var body: some View {
+        HStack(spacing: 10) {
+            PlatformLogoMark(platform: listing.platform, showsName: false)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(listing.platform + (listing.size.isEmpty ? "" : " · \(listing.size)"))
+                    .font(.system(size: 14, weight: .bold)).foregroundStyle(.black)
+                Text(listing.status == .published ? "Published" : "Ready to publish · seller account needed")
+                    .font(.system(size: 11)).foregroundStyle(listing.status == .published ? .green : .orange)
+            }
+            Spacer()
+            Text(SaleReport.usd(listing.priceUSD)).font(.system(size: 15, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+        }
+    }
+}
+
+// MARK: - Historial de informes y anuncios
+
+struct SaleReportsHistoryView: View {
+    @ObservedObject private var store = SaleReportStore.shared
+    @ObservedObject private var listings = ListingStore.shared
+    @State private var open: SaleReport?
+
+    private var totalNet: Double { store.reports.compactMap { $0.best?.netUSD }.reduce(0, +) }
+
+    var body: some View {
+        ScrollView {
+            GlassEffectContainer(spacing: 10) {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 10) {
+                        summary(icon: "doc.text", title: "Reports", value: "\(store.reports.count)")
+                        summary(icon: "tag", title: "Listings", value: "\(listings.listings.count)")
+                        summary(icon: "dollarsign", title: "Best payout", value: totalNet > 0 ? SaleReport.usd(totalNet.rounded()) : "—")
+                    }
+
+                    if !listings.listings.isEmpty {
+                        Text("Ready listings").font(.system(size: 18, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                        VStack(spacing: 10) {
+                            ForEach(listings.listings) { listing in
+                                HStack(spacing: 12) {
+                                    thumb(listing.imageURL)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(listing.title).font(.system(size: 14, weight: .bold)).foregroundStyle(.black).lineLimit(1)
+                                        HStack(spacing: 6) {
+                                            PlatformLogoMark(platform: listing.platform)
+                                            if !listing.size.isEmpty { Text("US \(listing.size)").font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5)) }
+                                        }
+                                        Text(listing.status == .published ? "Published" : "Ready · seller account needed")
+                                            .font(.system(size: 11, weight: .medium)).foregroundStyle(listing.status == .published ? .green : .orange)
+                                    }
+                                    Spacer(minLength: 0)
+                                    Text(SaleReport.usd(listing.priceUSD)).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                                    Button { listings.delete(listing) } label: {
+                                        Image(systemName: "trash").font(.system(size: 13, weight: .semibold)).foregroundStyle(.black.opacity(0.4)).frame(width: 30, height: 30)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(12)
+                                .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                            }
+                        }
+                    }
+
+                    Text("Sale reports").font(.system(size: 18, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                    if store.reports.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: "doc.text.magnifyingglass").font(.system(size: 30, weight: .semibold)).foregroundStyle(.black.opacity(0.3))
+                            Text("Scan a box and its report is saved here.").font(.system(size: 14, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 40)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+                    }
+                    VStack(spacing: 10) {
+                        ForEach(store.reports) { report in
+                            Button { open = report } label: {
+                                HStack(spacing: 12) {
+                                    thumb(report.imageURL)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(report.title).font(.system(size: 14, weight: .bold)).foregroundStyle(.black).lineLimit(1)
+                                        if let best = report.best { PlatformLogoMark(platform: best.platform) }
+                                        Text(report.createdAt.formatted(.dateTime.month(.abbreviated).day().hour().minute().locale(Locale(identifier: "en_US"))))
+                                            .font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+                                    }
+                                    Spacer(minLength: 0)
+                                    VStack(alignment: .trailing, spacing: 1) {
+                                        Text(report.best.map { SaleReport.usd($0.netUSD) } ?? "—")
+                                            .font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                                        Text("you keep").font(.system(size: 10, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+                                    }
+                                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundStyle(.black.opacity(0.3))
+                                }
+                                .padding(12)
+                                .contentShape(.rect(cornerRadius: 20))
+                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu { Button(role: .destructive) { store.delete(report) } label: { Label("Delete report", systemImage: "trash") } }
+                        }
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .background(Color(red: 0.965, green: 0.965, blue: 0.975).ignoresSafeArea())
+        .navigationTitle("Reports")
+        .navigationBarTitleDisplayMode(.inline)
+        .fullScreenCover(item: $open) { SaleReportView(report: $0) }
+        .preferredColorScheme(.light)
+    }
+
+    private func summary(icon: String, title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 13, weight: .semibold))
+                Text(title).font(.system(size: 11, weight: .medium)).lineLimit(1)
+            }
+            .foregroundStyle(.black.opacity(0.7))
+            Text(value).font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(.black).minimumScaleFactor(0.6).lineLimit(1)
+        }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+    }
+
+    private func thumb(_ url: String?) -> some View {
+        AsyncImage(url: url.flatMap(URL.init(string:))) { phase in
+            if let image = phase.image { image.resizable().scaledToFit() } else {
+                Image(systemName: "shoe.2").font(.system(size: 16)).foregroundStyle(.black.opacity(0.25))
+            }
+        }
+        .frame(width: 58, height: 58)
+        .background(Color.white, in: .rect(cornerRadius: 14))
+    }
+}
+
+/// El logo de la plataforma (StockX, GOAT, eBay, Flight Club); si no hay logo, su nombre.
+struct PlatformLogoMark: View {
+    let platform: String
+    var showsName = true
+
+    private var brand: String? {
+        let key = platform.lowercased()
+        if key.contains("stockx") { return "StockX" }
+        if key.contains("goat") { return "GOAT" }
+        if key.contains("ebay") { return "eBay" }
+        if key.contains("flight") { return "Flight Club" }
+        return nil
+    }
+
+    var body: some View {
+        if let brand {
+            StylizedMarketplaceLogo(brand: brand).frame(width: 74, height: 22, alignment: .leading)
+                .accessibilityLabel(brand)
+        } else if showsName {
+            Text(platform).font(.system(size: 15, weight: .bold)).foregroundStyle(.black)
+        }
+    }
+}

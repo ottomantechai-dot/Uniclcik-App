@@ -87,7 +87,7 @@ struct DashboardView: View {
 
     private var dashboardContent: some View {
         ZStack {
-            DashboardHomePalette.pageBG.ignoresSafeArea()
+            Color(red: 0.965, green: 0.965, blue: 0.975).ignoresSafeArea()
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     if homeStatsReady {
@@ -111,22 +111,21 @@ struct DashboardView: View {
         }
     }
 
+    /// Esqueleto del Inicio: las mismas piezas (banner, cifras, carrusel, tendencias) en gris con brillo.
     private var homeStatsLoadingPlaceholder: some View {
-        VStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color.black.opacity(0.04))
-                .frame(height: 200)
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color.black.opacity(0.04))
-                .frame(height: 140)
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color.black.opacity(0.04))
-                .frame(height: 220)
-        }
-        .redacted(reason: .placeholder)
-        .overlay {
-            ProgressView()
-                .controlSize(.regular)
+        VStack(spacing: 14) {
+            Skeleton(corner: 26).frame(height: 150)
+            HStack(spacing: 10) {
+                Skeleton(corner: 22).frame(height: 92)
+                Skeleton(corner: 22).frame(width: 130, height: 92)
+            }
+            HStack(spacing: 10) {
+                ForEach(0..<3, id: \.self) { _ in Skeleton(corner: 18).frame(height: 66) }
+            }
+            Skeleton(corner: 20).frame(height: 276)
+            HStack(spacing: 10) {
+                ForEach(0..<3, id: \.self) { _ in Skeleton(corner: 20).frame(height: 190) }
+            }
         }
     }
 

@@ -198,12 +198,15 @@ struct ClosetView: View {
     @State private var catalogSelectedIDs = Set<UUID>()
     @State private var showBulkCategorySheet = false
     @State private var catalogDetailBusy = false
+    @State private var openedCatalogProduct: UpsoledProduct?
     @State private var removalRequest: StockRemovalRequest?
     @State private var permanentDeleteItem: ClosetItem?
     @State private var marketPrefetchBusy = false
 
     /// Ficha grande de una prenda (estudio) — push en el stack de Your stock.
     @State private var garmentDetailItemID: UUID?
+    @State private var stockSearchOpen = false
+    @State private var showSaleReports = false
 
     @State private var stockSearchText = ""
     @FocusState private var stockSearchFocused: Bool
@@ -309,12 +312,21 @@ struct ClosetView: View {
     }
 
     /// Closet sin entradas repetidas (mismo SKU+talla o mismo enlace de catálogo).
+    /// Nombres (en forma de dirección) de los zapatos del catálogo que tienen giro 360°.
+    private var spinSlugs: Set<String> {
+        Set(catalogVM.products.compactMap(\.primaryImageURL).flatMap { Shoe360Loader.slugs(fromImageURL: $0) }.map { $0.lowercased() })
+    }
+
     private var stockClosetItemsExcludingCatalogDuplicates: [ClosetItem] {
         var seenCatalogLinks = Set<UUID>()
         var seenIdentityKeys = Set<String>()
         var unique: [ClosetItem] = []
+        let spinSlugs = self.spinSlugs   // se calcula una vez, no por cada zapato
 
         for item in filteredActiveClosetItems {
+            // Solo se enseñan los zapatos que tienen giro 360°: los que coinciden con el catálogo.
+            // Los demás no se borran del teléfono; simplemente no salen en la lista.
+            guard spinSlugs.contains(Shoe360Loader.slug(item.catalogDisplayName).lowercased()) else { continue }
             if let catalogId = CatalogClosetBridge.catalogProductId(forClosetItem: item.id) {
                 guard !seenCatalogLinks.contains(catalogId) else { continue }
                 seenCatalogLinks.insert(catalogId)
@@ -464,22 +476,87 @@ struct ClosetView: View {
         return h
     }
 
-    private var yourStockHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Hey, Sneakerhead 👋")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(Color.black)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-            Text("Find the most exclusive sneakers.")
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(Color.black.opacity(0.45))
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+    /// Barra flotante de arriba: el contenido pasa por detrás. El buscador y los filtros son botones
+    /// redondos junto a la foto de perfil; el campo de búsqueda solo aparece al tocar la lupa.
+    private var stockTopChrome: some View {
+        VStack(spacing: 8) {
+            AppTopBar(title: "Sneakers") {
+                if hasAnyStockContent {
+                    Button {
+                        withAnimation(.snappy(duration: 0.28)) { stockSearchOpen.toggle() }
+                        stockSearchFocused = stockSearchOpen
+                        if !stockSearchOpen { stockSearchText = "" }
+                    } label: { TopBarGlassButton(systemImage: stockSearchOpen ? "xmark" : "magnifyingglass") }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Search")
+                    Button { showStockBarcodeScanner = true } label: { TopBarGlassButton(systemImage: "barcode.viewfinder") }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Scan a box barcode")
+                    // Abre directamente la pantalla completa de filtros (orden, vista, plataformas, marcas…).
+                    Button { showStockFiltersSheet = true } label: { TopBarGlassButton(systemImage: "slider.horizontal.3") }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Filters and sort")
+                }
+            }
+            if hasAnyStockContent, stockSearchOpen {
+                StockBrowseSearchBar(
+                    searchText: $stockSearchText,
+                    searchFocused: $stockSearchFocused,
+                    onScanBarcode: { showStockBarcodeScanner = true }
+                )
+                .padding(.horizontal, 16)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if closetSelectionMode {
+                stockFilterSortToolbar.padding(.horizontal, 16)
+            }
+            if brandNames.count > 1 { brandStrip }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        .padding(.bottom, 10)
+        .background {
+            LinearGradient(colors: [.white, .white.opacity(0.92), .white.opacity(0)], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea(edges: .top)
+        }
+    }
+
+    /// Marcas presentes en la lista, de la que más zapatos tiene a la que menos.
+    private var brandNames: [String] {
+        var counts: [String: Int] = [:]
+        for product in catalogVM.products { if let brand = product.brand, !brand.isEmpty { counts[brand, default: 0] += 1 } }
+        return counts.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map(\.key)
+    }
+
+    /// Tira de marcas, como la de colecciones en Cards: «todas» en un círculo y cada marca con su logo.
+    private var brandStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            GlassEffectContainer(spacing: 10) {
+                HStack(spacing: 10) {
+                    let all = stockFilters.brands.isEmpty
+                    Button { stockFilters.brands = [] } label: {
+                        Image(systemName: "square.grid.2x2.fill").font(.system(size: 16, weight: .semibold)).foregroundStyle(.black)
+                            .frame(width: 44, height: 44)
+                            .background(all ? Color.white : Color.clear, in: .circle)
+                            .glassEffect(.regular.interactive(), in: .circle)
+                            .overlay { Circle().strokeBorder(all ? Color.black : .clear, lineWidth: 1.5) }
+                    }
+                    .buttonStyle(.plain).accessibilityLabel("All brands")
+                    ForEach(brandNames, id: \.self) { brand in
+                        let key = StockFilterEngine.brandKey(brand) ?? brand
+                        let on = stockFilters.brands.contains(key)
+                        Button { stockFilters.brands = on ? [] : [key] } label: {
+                            BrandLogoLabel(brand: brand, wide: true)
+                                .frame(width: 78, height: 32)
+                                .padding(.horizontal, 10).padding(.vertical, 6)
+                                .background(on ? Color.white : Color.clear, in: .rect(cornerRadius: 16))
+                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+                                .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(on ? Color.black : .clear, lineWidth: 1.5) }
+                        }
+                        .buttonStyle(.plain).accessibilityLabel(brand)
+                    }
+                }
+                .padding(.vertical, 4).padding(.horizontal, 16)
+            }
+        }
     }
 
     private func openAddStockFlow(openPipeline: Bool = false) {
@@ -494,50 +571,30 @@ struct ClosetView: View {
         ZStack(alignment: .bottom) {
             Color.white.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                VStack(spacing: 8) {
-                    yourStockHeader
-
-                    if hasAnyStockContent {
-                        VStack(spacing: 10) {
-                            StockBrowseSearchBar(
-                                searchText: $stockSearchText,
-                                searchFocused: $stockSearchFocused,
-                                onScanBarcode: { showStockBarcodeScanner = true }
-                            )
-
-                            stockFilterSortToolbar
-                        }
+            ScrollViewReader { scrollProxy in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Color.clear
+                            .frame(height: 60 + (stockSearchOpen ? 60 : 0) + (closetSelectionMode ? 44 : 0) + (brandNames.count > 1 ? 62 : 0))
+                            .id("stockScrollTop")
+                        productsTabContent
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 6)
-                .background(Color.white)
-
-                ScrollViewReader { scrollProxy in
-                    ScrollView(showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Color.clear
-                                .frame(height: 1)
-                                .id("stockScrollTop")
-                            productsTabContent
-                        }
+                .refreshable {
+                    await catalogVM.reload()
+                }
+                .onChange(of: stockFilters.quickCategory) { _, _ in
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        scrollProxy.scrollTo("stockScrollTop", anchor: .top)
                     }
-                    .refreshable {
-                        await catalogVM.reload()
-                    }
-                    .onChange(of: stockFilters.quickCategory) { _, _ in
-                        withAnimation(.easeOut(duration: 0.28)) {
-                            scrollProxy.scrollTo("stockScrollTop", anchor: .top)
-                        }
-                    }
-                    .onChange(of: stockFilters.categoryKeys) { _, _ in
-                        withAnimation(.easeOut(duration: 0.28)) {
-                            scrollProxy.scrollTo("stockScrollTop", anchor: .top)
-                        }
+                }
+                .onChange(of: stockFilters.categoryKeys) { _, _ in
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        scrollProxy.scrollTo("stockScrollTop", anchor: .top)
                     }
                 }
             }
+            .overlay(alignment: .top) { stockTopChrome }
 
             if draftBannerCount > 0 {
                 draftResumeBanner
@@ -556,6 +613,12 @@ struct ClosetView: View {
             ClosetInventoryRepair.backfillSKUFromNames(in: modelContext)
             catalogVM.fetchLimit = 750
             await catalogVM.reload()
+        }
+        .onChange(of: catalogVM.products.count, initial: true) { _, _ in CatalogShelf.products = catalogVM.products }
+        .onChange(of: tabRouter.scanRequested, initial: true) { _, wanted in
+            guard wanted else { return }
+            tabRouter.scanRequested = false
+            showStockBarcodeScanner = true
         }
         .task(id: marketPrefetchKey) {
             await prefetchStockMarketPrices()
@@ -601,15 +664,19 @@ struct ClosetView: View {
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $showStockFiltersSheet) {
+        .fullScreenCover(isPresented: $showStockFiltersSheet) {
             StockBrowseFiltersSheet(
                 filters: $stockFilters,
                 layoutMode: stockLayoutModeBinding,
                 closetItems: activeClosetItems,
-                catalogProducts: catalogVM.products
+                catalogProducts: catalogVM.products,
+                onScan: { showStockBarcodeScanner = true },
+                onReports: { showSaleReports = true }
             )
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
+        }
+        .navigationDestination(isPresented: $showSaleReports) { SaleReportsHistoryView() }
+        .navigationDestination(item: $openedCatalogProduct) { product in
+            CatalogShoePreview(product: product).toolbar(.hidden, for: .tabBar)
         }
         .sheet(item: $scanLookupPayload) { payload in
             StockScanResultSheet(
@@ -622,7 +689,7 @@ struct ClosetView: View {
                 },
                 onDismiss: { scanLookupPayload = nil }
             )
-            .presentationDetents([.height(340), .medium])
+            .presentationDetents([.height(420), .large])
             .presentationDragIndicator(.visible)
         }
         .fullScreenCover(isPresented: $showStockBarcodeScanner) {
@@ -635,10 +702,10 @@ struct ClosetView: View {
             )
         }
         .overlay {
-            if scanLookupBusy || catalogDetailBusy {
+            if scanLookupBusy {
                 ZStack {
                     Color.black.opacity(0.25).ignoresSafeArea()
-                    ProgressView(catalogDetailBusy ? "Opening item…" : L10n.tr("price.searching"))
+                    ProgressView(L10n.tr("price.searching"))
                         .padding(20)
                         .background(RoundedRectangle(cornerRadius: 16).fill(Color.white))
                 }
@@ -875,13 +942,9 @@ struct ClosetView: View {
 
     @MainActor
     private func openCatalogDetail(_ product: UpsoledProduct) {
-        Task {
-            catalogDetailBusy = true
-            defer { catalogDetailBusy = false }
-            let item = await CatalogClosetBridge.ensureClosetItem(for: product, in: modelContext)
-            garmentDetailItemID = item.id
-            ClosetAnalytics.named("closet_item_detail_open")
-        }
+        // Se abre al instante la ficha del zapato; lo que tarde en llegar se ve en esqueleto.
+        openedCatalogProduct = product
+        ClosetAnalytics.named("closet_item_detail_open")
     }
 
     @MainActor
@@ -1059,42 +1122,242 @@ struct ClosetView: View {
     private var unifiedStockGridContent: some View {
         LazyVStack(alignment: .leading, spacing: 12) {
             ForEach(filteredUnifiedStockSections) { section in
-                LazyVGrid(columns: gridColumns, spacing: 12) {
-                    ForEach(section.closetItems) { item in
-                        closetCell(item)
-                            .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")")
-                            .padding(.top, 10)
-                    }
-                    ForEach(section.catalogProducts) { product in
-                        UpsoledProductCard(
-                            product: product,
-                            selectionMode: closetSelectionMode,
-                            isSelected: catalogSelectedIDs.contains(product.id)
-                        ) {
-                            if closetSelectionMode {
-                                toggleCatalogSelection(product)
-                            } else {
-                                openCatalogDetail(product)
+                // Mismas fichas que en Inicio: marca arriba a la izquierda y plataformas a la derecha.
+                GlassEffectContainer(spacing: 10) {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                        ForEach(mergedRows(section)) { row in
+                            switch row.kind {
+                            case .closet(let item):
+                                Button { garmentDetailItemID = item.id } label: {
+                                    stockTile(name: item.catalogDisplayName, brand: item.brand ?? "") {
+                                        ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            case .catalog(let product):
+                                Button { openCatalogDetail(product) } label: {
+                                    stockTile(name: product.name, brand: product.brand ?? "") {
+                                        StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 320, fillFrame: false)
+                                    }
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .padding(.top, 10)
                     }
                 }
+                .padding(.horizontal, 16)
             }
         }
         .padding(.bottom, bottomInsetForClosetGrid)
     }
 
+    private struct MergedStockRow: Identifiable {
+        enum Kind { case closet(ClosetItem), catalog(UpsoledProduct) }
+        let id: String
+        let name: String
+        let brand: String
+        let kind: Kind
+    }
+
+    private func mergedRows(_ section: UnifiedStockSection) -> [MergedStockRow] {
+        let rows = section.closetItems.map { MergedStockRow(id: "c-\($0.id)", name: $0.catalogDisplayName, brand: $0.brand ?? "", kind: .closet($0)) }
+            + section.catalogProducts.map { MergedStockRow(id: "p-\($0.id)", name: $0.name, brand: $0.brand ?? "", kind: .catalog($0)) }
+        guard stockFilters.sort == .newest else { return rows }
+        let sorted = rows.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        // Con una marca elegida, por nombre. Sin marca, surtido: se va tomando un zapato de cada
+        // marca por turnos, siempre en el mismo orden (no cambia al abrir un zapato).
+        guard stockFilters.brands.isEmpty else { return sorted }
+        var byBrand: [String: [MergedStockRow]] = [:]
+        var order: [String] = []
+        for row in sorted {
+            let brand = row.brand.isEmpty ? "—" : row.brand
+            if byBrand[brand] == nil { order.append(brand) }
+            byBrand[brand, default: []].append(row)
+        }
+        order.sort { (byBrand[$0]?.count ?? 0) > (byBrand[$1]?.count ?? 0) }
+        var mixed: [MergedStockRow] = []
+        var round = 0
+        while mixed.count < sorted.count {
+            for brand in order { if let list = byBrand[brand], round < list.count { mixed.append(list[round]) } }
+            round += 1
+        }
+        return mixed
+    }
+
+    private func stockTile<Photo: View>(name: String, brand: String, @ViewBuilder photo: () -> Photo) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Arriba: la marca a la izquierda y las plataformas a la derecha.
+            HStack {
+                BrandLogoLabel(brand: brand, compact: true).frame(width: 34, height: 34)
+                    .background(.white, in: .circle)
+                    .overlay { Circle().strokeBorder(Color.black.opacity(0.10), lineWidth: 0.5) }
+                Spacer(minLength: 0)
+                MarketplaceDots(brands: ["StockX", "GOAT", "eBay"], size: 32)
+            }
+            Group {
+            if let cut = Self.featuredCutout(name) {
+                // Zapato recortado, por encima del fondo de color y del logo.
+                // Mismo lienzo y mismo marco que la foto normal: queda alineado con los demás zapatos.
+                Image(cut).resizable().scaledToFit()
+                    .shadow(color: .black.opacity(0.18), radius: 5, y: 4)
+                    .frame(maxWidth: .infinity).frame(height: 96)
+            } else {
+                photo().frame(maxWidth: .infinity).frame(height: 96).blendMode(.multiply)
+            }
+            }
+            // Precio confirmado (el más bajo entre plataformas), en una cápsula de cristal sobre la foto.
+            .overlay(alignment: .bottomTrailing) {
+                if let price = ShoeSample.find(name)?.lowest(nil)?.price {
+                    Text(SaleReport.usd(price)).font(.system(size: 15, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                        .padding(.horizontal, 13).frame(height: 32)
+                        .glassEffect(.regular, in: .capsule)
+                        .offset(x: 2, y: 4)
+                }
+            }
+            Text(name.firstUppercased).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
+                .lineLimit(2).multilineTextAlignment(.leading).frame(maxWidth: .infinity, minHeight: 36, alignment: .topLeading)
+        }
+        .padding(10)
+        .background {
+            // Zapatos destacados: blanco arriba, un barrido de color detrás del zapato con el logo de la
+            // marca en grande, y un difuminado a blanco que llega justo hasta el texto.
+            if let accent = Self.featuredAccent(name) {
+                // El fondo se dibuja como capa de un rectángulo blanco del tamaño exacto de la ficha: no se sale.
+                Color.white.overlay {
+                    ZStack {
+                    Ellipse().fill(accent.opacity(0.55)).frame(width: 230, height: 90).blur(radius: 28)
+                        .rotationEffect(.degrees(-16)).offset(x: 14, y: -6)
+                    if let logo = BrandLogoLabel.assetName(for: brand) {
+                        // El logo de Supreme es apaisado: va centrado y más ancho.
+                        let wide = logo.hasSuffix("supreme")
+                        Image(logo).resizable().scaledToFit().frame(width: wide ? 132 : 78, height: 78)
+                            .foregroundStyle(.white.opacity(0.9)).offset(x: wide ? 0 : 42, y: -22)
+                    } else {
+                        // Marca sin logo: su nombre en grande.
+                        Text(brand.uppercased()).font(.system(size: 38, weight: .black, design: .rounded))
+                            .lineLimit(1).minimumScaleFactor(0.4).frame(width: 150)
+                            .foregroundStyle(.white.opacity(0.9)).offset(x: 0, y: -26)
+                    }
+                    LinearGradient(stops: [.init(color: .white, location: 0), .init(color: .white.opacity(0), location: 0.26),
+                                           .init(color: .white.opacity(0), location: 0.60), .init(color: .white, location: 0.76)],
+                                   startPoint: .top, endPoint: .bottom)
+                    }
+                }
+                .clipShape(.rect(cornerRadius: 20))
+            } else {
+                RoundedRectangle(cornerRadius: 20).fill(.white)
+            }
+        }
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+    }
+
+    /// Zapatos destacados (los más conocidos del catálogo): su recorte y el color de su fondo.
+    private static let featured: [String: (cut: String, accent: Color)] = [
+        // Ropa y bolsos.
+        "chrome-hearts-ch-hollywood-trucker-hat-black": ("ShoeCut-70", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "chrome-hearts-ch-hollywood-trucker-hat-black-white": ("ShoeCut-71", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "chrome-hearts-cemetery-cross-hollywood-trucker-hat-red-white-blue": ("ShoeCut-72", Color(red: 0.80, green: 0.15, blue: 0.25)),
+        "chrome-hearts-logo-beanie-black": ("ShoeCut-73", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "chrome-hearts-ch-logo-beanie-red-white": ("ShoeCut-74", Color(red: 0.88, green: 0.12, blue: 0.14)),
+        "fear-of-god-essentials-classic-fleece-sweatshort-concrete-heather": ("ShoeCut-75", Color(red: 0.62, green: 0.58, blue: 0.52)),
+        "supreme-big-script-mesh-short-black": ("ShoeCut-76", Color(red: 0.86, green: 0.10, blue: 0.10)),
+        "supreme-vaquera-basketball-shorts-black": ("ShoeCut-77", Color(red: 0.80, green: 0.50, blue: 0.60)),
+        "eric-emanuel-ee-basic-short-black": ("ShoeCut-78", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "eric-emanuel-ee-basic-short-black-skyline": ("ShoeCut-79", Color(red: 0.35, green: 0.40, blue: 0.60)),
+        "supreme-comme-des-garcons-shirt-patchwork-button-up-shirt-multicolor": ("ShoeCut-80", Color(red: 0.85, green: 0.35, blue: 0.25)),
+        "supreme-antihero-ss-button-up-shirt-yellow": ("ShoeCut-81", Color(red: 0.95, green: 0.80, blue: 0.30)),
+        "supreme-stripe-button-up-polo-brown": ("ShoeCut-82", Color(red: 0.60, green: 0.25, blue: 0.30)),
+        "chrome-hearts-scroll-logo-t-shirt-black": ("ShoeCut-83", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "chrome-hearts-multi-color-cross-t-shirt-black": ("ShoeCut-84", Color(red: 0.45, green: 0.50, blue: 0.85)),
+        "fear-of-god-essentials-classic-short-sleeve-tee-jet-black": ("ShoeCut-85", Color(red: 0.62, green: 0.58, blue: 0.52)),
+        "supreme-cargo-pant-fw26-woodland-camo": ("ShoeCut-59", Color(red: 0.36, green: 0.44, blue: 0.26)),
+        "supreme-cargo-pant-olive-fw23": ("ShoeCut-60", Color(red: 0.45, green: 0.52, blue: 0.36)),
+        "supreme-gore-tex-cargo-pant-fw26-red": ("ShoeCut-61", Color(red: 0.86, green: 0.12, blue: 0.16)),
+        "supreme-martine-rose-champion-tee-black": ("ShoeCut-62", Color(red: 0.86, green: 0.10, blue: 0.10)),
+        "supreme-prayer-card-box-logo-tee-black": ("ShoeCut-63", Color(red: 0.86, green: 0.10, blue: 0.10)),
+        "supreme-sith-tee-black": ("ShoeCut-64", Color(red: 0.25, green: 0.55, blue: 0.80)),
+        "supreme-box-logo-crewneck-fw22-heather-grey": ("ShoeCut-67", Color(red: 0.86, green: 0.10, blue: 0.10)),
+        "denim-tears-cotton-wreath-zip-hoodie-grey": ("ShoeCut-68", Color(red: 0.55, green: 0.60, blue: 0.50)),
+        "sp5der-pnk-v2-hoodie-black": ("ShoeCut-69", Color(red: 0.95, green: 0.45, blue: 0.70)),
+        "supreme-polartec-face-mask-half-zip-hooded-sweatshirt-hearts": ("ShoeCut-50", Color(red: 0.90, green: 0.36, blue: 0.52)),
+        "supreme-applique-flannel-backpack-red": ("ShoeCut-51", Color(red: 0.80, green: 0.20, blue: 0.20)),
+        "supreme-box-logo-hooded-sweatshirt-fw25-heather-grey": ("ShoeCut-52", Color(red: 0.86, green: 0.10, blue: 0.10)),
+        "supreme-shoulder-bag-fw26-black": ("ShoeCut-53", Color(red: 0.86, green: 0.10, blue: 0.10)),
+        "fear-of-god-essentials-fleece-hoodie-light-heather-gray": ("ShoeCut-54", Color(red: 0.62, green: 0.58, blue: 0.52)),
+        "sp5der-og-web-hoodie-black": ("ShoeCut-55", Color(red: 0.95, green: 0.35, blue: 0.65)),
+        "denim-tears-the-cotton-wreath-sweatshirt-black": ("ShoeCut-56", Color(red: 0.30, green: 0.50, blue: 0.80)),
+        "bape-abc-camo-2nd-shark-full-zip-hoodie-blue": ("ShoeCut-57", Color(red: 0.25, green: 0.55, blue: 0.85)),
+        "nike-sportswear-tech-fleece-windrunner-full-zip-hoodie-black": ("ShoeCut-58", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        // Zapatos muy blancos: sin fondo de color apenas se distinguen sobre la ficha blanca.
+        "air-jordan-11-retro-legend-blue-2024": ("ShoeCut-40", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "air-jordan-4-retro-white-oreo-2021": ("ShoeCut-41", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "new-balance-550-white-grey": ("ShoeCut-42", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "nike-air-force-1-low-white-07": ("ShoeCut-43", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "nike-dunk-low-next-nature-white-mint-w": ("ShoeCut-44", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "nike-dunk-low-photon-dust-w": ("ShoeCut-45", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "on-running-cloud-5-all-white": ("ShoeCut-46", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "salomon-xt-6-vanilla-ice-almond-milk": ("ShoeCut-47", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "adidas-yeezy-boost-350-v2-cream-white": ("ShoeCut-48", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "adidas-yeezy-foam-rnnr-sand": ("ShoeCut-49", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "nike-air-force-1-low-supreme-box-logo-white": ("ShoeCut-39", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "air-jordan-1-retro-high-dark-mocha": ("ShoeCut-1", Color(red: 0.55, green: 0.44, blue: 0.36)),
+        "new-balance-1906r-silver-metallic-nightwatch-green": ("ShoeCut-2", Color(red: 0.30, green: 0.52, blue: 0.44)),
+        "mschf-big-red-boot": ("ShoeCut-3", Color(red: 0.90, green: 0.16, blue: 0.14)),
+        "air-jordan-4-retro-black-cat-2025": ("ShoeCut-4", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "air-jordan-4-retro-bred-reimagined": ("ShoeCut-5", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "air-jordan-4-retro-military-blue-2024": ("ShoeCut-6", Color(red: 0.21, green: 0.37, blue: 0.46)),
+        "air-jordan-4-retro-university-blue": ("ShoeCut-7", Color(red: 0.38, green: 0.49, blue: 0.61)),
+        "air-jordan-4-retro-sb-pine-green": ("ShoeCut-8", Color(red: 0.27, green: 0.40, blue: 0.30)),
+        "air-jordan-4-retro-red-thunder": ("ShoeCut-9", Color(red: 0.75, green: 0.25, blue: 0.26)),
+        "air-jordan-4-retro-lightning-2021": ("ShoeCut-10", Color(red: 0.80, green: 0.67, blue: 0.22)),
+        "air-jordan-1-retro-high-og-royal-reimagined": ("ShoeCut-11", Color(red: 0.09, green: 0.36, blue: 0.66)),
+        "air-jordan-1-retro-high-og-bred-patent": ("ShoeCut-12", Color(red: 0.55, green: 0.10, blue: 0.12)),
+        "air-jordan-1-retro-low-og-sp-travis-scott-black-phantom": ("ShoeCut-13", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "air-jordan-1-retro-low-og-sp-travis-scott-olive-w": ("ShoeCut-14", Color(red: 0.32, green: 0.30, blue: 0.21)),
+        "air-jordan-11-retro-cherry-2022": ("ShoeCut-15", Color(red: 0.53, green: 0.11, blue: 0.11)),
+        "air-jordan-11-retro-cool-grey-2021": ("ShoeCut-16", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "air-jordan-3-retro-white-cement-reimagined": ("ShoeCut-17", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "air-jordan-3-retro-fire-red-2022": ("ShoeCut-18", Color(red: 0.63, green: 0.11, blue: 0.10)),
+        "air-jordan-5-retro-aqua": ("ShoeCut-19", Color(red: 0.55, green: 0.68, blue: 0.59)),
+        "air-jordan-12-retro-cherry-2023": ("ShoeCut-20", Color(red: 0.67, green: 0.13, blue: 0.09)),
+        "nike-dunk-low-retro-white-black-2021": ("ShoeCut-21", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "nike-dunk-low-georgetown": ("ShoeCut-22", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "nike-dunk-low-off-white-lot-1": ("ShoeCut-23", Color(red: 0.79, green: 0.70, blue: 0.49)),
+        "nike-sb-dunk-low-travis-scott": ("ShoeCut-24", Color(red: 0.62, green: 0.56, blue: 0.43)),
+        "nike-sb-dunk-low-ben-jerrys-chunky-dunky": ("ShoeCut-25", Color(red: 0.51, green: 0.63, blue: 0.42)),
+        "nike-air-force-1-low-sp-tiffany-and-co": ("ShoeCut-26", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "nike-air-force-1-low-off-white-volt": ("ShoeCut-27", Color(red: 0.72, green: 0.91, blue: 0.36)),
+        "nike-kobe-6-protro-grinch": ("ShoeCut-28", Color(red: 0.57, green: 0.77, blue: 0.39)),
+        "nike-air-foamposite-one-galaxy-2025": ("ShoeCut-29", Color(red: 0.21, green: 0.24, blue: 0.38)),
+        "nike-air-max-1-travis-scott-wheat": ("ShoeCut-30", Color(red: 0.73, green: 0.64, blue: 0.41)),
+        "adidas-yeezy-boost-350-v2-zebra": ("ShoeCut-31", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "adidas-yeezy-boost-350-v2-beluga-reflective": ("ShoeCut-32", Color(red: 0.73, green: 0.43, blue: 0.34)),
+        "adidas-yeezy-slide-bone-2022": ("ShoeCut-33", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "adidas-samba-og-cloud-white-core-black": ("ShoeCut-34", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "new-balance-550-white-green": ("ShoeCut-35", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "new-balance-9060-mushroom": ("ShoeCut-36", Color(red: 0.47, green: 0.41, blue: 0.32)),
+        "ugg-tasman-slipper-chestnut": ("ShoeCut-37", Color(red: 0.53, green: 0.38, blue: 0.25)),
+        "timberland-6-inch-premium-waterproof-wheat": ("ShoeCut-38", Color(red: 0.59, green: 0.39, blue: 0.24)),
+    ]
+
+    private static func featuredKey(_ name: String) -> String {
+        name.replacingOccurrences(of: " (Women's)", with: " W").replacingOccurrences(of: " ", with: "-").lowercased()
+    }
+    static func featuredCutout(_ name: String) -> String? { featured[featuredKey(name)]?.cut }
+    static func featuredAccent(_ name: String) -> Color? { featured[featuredKey(name)]?.accent }
+
     private var unifiedStockListContent: some View {
         LazyVStack(alignment: .leading, spacing: 10) {
             ForEach(filteredUnifiedStockSections) { section in
-                ForEach(section.closetItems) { item in
-                    closetListRow(item)
-                        .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")-\(item.marketPriceJSON ?? "")")
-                }
-
-                ForEach(section.catalogProducts) { product in
-                    catalogListRow(product)
+                // Una sola lista por nombre: abrir un zapato no lo mueve al principio.
+                ForEach(mergedRows(section)) { row in
+                    switch row.kind {
+                    case .closet(let item):
+                        closetListRow(item)
+                            .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")-\(item.marketPriceJSON ?? "")")
+                    case .catalog(let product):
+                        catalogListRow(product)
+                    }
                 }
             }
 
@@ -1105,6 +1368,11 @@ struct ClosetView: View {
 
     @MainActor
     private func prefetchStockImages() async {
+        // El giro 360° de los primeros zapatos se baja por adelantado: al abrirlos ya giran.
+        let spins = activeClosetItems.filter { $0.category == .shoes }.prefix(14).map { (names: [$0.catalogDisplayName, $0.name], queries: $0.marketLookupQueries) }
+        Task.detached(priority: .utility) {
+            for spin in spins { await Shoe360Loader.prefetch(titles: spin.names, queries: spin.queries) }
+        }
         let listMaxSide: CGFloat = stockLayoutModeBinding.wrappedValue == .list ? 168 : 296
         let remoteMaxSide: CGFloat = stockLayoutModeBinding.wrappedValue == .list ? 168 : 296
 
@@ -4335,6 +4603,11 @@ struct MarketComparison {
     let skuAligned: Bool
 
     var matchedTitle: String? { platforms.compactMap(\.matchedTitle).first }
+    /// Nombres para buscar el giro 360°: primero el de StockX, que es quien publica esas fotos.
+    var spinTitles: [String] {
+        let stockx = platforms.first { $0.platform.lowercased().contains("stockx") }?.matchedTitle
+        return ([stockx] + platforms.map(\.matchedTitle)).compactMap { $0 }
+    }
     var matchedSKU: String? { platforms.compactMap(\.matchedSKU).first }
     /// Imagen del producto (la primera plataforma que la traiga).
     var imageURL: URL? { platforms.compactMap(\.imageURL).first }
@@ -4723,7 +4996,7 @@ struct OpportunitiesView: View {
             .navigationTitle("Oportunidades")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) { Button("Cerrar") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) { Button("Close") { dismiss() } }
                 ToolbarItem(placement: .topBarLeading) {
                     Button { Task { await scan() } } label: {
                         if loading { ProgressView() } else { Image(systemName: "arrow.clockwise") }
@@ -4924,7 +5197,7 @@ struct MarketComparatorView: View {
                     .accessibilityLabel("Lo que aprendió la IA")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Cerrar") { dismiss() }
+                    Button("Close") { dismiss() }
                 }
             }
             .sheet(isPresented: $showCorrections) { ScanCorrectionsView() }
@@ -5471,6 +5744,8 @@ struct MarketComparatorView: View {
                 Text("Sin diferencia de precio entre plataformas para calcular margen.")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
+
+            ComparisonSaleReportButton(comparison: comp)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -6102,7 +6377,7 @@ struct ScanCorrectionsView: View {
             .navigationTitle("Lo que aprendió la IA")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Cerrar") { dismiss() } }
+                ToolbarItem(placement: .topBarLeading) { Button("Close") { dismiss() } }
                 if !store.items.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Borrar todo", role: .destructive) { store.clearAll() }
@@ -6266,7 +6541,7 @@ struct CreatePriceAlertSheet: View {
     }
 
     private var sizePicker: some View {
-        Picker("Talla", selection: $selectedSize) {
+        Picker("Size", selection: $selectedSize) {
             Text("Cualquiera").tag("")
             ForEach(sizes, id: \.self) { Text($0).tag($0) }
         }
@@ -6325,7 +6600,7 @@ struct PriceAlertsListView: View {
             .navigationTitle("Alertas")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Cerrar") { dismiss() } }
+                ToolbarItem(placement: .topBarLeading) { Button("Close") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Task { checking = true; await PriceAlertChecker.checkAll(store: store); checking = false }
@@ -6409,4 +6684,37 @@ private struct BulkStockCategorySheet: View {
         }
         .preferredColorScheme(.light)
     }
+}
+
+
+// MARK: - Informe de venta desde el comparador
+
+/// Botón que abre el informe de venta del producto comparado (con selector de talla).
+struct ComparisonSaleReportButton: View {
+    let comparison: MarketComparison
+    @State private var report: SaleReport?
+
+    var body: some View {
+        Button {
+            report = SaleReport.from(comparison: comparison)
+        } label: {
+            Label("Sale report and listing", systemImage: "doc.text.magnifyingglass")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 46)
+                .background(Color.black, in: RoundedRectangle(cornerRadius: 13))
+        }
+        .buttonStyle(.plain)
+        .fullScreenCover(item: $report) { item in
+            SaleReportView(report: item, sizes: comparison.sizes) { size, cost in
+                SaleReport.from(comparison: comparison, size: size, costUSD: cost)
+            }
+        }
+    }
+}
+
+
+extension String {
+    /// La primera letra en mayúscula («adidas Campus» → «Adidas Campus»); el resto, tal cual.
+    var firstUppercased: String { prefix(1).uppercased() + dropFirst() }
 }

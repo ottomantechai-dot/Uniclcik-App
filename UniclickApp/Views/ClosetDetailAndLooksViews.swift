@@ -2,6 +2,7 @@ import PhotosUI
 import SwiftData
 import SwiftUI
 import UIKit
+import Charts
 
 // MARK: - Hex → Color
 
@@ -93,6 +94,10 @@ struct ClosetGarmentDetailView: View {
     @State private var detailSection: GarmentDetailSection
     @State private var savingChanges = false
     @State private var shoeLastSale: Double?
+    @State private var shoeSales: [DailySalePoint] = []
+    @State private var shoeSizesOpen = false
+    /// Otro zapato del catálogo elegido desde esta ficha: se enseña aquí mismo, sin abrir otra pantalla.
+    @State private var swappedProduct: UpsoledProduct?
     @State private var showShoeMarketData = false
     @State private var shoeExpandedReturnPolicy = false
     @State private var shoeExpandedBuyerPromise = false
@@ -111,6 +116,20 @@ struct ClosetGarmentDetailView: View {
 
     private var activeStockItems: [ClosetItem] {
         closetStockItems.filter(\.isActiveInStock)
+    }
+
+    /// Detalles del producto: solo lo que se sabe de verdad.
+    private var shoeDetailRows: [(icon: String, title: String, value: String)] {
+        var rows: [(String, String, String)] = []
+        if let brand = item.brand, !brand.isEmpty { rows.append(("tag", "Brand", brand)) }
+        let colorway = CatalogShelf.colorway(of: item.catalogDisplayName)
+        if let color = item.colorLabel, !color.isEmpty { rows.append(("paintpalette", "Color", color)) }
+        else if !colorway.isEmpty { rows.append(("paintpalette", "Colorway", colorway)) }
+        if let sku = item.resolvedSKU, HomeSneakerHighlight.isRealStyleCode(sku) { rows.append(("number", "Style code", sku)) }
+        if let size = item.cardSizeLabel { rows.append(("ruler", "Size", size)) }
+        rows.append(("shippingbox", "Condition", "New"))
+        rows.append(("calendar", "Added", item.createdAt.formatted(date: .abbreviated, time: .omitted)))
+        return rows.map { (icon: $0.0, title: $0.1, value: $0.2) }
     }
 
     private var similarStockItems: [ClosetItem] {
@@ -215,10 +234,10 @@ struct ClosetGarmentDetailView: View {
             NavigationStack {
                 ScrollView(showsIndicators: false) {
                     if shoeMarketLoading {
-                        ProgressView()
-                            .controlSize(.large)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 40)
+                        VStack(spacing: 10) {
+                            ForEach(0..<6, id: \.self) { _ in Skeleton(corner: 11).frame(height: 40) }
+                        }
+                        .padding(16)
                     } else {
                         DashboardMarketPricesSection(
                             comparison: shoeMarketComparison,
@@ -311,15 +330,29 @@ struct ClosetGarmentDetailView: View {
 
     @ViewBuilder
     private var shoeDetailLayout: some View {
+        if let swappedProduct {
+            CatalogShoeBody(product: swappedProduct) { next in withAnimation(.snappy) { self.swappedProduct = next } }
+                .padding(.horizontal, 16)
+                .id(swappedProduct.id)
+        } else {
+            shoeOwnDetailLayout
+        }
+    }
+
+    private var shoeOwnDetailLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
             shoeDetailHero
 
-            Text(item.catalogDisplayName)
+            Text(item.catalogDisplayName.firstUppercased)
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(Color.black.opacity(0.92))
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 8)
                 .padding(.bottom, 10)
+
+            // Otros colores del mismo modelo.
+            ShoeVariantsStrip(name: item.catalogDisplayName) { next in withAnimation(.snappy) { swappedProduct = next } }
+                .padding(.bottom, 12)
 
             shoeSizeSelectorRow
 
@@ -329,12 +362,28 @@ struct ClosetGarmentDetailView: View {
             shoeInlineMarketPrices
                 .padding(.top, 12)
 
-            shoePolicyAccordions
-                .padding(.top, 8)
+            SellButton(item: .shoe(name: item.catalogDisplayName, brand: item.brand ?? "", imageURL: shoeMarketComparison?.imageURL ?? CatalogShelf.imageURL(for: item.catalogDisplayName)))
+                .padding(.top, 14)
 
-            shoeSimilarStockSection
-                .padding(.top, 24)
-                .padding(.bottom, 16)
+            ShoeUsedListingsStrip()
+                .padding(.top, 18)
+
+            shoePolicyAccordions
+                .padding(.top, 10)
+
+            ShoeRelatedShelf(name: item.catalogDisplayName, brand: item.brand ?? "") { next in withAnimation(.snappy) { swappedProduct = next } }
+                .padding(.top, 22)
+
+            ShoeProductDetailsCard(rows: shoeDetailRows)
+                .padding(.top, 22)
+
+            // Comparativa por talla y plataforma, y debajo el historial de precios.
+            DashboardMarketPricesSection(comparison: shoeMarketComparison, maxVisibleRows: 6)
+                .padding(.top, 18)
+
+            ShoeMarketHistoryCard(sales: shoeSales)
+                .padding(.top, 18)
+                .padding(.bottom, 24)
         }
         .padding(.horizontal, 16)
         .task(id: shoeMarketComparison?.matchedSKU ?? shoeMarketComparison?.query ?? item.marketPriceJSON) {
@@ -345,11 +394,11 @@ struct ClosetGarmentDetailView: View {
     @ViewBuilder
     private var shoeInlineMarketPrices: some View {
         if shoeMarketLoading || marketPriceBusy {
-            HStack(spacing: 10) {
-                ProgressView().controlSize(.small)
-                Text("Consultando precios en StockX y GOAT…")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.55))
+            // Mientras llegan los precios: tres líneas en esqueleto, en vez de la rueda de carga.
+            VStack(alignment: .leading, spacing: 8) {
+                Skeleton(corner: 6).frame(width: 190, height: 12)
+                Skeleton(corner: 6).frame(height: 12)
+                Skeleton(corner: 6).frame(width: 120, height: 12)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
@@ -378,7 +427,7 @@ struct ClosetGarmentDetailView: View {
             Button {
                 Task { await loadShoeMarketData(force: true) }
             } label: {
-                Label("Consultar precios de mercado", systemImage: "chart.line.uptrend.xyaxis")
+                Label("Check market prices", systemImage: "chart.line.uptrend.xyaxis")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color.white)
                     .frame(maxWidth: .infinity, minHeight: 44)
@@ -494,21 +543,32 @@ struct ClosetGarmentDetailView: View {
     private var shoeDetailHero: some View {
         ZStack(alignment: .top) {
             Color.white
-            ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
-                .padding(.horizontal, 6)
-                .scaleEffect(1.14)
-                .offset(y: -10)
+            // Zapato destacado: el mismo fondo de color y logo que en su tarjeta.
+            Color.clear.background { FeaturedHeroBackdrop(name: item.catalogDisplayName, brand: item.brand ?? "") }
+            Shoe360View(
+                titles: (shoeMarketComparison?.spinTitles ?? []) + [item.catalogDisplayName, item.name],
+                brand: item.brand,
+                fallbackURL: shoeMarketComparison?.imageURL,
+                fallback: AnyView(
+                    ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
+                        .padding(.horizontal, 6)
+                        .scaleEffect(1.14)
+                        .offset(y: -10)
+                ),
+                queries: item.marketLookupQueries,
+                badgeLift: 50
+            )
+            .shoeCutout(ClosetView.featuredAccent(item.catalogDisplayName) != nil)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 210)
-        .clipped()
+        .frame(height: 230)
     }
 
     private var shoeDisplaySizeLabel: String {
         if let core = StockSizeDisplay.normalizedStorage(from: sizeDraft), !core.isEmpty {
-            return "EU \(core)"
+            return "US \(core)"
         }
-        return "Seleccionar"
+        return "Select"
     }
 
     private var shoeAvailableSizes: [String] {
@@ -518,7 +578,7 @@ struct ClosetGarmentDetailView: View {
         if let core = StockSizeDisplay.normalizedStorage(from: sizeDraft) {
             return [core]
         }
-        return ["40", "41", "42", "42.5", "43", "44", "45"]
+        return ["7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"]
     }
 
     private var shoeBuyNowUSD: Int? {
@@ -547,43 +607,68 @@ struct ClosetGarmentDetailView: View {
         return comparison.rows.first
     }
 
+    /// Selector de talla: al tocarlo se despliega hacia abajo, dentro de la ficha, con todas las tallas.
     private var shoeSizeSelectorRow: some View {
-        Menu {
-            ForEach(shoeAvailableSizes, id: \.self) { size in
-                Button("EU \(size)") {
-                    sizeDraft = size
-                    item.sizeText = size
-                    saveSilently()
-                    Task { await loadShoeMarketData(force: true) }
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(.snappy(duration: 0.3)) { shoeSizesOpen.toggle() }
+            } label: {
+                HStack(spacing: 10) {
+                    Text("Size")
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                    Spacer(minLength: 0)
+                    Text(shoeDisplaySizeLabel)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.88))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.45))
+                        .rotationEffect(.degrees(shoeSizesOpen ? 180 : 0))
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 14)
+                .contentShape(.rect)
+                .background(.white)
             }
-        } label: {
-            HStack(spacing: 10) {
-                Text("Talla (no.)")
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(Color.black.opacity(0.55))
-                Spacer(minLength: 0)
-                Text(shoeDisplaySizeLabel)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.88))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.45))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
-            .background {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.black.opacity(0.12), lineWidth: 1)
+            .buttonStyle(.plain)
+            .zIndex(1)
+
+            if shoeSizesOpen {
+                Divider().padding(.horizontal, 14)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                    ForEach(shoeAvailableSizes, id: \.self) { size in
+                        let on = StockSizeDisplay.normalizedStorage(from: sizeDraft) == size
+                        Button {
+                            sizeDraft = size
+                            item.sizeText = size
+                            saveSilently()
+                            withAnimation(.snappy(duration: 0.3)) { shoeSizesOpen = false }
+                            Task { await loadShoeMarketData(force: true) }
+                        } label: {
+                            Text("US \(size)")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundStyle(on ? .white : .black)
+                                .frame(maxWidth: .infinity, minHeight: 42)
+                                .background(on ? Color.black : Color.white, in: .rect(cornerRadius: 12))
+                                .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Color.black.opacity(on ? 0 : 0.12)) }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(12)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .buttonStyle(.plain)
+        .background(.white)
+        .clipShape(.rect(cornerRadius: 20))
+        .glassEffect(.regular, in: .rect(cornerRadius: 20))
     }
 
     private var shoeBuyMarketCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Comprar ahora por")
+                Text("Buy now for")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(Color.black.opacity(0.55))
                 if let buy = shoeBuyNowUSD {
@@ -593,8 +678,8 @@ struct ClosetGarmentDetailView: View {
                         .minimumScaleFactor(0.7)
                         .lineLimit(1)
                 } else if shoeMarketLoading || marketPriceBusy {
-                    ProgressView().controlSize(.regular)
-                        .padding(.vertical, 8)
+                    Skeleton(corner: 8).frame(width: 130, height: 34)
+                        .padding(.vertical, 4)
                 } else {
                     Text("—")
                         .font(.system(size: 34, weight: .bold, design: .rounded))
@@ -604,7 +689,7 @@ struct ClosetGarmentDetailView: View {
 
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Última venta")
+                    Text("Last sale")
                         .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(Color.black.opacity(0.55))
                     if let last = shoeLastSale {
@@ -612,7 +697,7 @@ struct ClosetGarmentDetailView: View {
                             .font(.system(size: 15, weight: .bold))
                             .foregroundStyle(Color.black.opacity(0.88))
                     } else if shoeMarketLoading {
-                        ProgressView().controlSize(.small)
+                        Skeleton(corner: 5).frame(width: 60, height: 14)
                     } else {
                         Text("—")
                             .font(.system(size: 15, weight: .bold))
@@ -622,7 +707,7 @@ struct ClosetGarmentDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Oferta más baja")
+                    Text("Lowest ask")
                         .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(Color.black.opacity(0.55))
                     if let ask = shoeLowestAskUSD {
@@ -640,7 +725,7 @@ struct ClosetGarmentDetailView: View {
                 Button {
                     showShoeMarketData = true
                 } label: {
-                    Text("Datos del\nmercado")
+                    Text("Market\ndata")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color(red: 0.13, green: 0.55, blue: 0.30))
                         .multilineTextAlignment(.trailing)
@@ -664,12 +749,12 @@ struct ClosetGarmentDetailView: View {
         VStack(spacing: 0) {
             shoeAccordionRow(
                 icon: "arrow.uturn.backward",
-                title: "Política de devolución",
-                subtitle: shoeExpandedReturnPolicy ? nil : "Plazo de 14 días para la devolución.",
+                title: "Return policy",
+                subtitle: shoeExpandedReturnPolicy ? nil : "14-day return window.",
                 subtitleColor: Color(red: 0.13, green: 0.55, blue: 0.30),
                 isExpanded: $shoeExpandedReturnPolicy
             ) {
-                Text("Puedes solicitar la devolución en un plazo de 14 días desde la entrega, siempre que el artículo esté en las mismas condiciones en las que lo recibiste.")
+                Text("You can request a return within 14 days of delivery, as long as the item is in the same condition.")
                     .font(.system(size: 13))
                     .foregroundStyle(Color.black.opacity(0.62))
                     .fixedSize(horizontal: false, vertical: true)
@@ -679,10 +764,10 @@ struct ClosetGarmentDetailView: View {
 
             shoeAccordionRow(
                 icon: "shield.lefthalf.filled",
-                title: "Promesa del comprador",
+                title: "Buyer promise",
                 isExpanded: $shoeExpandedBuyerPromise
             ) {
-                Text("Verificamos la autenticidad y el estado del producto antes de que llegue a tus manos.")
+                Text("We verify authenticity and condition before the product reaches you.")
                     .font(.system(size: 13))
                     .foregroundStyle(Color.black.opacity(0.62))
                     .fixedSize(horizontal: false, vertical: true)
@@ -696,7 +781,7 @@ struct ClosetGarmentDetailView: View {
 
     private var shoeDetailActionBar: some View {
         HStack(spacing: 0) {
-            shoeDetailActionButton(title: "Editar", icon: "pencil") {
+            shoeDetailActionButton(title: "Edit", icon: "pencil") {
                 showShoeEditDetails = true
             }
 
@@ -704,7 +789,7 @@ struct ClosetGarmentDetailView: View {
                 .fill(Color.black.opacity(0.10))
                 .frame(width: 1, height: 28)
 
-            shoeDetailActionButton(title: "Pantalla completa", icon: "arrow.up.left.and.arrow.down.right") {
+            shoeDetailActionButton(title: "Full screen", icon: "arrow.up.left.and.arrow.down.right") {
                 showShoeFullscreenImage = true
             }
 
@@ -712,7 +797,7 @@ struct ClosetGarmentDetailView: View {
                 .fill(Color.black.opacity(0.10))
                 .frame(width: 1, height: 28)
 
-            shoeDetailActionButton(title: "Muestra todo", icon: "square.grid.2x2") {
+            shoeDetailActionButton(title: "Show all", icon: "square.grid.2x2") {
                 showShoeAllDetails = true
             }
         }
@@ -744,7 +829,7 @@ struct ClosetGarmentDetailView: View {
     }
 
     private var shoeRelatedProductsHeader: some View {
-        Text("Productos similares")
+        Text("Related products")
             .font(.system(size: 18, weight: .bold))
             .foregroundStyle(Color.black.opacity(0.92))
     }
@@ -754,7 +839,7 @@ struct ClosetGarmentDetailView: View {
             shoeRelatedProductsHeader
 
             if similarStockItems.isEmpty {
-                Text("No hay más artículos en tu stock.")
+                Text("No more items in your stock.")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.45))
             } else {
@@ -896,10 +981,12 @@ struct ClosetGarmentDetailView: View {
                 ?? comp.platforms.first(where: { $0.productID != nil }),
               let pid = q.productID else {
             shoeLastSale = nil
+            shoeSales = []
             return
         }
         let sales = await KicksDBClient.dailySales(platformKey: q.platformKey, productID: pid)
         shoeLastSale = sales.last?.avg
+        shoeSales = sales
     }
 
     private var studioHero: some View {
@@ -1446,7 +1533,7 @@ struct ClosetGarmentDetailView: View {
 
             if marketPriceBusy {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    Skeleton(corner: 5).frame(width: 60, height: 14)
                     Text("Fetching live prices from StockX & GOAT…")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(secondary)
@@ -3058,5 +3145,456 @@ struct GarmentLookbookCaptureView: View {
         try? modelContext.save()
         ClosetAnalytics.named("closet_lookbook_saved")
         dismiss()
+    }
+}
+
+
+// MARK: - Historial de precios y datos históricos (ventas reales)
+
+/// Gráfica de ventas reales y sus datos: banda de precios, volatilidad, número de ventas y precio medio.
+/// Solo se enseña cuando el mercado ha devuelto ventas; nunca con cifras inventadas.
+struct ShoeMarketHistoryCard: View {
+    let sales: [DailySalePoint]
+    /// Datos históricos ya calculados por el mercado (si no, se calculan de las ventas).
+    var summary: [(String, String)]? = nil
+    var source: String? = nil
+    var sourceBrand = "StockX"
+    @State private var range = 0   // 0 = todo, o días
+
+    private var shown: [DailySalePoint] {
+        guard range > 0, let last = sales.last?.date else { return sales }
+        let from = last.addingTimeInterval(-Double(range) * 86400)
+        return sales.filter { $0.date >= from }
+    }
+    private var hasData: Bool { sales.count >= 2 }
+
+    private static func usd(_ v: Double) -> String { SaleReport.usd(v.rounded()) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Price history").font(.system(size: 18, weight: .bold)).foregroundStyle(.black)
+                Spacer()
+                if let source {
+                    // Origen de los datos: logo de la plataforma y fecha, en una cápsula de cristal.
+                    HStack(spacing: 7) {
+                        Circle().fill(Color.green).frame(width: 7, height: 7)
+                        if sourceBrand == "StockX" { StylizedMarketplaceLogo(brand: "StockX").frame(width: 50, height: 14) }
+                        else {
+                            Image("Logo" + sourceBrand).resizable().scaledToFit().frame(width: 16, height: 16).clipShape(.rect(cornerRadius: 4))
+                            Text(sourceBrand).font(.system(size: 11, weight: .heavy)).foregroundStyle(.black).lineLimit(1).fixedSize()
+                        }
+                        Text(source).font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.6)).lineLimit(1).fixedSize()
+                    }
+                    .padding(.horizontal, 11).frame(height: 30)
+                    .glassEffect(.regular, in: .capsule)
+                } else {
+                    HStack(spacing: 5) {
+                        Circle().fill(hasData ? Color.green : Color.black.opacity(0.25)).frame(width: 7, height: 7)
+                        Text(hasData ? "Live" : "Waiting for data").font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
+                    }
+                }
+            }
+
+            if hasData {
+                // Siempre se dibujan todas las ventas; al cambiar de periodo solo se mueve la ventana de
+                // fechas, así la gráfica se desliza y se ajusta sin desaparecer.
+                let last = sales.last?.date ?? Date()
+                let first = sales.first?.date ?? last
+                let from = range > 0 ? max(first, last.addingTimeInterval(-Double(range) * 86400)) : first
+                let top = ((sales.map(\.avg).max() ?? 0) * 1.15 / 25).rounded(.up) * 25
+                Chart(sales) { point in
+                    AreaMark(x: .value("Date", point.date), y: .value("Price", point.avg))
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(LinearGradient(colors: [Color.black.opacity(0.16), .clear], startPoint: .top, endPoint: .bottom))
+                    LineMark(x: .value("Date", point.date), y: .value("Price", point.avg))
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(.black).lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
+                    if sales.count <= 20 {
+                        PointMark(x: .value("Date", point.date), y: .value("Price", point.avg))
+                            .symbolSize(28).foregroundStyle(.black)
+                    }
+                }
+                .chartXScale(domain: from...max(last, from.addingTimeInterval(86400)))
+                .chartYScale(domain: 0...max(top, 25))
+                .chartPlotStyle { $0.clipped() }
+                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 3)) { AxisValueLabel(format: .dateTime.month(.abbreviated).year(.twoDigits).locale(Locale(identifier: "en_US"))) } }
+                .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) }
+                .frame(height: 180)
+                .animation(.smooth(duration: 0.55), value: range)
+            } else {
+                // Sin ventas todavía: se enseña el hueco de la gráfica, sin dibujar una curva inventada.
+                ZStack {
+                    VStack(spacing: 0) {
+                        ForEach(0..<4, id: \.self) { _ in
+                            Rectangle().fill(Color.black.opacity(0.07)).frame(height: 1)
+                            Spacer(minLength: 0)
+                        }
+                        Rectangle().fill(Color.black.opacity(0.07)).frame(height: 1)
+                    }
+                    VStack(spacing: 6) {
+                        Image(systemName: "chart.xyaxis.line").font(.system(size: 26, weight: .semibold)).foregroundStyle(.black.opacity(0.3))
+                        Text("No sales data yet").font(.system(size: 13, weight: .semibold)).foregroundStyle(.black.opacity(0.45))
+                    }
+                }
+                .frame(height: 170)
+            }
+
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: 8) {
+                    ForEach([(0, "All"), (30, "1M"), (90, "3M"), (180, "6M"), (365, "1Y")], id: \.0) { days, label in
+                        Button { withAnimation(.smooth(duration: 0.55)) { range = days } } label: {
+                            Text(label).font(.system(size: 13, weight: .bold)).foregroundStyle(range == days ? .white : .black)
+                                .frame(maxWidth: .infinity, minHeight: 36)
+                                .glassEffect(range == days ? .regular.tint(.black).interactive() : .regular.interactive(), in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            Text("Historical data").font(.system(size: 18, weight: .bold)).foregroundStyle(.black).padding(.top, 6)
+            let prices = shown.map(\.avg)
+            let mean = prices.isEmpty ? 0 : prices.reduce(0, +) / Double(prices.count)
+            let deviation = prices.isEmpty ? 0 : (prices.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(prices.count)).squareRoot()
+            if let summary {
+                VStack(spacing: 0) {
+                    ForEach(Array(summary.enumerated()), id: \.offset) { index, item in row(item.0, item.1, last: index == summary.count - 1) }
+                }
+            } else {
+            VStack(spacing: 0) {
+                row("Price range high", hasData ? Self.usd(prices.max() ?? 0) : "—")
+                row("Price range low", hasData ? Self.usd(prices.min() ?? 0) : "—")
+                row("Volatility", hasData && mean > 0 ? String(format: "%.0f%%", deviation / mean * 100) : "—")
+                row("Number of sales", hasData ? "\(shown.reduce(0) { $0 + $1.orders })" : "—")
+                row("Average sale price", hasData ? Self.usd(mean) : "—", last: true)
+            }
+            }
+        }
+        .padding(16)
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+    }
+
+    private func row(_ title: String, _ value: String, last: Bool = false) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(title).font(.system(size: 14)).foregroundStyle(.black.opacity(0.7))
+                Spacer()
+                Text(value).font(.system(size: 15, weight: .bold, design: .rounded)).foregroundStyle(.black)
+            }
+            .padding(.vertical, 11)
+            if !last { Divider() }
+        }
+    }
+}
+
+/// «Shop used listings»: fila de círculos con anuncios de usados. Hasta que haya una fuente de usados
+/// conectada, enseña los huecos vacíos en vez de fotos inventadas.
+struct ShoeUsedListingsStrip: View {
+    var listings: [UsedListing] = []
+    var title = ""
+    private struct Opened: Identifiable { let id = UUID(); let listing: UsedListing; let page: Int }
+    @State private var opened: Opened?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Shop used listings").font(.system(size: 18, weight: .bold)).foregroundStyle(.black)
+                Spacer()
+                Button { open(0) } label: {
+                    Image(systemName: "arrow.right").font(.system(size: 14, weight: .bold)).foregroundStyle(.black.opacity(listings.isEmpty ? 0.35 : 1))
+                        .frame(width: 36, height: 36).glassEffect(.regular.interactive(), in: .circle)
+                }
+                .buttonStyle(.plain).disabled(listings.isEmpty)
+            }
+            if let listing = listings.first {
+                HStack(spacing: 10) {
+                    ForEach(Array(listing.photos.enumerated()), id: \.offset) { index, url in
+                        Button { open(index) } label: {
+                            StockCachedRemoteImage(url: url, maxPixelSide: 240, fillFrame: true)
+                                .frame(width: 58, height: 58).clipShape(.circle)
+                                .padding(3).background(.white, in: .circle).glassEffect(.regular.interactive(), in: .circle)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 8) {
+                    HStack(spacing: 5) {
+                        Image("IconTalla").renderingMode(.template).resizable().scaledToFit().frame(width: 15, height: 15)
+                        Text("US \(listing.size) · Used").font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundStyle(.black.opacity(0.7)).padding(.horizontal, 9).frame(height: 28).background(Color.black.opacity(0.05), in: .capsule)
+                    Text(SaleReport.usd(listing.price)).font(.system(size: 16, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                    Text("\(SaleReport.usd(listing.priceWithFees)) incl. fees").font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+                    Spacer(minLength: 0)
+                    StylizedMarketplaceLogo(brand: "StockX").frame(width: 52, height: 15)
+                }
+            } else {
+                HStack(spacing: 10) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        Image(systemName: "shoe.2").font(.system(size: 15)).foregroundStyle(.black.opacity(0.22))
+                            .frame(width: 52, height: 52).glassEffect(.regular, in: .circle)
+                    }
+                    Spacer(minLength: 0)
+                }
+                Text("No used listings connected yet").font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+            }
+        }
+        .fullScreenCover(item: $opened) { opened in
+            UsedListingView(listing: opened.listing, title: title, page: opened.page)
+        }
+    }
+
+    private func open(_ page: Int) {
+        guard let listing = listings.first else { return }
+        opened = Opened(listing: listing, page: page)
+    }
+}
+
+
+// MARK: - Catálogo compartido con la ficha
+
+/// Los zapatos del catálogo (todos con giro 360°), para enseñar en la ficha los otros colores del
+/// mismo modelo y los productos relacionados.
+@MainActor
+enum CatalogShelf {
+    static var products: [UpsoledProduct] = []
+
+    /// «Air Jordan 4 Retro Black Cat 2025» → modelo «air jordan 4».
+    nonisolated static func model(of name: String) -> String {
+        name.lowercased().split(separator: " ").prefix(3).joined(separator: " ")
+    }
+    nonisolated static func colorway(of name: String) -> String {
+        var words = name.split(separator: " ").dropFirst(3).map(String.init)
+        if words.first == "Retro" || words.first == "Low" || words.first == "High" || words.first == "V2" { words.removeFirst() }
+        return words.joined(separator: " ")
+    }
+    static func imageURL(for name: String) -> URL? {
+        products.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.primaryImageURL
+    }
+    static func variants(of name: String) -> [UpsoledProduct] {
+        let key = model(of: name)
+        return products.filter { model(of: $0.name) == key && $0.name.caseInsensitiveCompare(name) != .orderedSame }
+    }
+    static func related(to name: String, brand: String) -> [UpsoledProduct] {
+        let key = model(of: name)
+        let same = products.filter { ($0.brand ?? "").caseInsensitiveCompare(brand) == .orderedSame && model(of: $0.name) != key }
+        let rest = products.filter { ($0.brand ?? "").caseInsensitiveCompare(brand) != .orderedSame }
+        return Array((same + rest).prefix(12))
+    }
+}
+
+/// Tira de miniaturas con los otros colores del mismo modelo.
+struct ShoeVariantsStrip: View {
+    let name: String
+    var onSelect: (UpsoledProduct) -> Void
+    var body: some View {
+        let variants = CatalogShelf.variants(of: name)
+        if !variants.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(variants) { product in
+                        Button { onSelect(product) } label: {
+                            StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 160, fillFrame: false)
+                                .frame(width: 64, height: 48).padding(6)
+                                .background(Color.white, in: .rect(cornerRadius: 14))
+                                .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(Color.black.opacity(0.08)) }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Productos relacionados, en una fila que se desliza hacia la derecha.
+struct ShoeRelatedShelf: View {
+    let name: String
+    let brand: String
+    var onSelect: (UpsoledProduct) -> Void
+    var body: some View {
+        let items = CatalogShelf.related(to: name, brand: brand)
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Related products").font(.system(size: 18, weight: .bold)).foregroundStyle(.black)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(items) { product in
+                            Button { onSelect(product) } label: {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 320, fillFrame: false)
+                                        .frame(width: 150, height: 110)
+                                    Text(product.name.firstUppercased).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
+                                        .lineLimit(2).multilineTextAlignment(.leading).frame(width: 150, alignment: .leading)
+                                    Text(product.brand ?? "").font(.system(size: 11)).foregroundStyle(.black.opacity(0.5))
+                                }
+                                .padding(10)
+                                .background(Color.white, in: .rect(cornerRadius: 18))
+                                .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(Color.black.opacity(0.07)) }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .scrollClipDisabled()
+            }
+        }
+    }
+}
+
+/// Fondo de la foto en la ficha de un producto destacado: el mismo barrido de color y el logo de la
+/// marca en grande que lleva su tarjeta en la lista.
+struct FeaturedHeroBackdrop: View {
+    let name: String
+    let brand: String
+    var body: some View {
+        if let accent = ClosetView.featuredAccent(name) {
+            ZStack {
+                Ellipse().fill(accent.opacity(0.55)).frame(width: 420, height: 170).blur(radius: 46).rotationEffect(.degrees(-16))
+                if let logo = BrandLogoLabel.assetName(for: brand) {
+                    let wide = logo.hasSuffix("supreme")
+                    Image(logo).resizable().scaledToFit().frame(width: wide ? 250 : 150, height: 150)
+                        .foregroundStyle(.white.opacity(0.9)).offset(x: wide ? 0 : 70, y: -34)
+                } else {
+                    Text(brand.uppercased()).font(.system(size: 64, weight: .black, design: .rounded))
+                        .lineLimit(1).minimumScaleFactor(0.4).frame(width: 300)
+                        .foregroundStyle(.white.opacity(0.9)).offset(y: -40)
+                }
+            }
+            .padding(.horizontal, -16)
+        }
+    }
+}
+
+/// Detalles del producto, cada uno con su icono.
+struct ShoeProductDetailsCard: View {
+    let rows: [(icon: String, title: String, value: String)]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Product details").font(.system(size: 18, weight: .bold)).foregroundStyle(.black).padding(.bottom, 6)
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                HStack(spacing: 12) {
+                    Image(systemName: row.icon).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
+                        .frame(width: 34, height: 34).glassEffect(.regular, in: .circle)
+                    Text(row.title).font(.system(size: 14)).foregroundStyle(.black.opacity(0.6))
+                    Spacer()
+                    Text(row.value).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black).multilineTextAlignment(.trailing)
+                }
+                .padding(.vertical, 6)
+                if index < rows.count - 1 { Divider().padding(.leading, 46) }
+            }
+        }
+        .padding(16)
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+    }
+}
+
+/// Ficha de un zapato del catálogo. Al tocar otro color o un relacionado, cambia aquí mismo.
+struct CatalogShoePreview: View {
+    @State var product: UpsoledProduct
+    var body: some View {
+        ScrollView {
+            CatalogShoeBody(product: product) { next in withAnimation(.snappy) { product = next } }
+                .padding(.horizontal, 16)
+                .id(product.id)
+        }
+        .background(Color.white)
+        .navigationBarTitleDisplayMode(.inline)
+        .preferredColorScheme(.light)
+    }
+}
+
+/// Contenido de la ficha de un zapato del catálogo.
+struct CatalogShoeBody: View {
+    let product: UpsoledProduct
+    var onSelect: (UpsoledProduct) -> Void
+    @State private var sizesOpen = false
+    @State private var size: String?
+    private var sample: ShoeSample? { ShoeSample.find(product.name) }
+    private var isShoe: Bool { (product.category ?? "shoes") == "shoes" }
+    private var sizes: [String] {
+        if let sample { return sample.sizes }
+        switch product.category ?? "shoes" {
+        case "clothing": return ["XS", "S", "M", "L", "XL", "XXL"]
+        case "accessories": return []
+        default: return ["7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"]
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Group {
+                if !isShoe, let cut = ClosetView.featuredCutout(product.name) {
+                    // Ropa y bolsos: la foto recortada, con la marca arriba a la derecha.
+                    Image(cut).resizable().scaledToFit().shadow(color: .black.opacity(0.18), radius: 8, y: 6)
+                        .frame(maxWidth: .infinity)
+                        .overlay(alignment: .topTrailing) {
+                            BrandLogoLabel(brand: product.brand ?? "", compact: true).frame(width: 34, height: 34)
+                                .background(.white, in: .circle).glassEffect(.regular, in: .circle).offset(y: -50)
+                        }
+                } else {
+                    Shoe360View(title: product.name, fallbackURL: product.primaryImageURL, brand: product.brand, badgeLift: 50)
+                        .shoeCutout(ClosetView.featuredAccent(product.name) != nil)
+                }
+            }
+            .frame(height: 230)
+            .background { FeaturedHeroBackdrop(name: product.name, brand: product.brand ?? "") }
+            Text(product.name.firstUppercased).font(.system(size: 18, weight: .bold)).foregroundStyle(.black).padding(.top, 8).padding(.bottom, 12)
+            ShoeVariantsStrip(name: product.name, onSelect: onSelect).padding(.bottom, 12)
+
+            if !sizes.isEmpty {
+            VStack(spacing: 0) {
+                Button { withAnimation(.snappy(duration: 0.3)) { sizesOpen.toggle() } } label: {
+                    HStack {
+                        Text("Size").font(.system(size: 15)).foregroundStyle(.black.opacity(0.55))
+                        Spacer()
+                        Text(size.map { isShoe ? "US \($0)" : $0 } ?? "Select").font(.system(size: 15, weight: .semibold)).foregroundStyle(.black)
+                        Image(systemName: "chevron.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(.black.opacity(0.45))
+                            .rotationEffect(.degrees(sizesOpen ? 180 : 0))
+                    }
+                    .padding(14).contentShape(.rect).background(.white)
+                }
+                .buttonStyle(.plain)
+                .zIndex(1)
+                if sizesOpen {
+                    Divider().padding(.horizontal, 14)
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                        ForEach(sizes, id: \.self) { option in
+                            Button { size = option; withAnimation(.snappy(duration: 0.3)) { sizesOpen = false } } label: {
+                                Text(isShoe ? "US \(option)" : option).font(.system(size: 13, weight: .bold, design: .rounded))
+                                    .foregroundStyle(size == option ? .white : .black)
+                                    .frame(maxWidth: .infinity, minHeight: 42)
+                                    .background(size == option ? Color.black : Color.white, in: .rect(cornerRadius: 12))
+                                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Color.black.opacity(size == option ? 0 : 0.12)) }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(12)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .background(.white)
+            .clipShape(.rect(cornerRadius: 20))
+            .glassEffect(.regular, in: .rect(cornerRadius: 20))
+            }
+
+            if let sample { ShoeSamplePriceCard(sample: sample, size: size).padding(.top, 12) }
+            SellButton(item: .shoe(name: product.name, brand: product.brand ?? "", imageURL: product.primaryImageURL)).padding(.top, 14)
+            ShoeUsedListingsStrip(listings: sample?.used ?? [], title: product.name.firstUppercased).padding(.top, 18)
+            ShoeRelatedShelf(name: product.name, brand: product.brand ?? "", onSelect: onSelect).padding(.top, 22)
+            ShoeProductDetailsCard(rows: [
+                (icon: "tag", title: "Brand", value: product.brand ?? "—"),
+                (icon: "paintpalette", title: "Colorway", value: sample?.colorway ?? CatalogShelf.colorway(of: product.name)),
+                (icon: "shippingbox", title: "Condition", value: "New"),
+            ] + (sample?.details ?? [])).padding(.top, 22)
+            if isShoe || sample?.comparison != nil {
+                DashboardMarketPricesSection(comparison: sample?.comparison, maxVisibleRows: sample == nil ? 6 : nil).padding(.top, 18)
+            }
+            ShoeMarketHistoryCard(sales: sample?.sales ?? [], summary: sample?.stats, source: sample?.asOf)
+                .padding(.top, 18).padding(.bottom, 24)
+        }
     }
 }

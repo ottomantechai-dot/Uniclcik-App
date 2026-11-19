@@ -127,6 +127,15 @@
 		AA000212 /* StockCategoryMarketplaceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000212 /* StockCategoryMarketplaceCatalog.swift */; };
 		AA000213 /* StockMarketplaceConnectionsDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000213 /* StockMarketplaceConnectionsDemoView.swift */; };
 		AA000214 /* MarketplaceGatewayService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000214 /* MarketplaceGatewayService.swift */; };
+		AA000215 /* SaleReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000215 /* SaleReport.swift */; };
+		AA000216 /* MarketplaceListing.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000216 /* MarketplaceListing.swift */; };
+		AA000218 /* SaleReportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000218 /* SaleReportView.swift */; };
+		AA000219 /* CardsHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000219 /* CardsHubView.swift */; };
+		AA000220 /* Shoe360View.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000220 /* Shoe360View.swift */; };
+		AA000221 /* AppTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000221 /* AppTopBar.swift */; };
+		AA000222 /* CardSetsSeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000222 /* CardSetsSeed.swift */; };
+		AA000223 /* CardDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000223 /* CardDetailView.swift */; };
+		AA000224 /* SellFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000224 /* SellFlowView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -254,6 +263,15 @@
 		AB000212 /* StockCategoryMarketplaceCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockCategoryMarketplaceCatalog.swift; sourceTree = "<group>"; };
 		AB000213 /* StockMarketplaceConnectionsDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockMarketplaceConnectionsDemoView.swift; sourceTree = "<group>"; };
 		AB000214 /* MarketplaceGatewayService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketplaceGatewayService.swift; sourceTree = "<group>"; };
+		AB000215 /* SaleReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaleReport.swift; sourceTree = "<group>"; };
+		AB000216 /* MarketplaceListing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketplaceListing.swift; sourceTree = "<group>"; };
+		AB000218 /* SaleReportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaleReportView.swift; sourceTree = "<group>"; };
+		AB000219 /* CardsHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardsHubView.swift; sourceTree = "<group>"; };
+		AB000220 /* Shoe360View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shoe360View.swift; sourceTree = "<group>"; };
+		AB000221 /* AppTopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTopBar.swift; sourceTree = "<group>"; };
+		AB000222 /* CardSetsSeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardSetsSeed.swift; sourceTree = "<group>"; };
+		AB000223 /* CardDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardDetailView.swift; sourceTree = "<group>"; };
+		AB000224 /* SellFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SellFlowView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -300,6 +318,9 @@
 		AD000003 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				AB000222 /* CardSetsSeed.swift */,
+				AB000216 /* MarketplaceListing.swift */,
+				AB000215 /* SaleReport.swift */,
 				AB000002 /* Car.swift */,
 				AB000047 /* Car+Browse.swift */,
 				AB000046 /* CarBrowseModels.swift */,
@@ -380,6 +401,10 @@
 		AD000006 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				AB000224 /* SellFlowView.swift */,
+				AB000223 /* CardDetailView.swift */,
+				AB000219 /* CardsHubView.swift */,
+				AB000218 /* SaleReportView.swift */,
 				AB000037 /* AuthRootView.swift */,
 				AB000036 /* LoginView.swift */,
 				AB000010 /* MainTabView.swift */,
@@ -414,6 +439,8 @@
 		AD000007 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				AB000221 /* AppTopBar.swift */,
+				AB000220 /* Shoe360View.swift */,
 				AB000014 /* GlassCard.swift */,
 				AB000015 /* MetricCard.swift */,
 				AB000016 /* CircularGauge.swift */,
@@ -662,6 +689,15 @@
 				AA000212 /* StockCategoryMarketplaceCatalog.swift in Sources */,
 				AA000213 /* StockMarketplaceConnectionsDemoView.swift in Sources */,
 				AA000214 /* MarketplaceGatewayService.swift in Sources */,
+				AA000224 /* SellFlowView.swift in Sources */,
+				AA000223 /* CardDetailView.swift in Sources */,
+				AA000222 /* CardSetsSeed.swift in Sources */,
+				AA000221 /* AppTopBar.swift in Sources */,
+				AA000220 /* Shoe360View.swift in Sources */,
+				AA000219 /* CardsHubView.swift in Sources */,
+				AA000218 /* SaleReportView.swift in Sources */,
+				AA000216 /* MarketplaceListing.swift in Sources */,
+				AA000215 /* SaleReport.swift in Sources */,
 				AA000200 /* UpsoledProduct.swift in Sources */,
 				AA000201 /* UpsoledProductsService.swift in Sources */,
 				AA000202 /* UpsoledProductsViewModel.swift in Sources */,
