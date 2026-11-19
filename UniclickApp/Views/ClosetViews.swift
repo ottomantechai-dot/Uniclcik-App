@@ -478,6 +478,9 @@ struct ClosetView: View {
                     } label: { TopBarGlassButton(systemImage: stockSearchOpen ? "xmark" : "magnifyingglass") }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Search")
+                    Button { showStockBarcodeScanner = true } label: { TopBarGlassButton(systemImage: "barcode.viewfinder") }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Scan a box barcode")
                     Menu {
                         Button { showStockFiltersSheet = true } label: { Label("Filters", systemImage: "line.3.horizontal.decrease") }
                         Button { showStockBarcodeScanner = true } label: { Label("Scan a box", systemImage: "barcode.viewfinder") }

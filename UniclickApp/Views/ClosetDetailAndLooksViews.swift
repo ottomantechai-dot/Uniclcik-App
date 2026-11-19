@@ -2,6 +2,7 @@ import PhotosUI
 import SwiftData
 import SwiftUI
 import UIKit
+import Charts
 
 // MARK: - Hex → Color
 
@@ -93,6 +94,7 @@ struct ClosetGarmentDetailView: View {
     @State private var detailSection: GarmentDetailSection
     @State private var savingChanges = false
     @State private var shoeLastSale: Double?
+    @State private var shoeSales: [DailySalePoint] = []
     @State private var showShoeMarketData = false
     @State private var shoeExpandedReturnPolicy = false
     @State private var shoeExpandedBuyerPromise = false
@@ -328,6 +330,9 @@ struct ClosetGarmentDetailView: View {
 
             shoeInlineMarketPrices
                 .padding(.top, 12)
+
+            ShoeMarketHistoryCard(sales: shoeSales)
+                .padding(.top, 14)
 
             shoePolicyAccordions
                 .padding(.top, 8)
@@ -903,10 +908,12 @@ struct ClosetGarmentDetailView: View {
                 ?? comp.platforms.first(where: { $0.productID != nil }),
               let pid = q.productID else {
             shoeLastSale = nil
+            shoeSales = []
             return
         }
         let sales = await KicksDBClient.dailySales(platformKey: q.platformKey, productID: pid)
         shoeLastSale = sales.last?.avg
+        shoeSales = sales
     }
 
     private var studioHero: some View {
@@ -3065,5 +3072,80 @@ struct GarmentLookbookCaptureView: View {
         try? modelContext.save()
         ClosetAnalytics.named("closet_lookbook_saved")
         dismiss()
+    }
+}
+
+
+// MARK: - Historial de precios y datos históricos (ventas reales)
+
+/// Gráfica de ventas reales y sus datos: banda de precios, volatilidad, número de ventas y precio medio.
+/// Solo se enseña cuando el mercado ha devuelto ventas; nunca con cifras inventadas.
+struct ShoeMarketHistoryCard: View {
+    let sales: [DailySalePoint]
+    @State private var range = 0   // 0 = todo, o días
+
+    private var shown: [DailySalePoint] {
+        guard range > 0, let last = sales.last?.date else { return sales }
+        let from = last.addingTimeInterval(-Double(range) * 86400)
+        return sales.filter { $0.date >= from }
+    }
+
+    private static func usd(_ v: Double) -> String { SaleReport.usd(v.rounded()) }
+
+    var body: some View {
+        if sales.count >= 2 {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Price history").font(.system(size: 18, weight: .bold)).foregroundStyle(.black)
+
+                Chart(shown) { point in
+                    AreaMark(x: .value("Date", point.date), y: .value("Price", point.avg))
+                        .foregroundStyle(LinearGradient(colors: [Color.black.opacity(0.16), .clear], startPoint: .top, endPoint: .bottom))
+                    LineMark(x: .value("Date", point.date), y: .value("Price", point.avg))
+                        .foregroundStyle(.black).lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
+                }
+                .chartXAxis(.hidden)
+                .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) }
+                .frame(height: 170)
+
+                GlassEffectContainer(spacing: 8) {
+                    HStack(spacing: 8) {
+                        ForEach([(0, "All"), (30, "1M"), (90, "3M"), (180, "6M"), (365, "1Y")], id: \.0) { days, label in
+                            Button { withAnimation(.snappy) { range = days } } label: {
+                                Text(label).font(.system(size: 13, weight: .bold)).foregroundStyle(range == days ? .white : .black)
+                                    .frame(maxWidth: .infinity, minHeight: 36)
+                                    .glassEffect(range == days ? .regular.tint(.black).interactive() : .regular.interactive(), in: .capsule)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                let prices = shown.map(\.avg)
+                if let hi = prices.max(), let lo = prices.min(), !prices.isEmpty {
+                    let mean = prices.reduce(0, +) / Double(prices.count)
+                    let deviation = (prices.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(prices.count)).squareRoot()
+                    VStack(spacing: 0) {
+                        row("Price range", "\(Self.usd(lo)) – \(Self.usd(hi))")
+                        row("Average sale price", Self.usd(mean))
+                        row("Volatility", mean > 0 ? String(format: "%.0f%%", deviation / mean * 100) : "—")
+                        row("Number of sales", "\(shown.reduce(0) { $0 + $1.orders })", last: true)
+                    }
+                }
+            }
+            .padding(16)
+            .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        }
+    }
+
+    private func row(_ title: String, _ value: String, last: Bool = false) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(title).font(.system(size: 14)).foregroundStyle(.black.opacity(0.7))
+                Spacer()
+                Text(value).font(.system(size: 15, weight: .bold, design: .rounded)).foregroundStyle(.black)
+            }
+            .padding(.vertical, 11)
+            if !last { Divider() }
+        }
     }
 }
