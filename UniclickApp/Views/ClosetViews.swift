@@ -204,7 +204,7 @@ struct ClosetView: View {
 
     /// Ficha grande de una prenda (estudio) — push en el stack de Your stock.
     @State private var garmentDetailItemID: UUID?
-    @State private var stockChromeHidden = false
+    @State private var stockSearchOpen = false
 
     @State private var stockSearchText = ""
     @FocusState private var stockSearchFocused: Bool
@@ -465,25 +465,45 @@ struct ClosetView: View {
         return h
     }
 
-    /// Barra flotante de arriba: el contenido pasa por detrás. Debajo, el buscador y los filtros,
-    /// que se esconden al bajar por la lista.
+    /// Barra flotante de arriba: el contenido pasa por detrás. El buscador y los filtros son botones
+    /// redondos junto a la foto de perfil; el campo de búsqueda solo aparece al tocar la lupa.
     private var stockTopChrome: some View {
         VStack(spacing: 8) {
             AppTopBar(title: "Zapatos") {
-                NavigationLink { SaleReportsHistoryView() } label: { TopBarGlassButton(systemImage: "doc.text.magnifyingglass") }
-                    .buttonStyle(.plain)
-            }
-            if hasAnyStockContent, !stockChromeHidden {
-                VStack(spacing: 10) {
-                    StockBrowseSearchBar(
-                        searchText: $stockSearchText,
-                        searchFocused: $stockSearchFocused,
-                        onScanBarcode: { showStockBarcodeScanner = true }
-                    )
-                    stockFilterSortToolbar
+                if hasAnyStockContent {
+                    Button {
+                        withAnimation(.snappy(duration: 0.28)) { stockSearchOpen.toggle() }
+                        stockSearchFocused = stockSearchOpen
+                        if !stockSearchOpen { stockSearchText = "" }
+                    } label: { TopBarGlassButton(systemImage: stockSearchOpen ? "xmark" : "magnifyingglass") }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Buscar")
+                    Menu {
+                        Button { showStockFiltersSheet = true } label: { Label("Filtros", systemImage: "line.3.horizontal.decrease") }
+                        Button { showStockBarcodeScanner = true } label: { Label("Escanear una caja", systemImage: "barcode.viewfinder") }
+                        NavigationLink { SaleReportsHistoryView() } label: { Label("Informes de venta", systemImage: "doc.text.magnifyingglass") }
+                        Section("Ordenar") {
+                            ForEach(StockSortOrder.allCases) { order in
+                                Button { stockFilters.sort = order } label: {
+                                    if stockFilters.sort == order { Label(order.menuLabel, systemImage: "checkmark") } else { Text(order.menuLabel) }
+                                }
+                            }
+                        }
+                    } label: { TopBarGlassButton(systemImage: "line.3.horizontal.decrease") }
+                        .accessibilityLabel("Filtros y orden")
                 }
+            }
+            if hasAnyStockContent, stockSearchOpen {
+                StockBrowseSearchBar(
+                    searchText: $stockSearchText,
+                    searchFocused: $stockSearchFocused,
+                    onScanBarcode: { showStockBarcodeScanner = true }
+                )
                 .padding(.horizontal, 16)
                 .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if closetSelectionMode {
+                stockFilterSortToolbar.padding(.horizontal, 16)
             }
         }
         .padding(.bottom, 10)
@@ -509,16 +529,10 @@ struct ClosetView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 8) {
                         Color.clear
-                            .frame(height: hasAnyStockContent ? 176 : 64)
+                            .frame(height: 60 + (stockSearchOpen ? 60 : 0) + (closetSelectionMode ? 44 : 0))
                             .id("stockScrollTop")
                         productsTabContent
                     }
-                }
-                .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { old, new in
-                    // Al bajar se esconden el buscador y los filtros; al subir un poco, vuelven.
-                    if new < 30 { if stockChromeHidden { withAnimation(.snappy(duration: 0.28)) { stockChromeHidden = false } } }
-                    else if new - old > 6, !stockChromeHidden, !stockSearchFocused { withAnimation(.snappy(duration: 0.28)) { stockChromeHidden = true } }
-                    else if old - new > 6, stockChromeHidden { withAnimation(.snappy(duration: 0.28)) { stockChromeHidden = false } }
                 }
                 .refreshable {
                     await catalogVM.reload()
