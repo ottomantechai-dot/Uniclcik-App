@@ -1947,23 +1947,13 @@ struct DashboardMarketPricesSection: View {
     private var tableHeader: some View {
         HStack {
             HStack(spacing: 7) {
-                Image(systemName: "globe")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(DashboardHomePalette.accentBlue)
+                Image("IconMercado").resizable().scaledToFit().frame(width: 20, height: 20).foregroundStyle(.black)
                 Text("MARKET PRICES")
                     .font(.system(size: 12, weight: .heavy))
                     .tracking(0.9)
                     .foregroundStyle(Color.black.opacity(0.88))
             }
             Spacer(minLength: 0)
-            HStack(spacing: 6) {
-                Text("Live prices")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.42))
-                Circle()
-                    .fill(DashboardHomePalette.accentGreen)
-                    .frame(width: 7, height: 7)
-            }
         }
     }
 }
@@ -2508,7 +2498,7 @@ struct HomeTrendingCardsRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                if icon == "flame.fill" { AnimatedFlame() } else { Image(systemName: icon).foregroundStyle(.black) }
+                if icon == "flame.fill" { AnimatedFlame() } else { Image("IconSlab").resizable().scaledToFit().frame(width: 22, height: 22).foregroundStyle(.black) }
                 Text(title).font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                 Spacer()
                 Button(action: onViewAll) {
