@@ -174,15 +174,12 @@ struct CardDetailView: View {
     private var comparisonCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Price comparison").font(.system(size: 18, weight: .bold)).foregroundStyle(.black)
+            source(name: "Collectr", logo: nil, value: nil)
             HStack(spacing: 8) {
                 source(name: "TCGplayer", logo: nil, value: card.tcgMarketUSD.map(SaleReport.usd))
                 source(name: "Cardmarket", logo: nil, value: card.cardmarketEUR.map { String(format: "€%.2f", $0) })
             }
-            HStack(spacing: 8) {
-                source(name: "eBay", logo: "eBay", value: nil)
-                source(name: "StockX", logo: "StockX", value: nil)
-            }
-            Text("TCGplayer and Cardmarket prices are live. eBay and StockX appear once connected.")
+            Text("TCGplayer and Cardmarket prices are live. Collectr appears once connected.")
                 .font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.45))
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
@@ -201,10 +198,8 @@ struct CardDetailView: View {
             HStack(spacing: 8) {
                 Image("LogoPSAMark").resizable().scaledToFit().frame(height: 11).foregroundStyle(Color(red: 0.93, green: 0.05, blue: 0.05))
                     .frame(width: 58, height: 38).background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
-                Text("TCGplayer").font(.system(size: 10, weight: .heavy)).foregroundStyle(.black)
-                    .frame(maxWidth: .infinity, minHeight: 38).background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
-                ForEach(["eBay", "StockX"], id: \.self) { brand in
-                    StylizedMarketplaceLogo(brand: brand).frame(height: 13).padding(.horizontal, 6)
+                ForEach(["Collectr", "TCGplayer", "Cardmarket"], id: \.self) { name in
+                    Text(name).font(.system(size: 10, weight: .heavy)).foregroundStyle(.black).lineLimit(1).minimumScaleFactor(0.8)
                         .frame(maxWidth: .infinity, minHeight: 38).background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
                 }
             }
@@ -216,7 +211,9 @@ struct CardDetailView: View {
                     }
                     .frame(width: 58, height: 40).background(Color.black, in: .rect(cornerRadius: 11))
                     ForEach(0..<3, id: \.self) { column in
-                        let value = grade == "Raw" && column == 0 ? card.tcgMarketUSD.map(SaleReport.usd) : nil
+                        let value: String? = grade != "Raw" ? nil
+                            : column == 1 ? card.tcgMarketUSD.map(SaleReport.usd)
+                            : column == 2 ? card.cardmarketEUR.map { String(format: "€%.2f", $0) } : nil
                         Text(value ?? "—").font(.system(size: 14, weight: value == nil ? .semibold : .heavy, design: .rounded))
                             .foregroundStyle(value == nil ? Color.black.opacity(0.25) : .black)
                             .frame(maxWidth: .infinity, minHeight: 40)
