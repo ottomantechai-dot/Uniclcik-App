@@ -425,7 +425,7 @@ struct ShoeMarketDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
-                    Shoe360View(titles: (comparison?.spinTitles ?? []) + [item.displayName], fallbackURL: comparison?.imageURL)
+                    Shoe360View(titles: (comparison?.spinTitles ?? []) + [item.displayName], fallbackURL: comparison?.imageURL, queries: [item.marketLookup?.query].compactMap { $0 })
                         .frame(height: 220)
                         .padding(.vertical, 6)
                         .background(Color.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))

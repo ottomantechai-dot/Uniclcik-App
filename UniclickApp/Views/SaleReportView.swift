@@ -67,7 +67,7 @@ struct SaleReportView: View {
         VStack(spacing: 10) {
             Group {
                 if report.kind == .shoe {
-                    Shoe360View(title: report.title, fallbackURL: report.imageURL.flatMap(URL.init(string:)))
+                    Shoe360View(title: report.title, fallbackURL: report.imageURL.flatMap(URL.init(string:)), queries: [report.sku, report.title].filter { !$0.isEmpty })
                 } else {
                     AsyncImage(url: report.imageURL.flatMap(URL.init(string:))) { phase in
                         if let image = phase.image { image.resizable().scaledToFit() } else {
@@ -301,7 +301,7 @@ struct PublishListingSheet: View {
 
                 Group {
                     if report.kind == .shoe {
-                        Shoe360View(title: report.title, fallbackURL: report.imageURL.flatMap(URL.init(string:)))
+                        Shoe360View(title: report.title, fallbackURL: report.imageURL.flatMap(URL.init(string:)), queries: [report.sku, report.title].filter { !$0.isEmpty })
                     } else {
                         AsyncImage(url: report.imageURL.flatMap(URL.init(string:))) { phase in
                             if let image = phase.image { image.resizable().scaledToFit() } else { Color.clear }

@@ -168,14 +168,19 @@ extension ClosetItem {
             out.append(t)
         }
 
-        if let sku = resolvedSKU {
+        // Solo un código de estilo real de fábrica (CT8532-012, IF3219…) sirve para buscar en el mercado.
+        // Los códigos internos de la tienda (SKU-OWR, SPL-OT) no existen en StockX: con esos se busca
+        // por el nombre del modelo.
+        if let sku = resolvedSKU, HomeSneakerHighlight.isRealStyleCode(sku) {
             add(sku)
             let brandLine = brand?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if !brandLine.isEmpty { add("\(brandLine) \(sku)") }
         }
 
+        add(catalogDisplayName)
         let fallback = marketLookupQuery
-        if !fallback.isEmpty { add(fallback) }
+        if !fallback.isEmpty, HomeSneakerHighlight.isRealStyleCode(fallback) || resolvedSKU == nil { add(fallback) }
+        add(name)
 
         return out
     }

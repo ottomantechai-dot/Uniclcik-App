@@ -496,12 +496,14 @@ struct ClosetGarmentDetailView: View {
             Color.white
             Shoe360View(
                 titles: (shoeMarketComparison?.spinTitles ?? []) + [item.catalogDisplayName, item.name],
+                fallbackURL: shoeMarketComparison?.imageURL,
                 fallback: AnyView(
                     ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
                         .padding(.horizontal, 6)
                         .scaleEffect(1.14)
                         .offset(y: -10)
-                )
+                ),
+                queries: item.marketLookupQueries
             )
         }
         .frame(maxWidth: .infinity)

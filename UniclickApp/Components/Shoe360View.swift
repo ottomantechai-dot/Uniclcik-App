@@ -27,13 +27,13 @@ final class Shoe360Loader: ObservableObject {
     }
 
     /// Prueba cada nombre (el de StockX primero) hasta dar con uno que tenga giro.
-    func load(titles: [String]) async {
-        let key = titles.joined(separator: "|")
+    func load(titles: [String], imageURLs: [URL] = [], queries: [String] = []) async {
+        let key = (titles + imageURLs.map(\.absoluteString) + queries).joined(separator: "|")
         guard key != loadedTitle else { return }
         loadedTitle = key
         frames = Array(repeating: nil, count: Self.frameCount)
         available = false
-        guard let slug = await Self.resolveSlug(titles: titles), loadedTitle == key else { return }
+        guard let slug = await Self.resolveSlug(titles: titles, imageURLs: imageURLs, queries: queries), loadedTitle == key else { return }
         // La primera foto sale al instante (del disco si ya se vio antes); el resto llega en paralelo.
         if let first = await Self.image(slug: slug, frame: 0) {
             frames[0] = first
@@ -50,8 +50,8 @@ final class Shoe360Loader: ObservableObject {
     }
 
     /// Descarga el giro por adelantado (lista del stock, tendencias) para que al abrir el zapato ya esté.
-    nonisolated static func prefetch(titles: [String]) async {
-        guard let slug = await resolveSlug(titles: titles) else { return }
+    nonisolated static func prefetch(titles: [String], imageURLs: [URL] = [], queries: [String] = []) async {
+        guard let slug = await resolveSlug(titles: titles, imageURLs: imageURLs, queries: queries) else { return }
         await withTaskGroup(of: Void.self) { group in
             for frame in 0..<frameCount {
                 group.addTask { _ = await image(slug: slug, frame: frame) }
@@ -61,8 +61,20 @@ final class Shoe360Loader: ObservableObject {
 
     // MARK: Qué nombre tiene giro (se recuerda entre aperturas)
 
-    private nonisolated static func resolveSlug(titles: [String]) async -> String? {
-        var slugs: [String] = []
+    /// El nombre exacto del giro va dentro de las direcciones de las fotos de StockX:
+    /// «…/images/Air-Jordan-4-Retro-Oxidized-Green-Product.jpg» o «…/360/<nombre>/Images/…».
+    nonisolated static func slugs(fromImageURL url: URL) -> [String] {
+        guard url.host?.contains("stockx") == true else { return [] }
+        let parts = url.pathComponents
+        if let at = parts.firstIndex(of: "360"), at + 1 < parts.count { return [parts[at + 1]] }
+        var name = url.deletingPathExtension().lastPathComponent
+        for suffix in ["-Product", "_V2", "-V2", "-1", "-2"] where name.hasSuffix(suffix) { name.removeLast(suffix.count) }
+        if name.hasSuffix("-Product") { name.removeLast("-Product".count) }
+        return name.isEmpty ? [] : [name]
+    }
+
+    private nonisolated static func resolveSlug(titles: [String], imageURLs: [URL], queries: [String]) async -> String? {
+        var slugs: [String] = imageURLs.flatMap { slugs(fromImageURL: $0) }
         for title in titles {
             for option in [slug(title), slug(title.replacingOccurrences(of: "Adidas", with: "adidas"))] where !option.isEmpty && !slugs.contains(option) {
                 slugs.append(option)
@@ -70,12 +82,24 @@ final class Shoe360Loader: ObservableObject {
         }
         let defaults = UserDefaults.standard
         var known = (defaults.dictionary(forKey: "shoe360.slugs") as? [String: String]) ?? [:]
-        for option in slugs { if let hit = known[option], !hit.isEmpty { return hit } }
-        for option in slugs.prefix(6) where known[option] == nil {
-            if await image(slug: option, frame: 0) != nil {
-                for name in slugs { known[name] = option }
-                defaults.set(known, forKey: "shoe360.slugs")
-                return option
+        let keys = slugs + queries.map { "q:" + $0 }
+        func remember(_ hit: String) {
+            for name in keys { known[name] = hit }
+            defaults.set(known, forKey: "shoe360.slugs")
+        }
+        for key in keys { if let hit = known[key], !hit.isEmpty { return hit } }
+        for option in slugs.prefix(6) {
+            if await image(slug: option, frame: 0) != nil { remember(option); return option }
+        }
+        // Con el nombre del stock no salió: se pregunta a StockX (por el SKU o el nombre) cuál es su ficha,
+        // y de su foto se saca el nombre exacto del giro.
+        for query in queries.prefix(2) where !query.isEmpty {
+            guard let hit = try? await KicksDBClient.search(platform: .stockx, query: query) else { continue }
+            var options: [String] = []
+            if let image = hit.image.flatMap(URL.init(string:)) { options += self.slugs(fromImageURL: image) }
+            if let title = hit.title ?? hit.name { options.append(slug(title)) }
+            for option in options where !option.isEmpty {
+                if await image(slug: option, frame: 0) != nil { remember(option); return option }
             }
         }
         return nil
@@ -116,15 +140,20 @@ struct Shoe360View: View {
     /// Lo que se enseña si no hay giro (por ejemplo, la foto propia del stock).
     var fallback: AnyView?
 
-    init(title: String, fallbackURL: URL? = nil) {
+    /// Búsquedas (SKU o nombre) para preguntar a StockX su ficha si con el nombre no aparece el giro.
+    var queries: [String] = []
+
+    init(title: String, fallbackURL: URL? = nil, queries: [String] = []) {
         self.titles = [title]
         self.fallbackURL = fallbackURL
+        self.queries = queries
     }
 
-    init(titles: [String], fallbackURL: URL? = nil, fallback: AnyView? = nil) {
+    init(titles: [String], fallbackURL: URL? = nil, fallback: AnyView? = nil, queries: [String] = []) {
         self.titles = titles.filter { !$0.isEmpty }
         self.fallbackURL = fallbackURL
         self.fallback = fallback
+        self.queries = queries
     }
 
     @StateObject private var loader = Shoe360Loader()
@@ -167,7 +196,9 @@ struct Shoe360View: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .task(id: titles) { await loader.load(titles: titles) }
+        .task(id: titles + queries + [fallbackURL?.absoluteString ?? ""]) {
+            await loader.load(titles: titles, imageURLs: [fallbackURL].compactMap { $0 }, queries: queries)
+        }
         .onChange(of: ready) { _, count in
             // Cuando están todas las fotos, da una vuelta sola para enseñar que gira.
             guard count == Shoe360Loader.frameCount, !didIntro else { return }

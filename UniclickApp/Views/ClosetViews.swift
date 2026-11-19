@@ -1117,9 +1117,9 @@ struct ClosetView: View {
     @MainActor
     private func prefetchStockImages() async {
         // El giro 360° de los primeros zapatos se baja por adelantado: al abrirlos ya giran.
-        let spinNames = activeClosetItems.filter { $0.category == .shoes }.prefix(14).map { [$0.catalogDisplayName, $0.name] }
+        let spins = activeClosetItems.filter { $0.category == .shoes }.prefix(14).map { (names: [$0.catalogDisplayName, $0.name], queries: $0.marketLookupQueries) }
         Task.detached(priority: .utility) {
-            for names in spinNames { await Shoe360Loader.prefetch(titles: names) }
+            for spin in spins { await Shoe360Loader.prefetch(titles: spin.names, queries: spin.queries) }
         }
         let listMaxSide: CGFloat = stockLayoutModeBinding.wrappedValue == .list ? 168 : 296
         let remoteMaxSide: CGFloat = stockLayoutModeBinding.wrappedValue == .list ? 168 : 296
