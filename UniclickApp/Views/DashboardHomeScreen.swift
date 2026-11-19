@@ -2345,20 +2345,23 @@ struct HomeBentoGrid: View {
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Trading Cards").font(.system(size: 24, weight: .heavy, design: .rounded)).foregroundStyle(.black)
-                        Text("Buy · Sell · Track value").font(.system(size: 14, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                        Text("Trading Cards").font(.system(size: 24, weight: .heavy, design: .rounded)).foregroundStyle(.white)
+                        Text("Buy · Sell · Track value").font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.85))
                         HStack(spacing: 6) {
                             Text("Explore").font(.system(size: 14, weight: .bold))
                             Image(systemName: "arrow.right").font(.system(size: 12, weight: .bold))
                         }
                         .foregroundStyle(.black).padding(.horizontal, 16).frame(height: 36)
-                        .glassEffect(.regular, in: .capsule).padding(.top, 6)
+                        .background(.white, in: .capsule).padding(.top, 6)
                     }
                     .padding(.leading, 18)
                 }
                 .frame(maxWidth: .infinity, minHeight: 150, maxHeight: 150)
+                // Rojo sólido de fondo y, encima, el cristal teñido: se nota el color sin perder el brillo.
+                .background(Color(red: 0.93, green: 0.05, blue: 0.05))
                 .clipShape(.rect(cornerRadius: 26))
-                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 26))
+                .glassEffect(.clear.tint(Color(red: 0.93, green: 0.05, blue: 0.05).opacity(0.35)).interactive(), in: .rect(cornerRadius: 26))
+                .shadow(color: Color(red: 0.93, green: 0.05, blue: 0.05).opacity(0.28), radius: 14, y: 8)
             }
             .buttonStyle(.plain)
 
