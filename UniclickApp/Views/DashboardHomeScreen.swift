@@ -2611,7 +2611,7 @@ struct AnimatedFlame: View {
 /// Número en matriz de puntos, como un marcador luminoso.
 struct DotMatrixText: View {
     let text: String
-    var dot: CGFloat = 2.6
+    var dot: CGFloat = 2.1
     var color: Color = .white
 
     private static let glyphs: [Character: [String]] = [
