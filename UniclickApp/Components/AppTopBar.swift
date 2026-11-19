@@ -14,13 +14,6 @@ struct AppTopBar<Extra: View>: View {
     var body: some View {
         GlassEffectContainer(spacing: 10) {
             HStack(spacing: 10) {
-                HStack(spacing: 9) {
-                    Image("UniclickMark").resizable().scaledToFill()
-                        .frame(width: 34, height: 34).clipShape(.rect(cornerRadius: 10))
-                    Text(title).font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.black)
-                }
-                .frame(height: 44)
-
                 Spacer(minLength: 0)
                 extra()
 
