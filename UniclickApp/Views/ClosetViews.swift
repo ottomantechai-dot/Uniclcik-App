@@ -1236,20 +1236,53 @@ struct ClosetView: View {
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
     }
 
-    private static func featuredCutout(_ name: String) -> String? {
-        if name.localizedCaseInsensitiveContains("Jordan 1") && name.localizedCaseInsensitiveContains("Dark Mocha") { return "ShoeCutMocha" }
-        if name.localizedCaseInsensitiveContains("1906R") && name.localizedCaseInsensitiveContains("Nightwatch") { return "ShoeCutNB1906" }
-        if name.localizedCaseInsensitiveContains("Big Red Boot") { return "ShoeCutRedBoot" }
-        return nil
-    }
+    /// Zapatos destacados (los más conocidos del catálogo): su recorte y el color de su fondo.
+    private static let featured: [String: (cut: String, accent: Color)] = [
+        "air-jordan-1-retro-high-dark-mocha": ("ShoeCut-1", Color(red: 0.55, green: 0.44, blue: 0.36)),
+        "new-balance-1906r-silver-metallic-nightwatch-green": ("ShoeCut-2", Color(red: 0.30, green: 0.52, blue: 0.44)),
+        "mschf-big-red-boot": ("ShoeCut-3", Color(red: 0.90, green: 0.16, blue: 0.14)),
+        "air-jordan-4-retro-black-cat-2025": ("ShoeCut-4", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "air-jordan-4-retro-bred-reimagined": ("ShoeCut-5", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "air-jordan-4-retro-military-blue-2024": ("ShoeCut-6", Color(red: 0.21, green: 0.37, blue: 0.46)),
+        "air-jordan-4-retro-university-blue": ("ShoeCut-7", Color(red: 0.38, green: 0.49, blue: 0.61)),
+        "air-jordan-4-retro-sb-pine-green": ("ShoeCut-8", Color(red: 0.27, green: 0.40, blue: 0.30)),
+        "air-jordan-4-retro-red-thunder": ("ShoeCut-9", Color(red: 0.75, green: 0.25, blue: 0.26)),
+        "air-jordan-4-retro-lightning-2021": ("ShoeCut-10", Color(red: 0.80, green: 0.67, blue: 0.22)),
+        "air-jordan-1-retro-high-og-royal-reimagined": ("ShoeCut-11", Color(red: 0.09, green: 0.36, blue: 0.66)),
+        "air-jordan-1-retro-high-og-bred-patent": ("ShoeCut-12", Color(red: 0.55, green: 0.10, blue: 0.12)),
+        "air-jordan-1-retro-low-og-sp-travis-scott-black-phantom": ("ShoeCut-13", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "air-jordan-1-retro-low-og-sp-travis-scott-olive-w": ("ShoeCut-14", Color(red: 0.32, green: 0.30, blue: 0.21)),
+        "air-jordan-11-retro-cherry-2022": ("ShoeCut-15", Color(red: 0.53, green: 0.11, blue: 0.11)),
+        "air-jordan-11-retro-cool-grey-2021": ("ShoeCut-16", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "air-jordan-3-retro-white-cement-reimagined": ("ShoeCut-17", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "air-jordan-3-retro-fire-red-2022": ("ShoeCut-18", Color(red: 0.63, green: 0.11, blue: 0.10)),
+        "air-jordan-5-retro-aqua": ("ShoeCut-19", Color(red: 0.55, green: 0.68, blue: 0.59)),
+        "air-jordan-12-retro-cherry-2023": ("ShoeCut-20", Color(red: 0.67, green: 0.13, blue: 0.09)),
+        "nike-dunk-low-retro-white-black-2021": ("ShoeCut-21", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "nike-dunk-low-georgetown": ("ShoeCut-22", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "nike-dunk-low-off-white-lot-1": ("ShoeCut-23", Color(red: 0.79, green: 0.70, blue: 0.49)),
+        "nike-sb-dunk-low-travis-scott": ("ShoeCut-24", Color(red: 0.62, green: 0.56, blue: 0.43)),
+        "nike-sb-dunk-low-ben-jerrys-chunky-dunky": ("ShoeCut-25", Color(red: 0.51, green: 0.63, blue: 0.42)),
+        "nike-air-force-1-low-sp-tiffany-and-co": ("ShoeCut-26", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "nike-air-force-1-low-off-white-volt": ("ShoeCut-27", Color(red: 0.72, green: 0.91, blue: 0.36)),
+        "nike-kobe-6-protro-grinch": ("ShoeCut-28", Color(red: 0.57, green: 0.77, blue: 0.39)),
+        "nike-air-foamposite-one-galaxy-2025": ("ShoeCut-29", Color(red: 0.21, green: 0.24, blue: 0.38)),
+        "nike-air-max-1-travis-scott-wheat": ("ShoeCut-30", Color(red: 0.73, green: 0.64, blue: 0.41)),
+        "adidas-yeezy-boost-350-v2-zebra": ("ShoeCut-31", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "adidas-yeezy-boost-350-v2-beluga-reflective": ("ShoeCut-32", Color(red: 0.73, green: 0.43, blue: 0.34)),
+        "adidas-yeezy-slide-bone-2022": ("ShoeCut-33", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "adidas-samba-og-cloud-white-core-black": ("ShoeCut-34", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "new-balance-550-white-green": ("ShoeCut-35", Color(red: 0.62, green: 0.60, blue: 0.57)),
+        "new-balance-9060-mushroom": ("ShoeCut-36", Color(red: 0.47, green: 0.41, blue: 0.32)),
+        "ugg-tasman-slipper-chestnut": ("ShoeCut-37", Color(red: 0.53, green: 0.38, blue: 0.25)),
+        "timberland-6-inch-premium-waterproof-wheat": ("ShoeCut-38", Color(red: 0.59, green: 0.39, blue: 0.24)),
+    ]
 
-    /// Los dos zapatos con fondo especial y el color de cada uno.
-    private static func featuredAccent(_ name: String) -> Color? {
-        if name.localizedCaseInsensitiveContains("Jordan 1") && name.localizedCaseInsensitiveContains("Dark Mocha") { return Color(red: 0.55, green: 0.44, blue: 0.36) }
-        if name.localizedCaseInsensitiveContains("1906R") && name.localizedCaseInsensitiveContains("Nightwatch") { return Color(red: 0.30, green: 0.52, blue: 0.44) }
-        if name.localizedCaseInsensitiveContains("Big Red Boot") { return Color(red: 0.90, green: 0.16, blue: 0.14) }
-        return nil
+    private static func featuredKey(_ name: String) -> String {
+        name.replacingOccurrences(of: " (Women's)", with: " W").replacingOccurrences(of: " ", with: "-").lowercased()
     }
+    private static func featuredCutout(_ name: String) -> String? { featured[featuredKey(name)]?.cut }
+    private static func featuredAccent(_ name: String) -> Color? { featured[featuredKey(name)]?.accent }
 
     private var unifiedStockListContent: some View {
         LazyVStack(alignment: .leading, spacing: 10) {
