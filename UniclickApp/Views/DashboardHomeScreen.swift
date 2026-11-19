@@ -2356,7 +2356,7 @@ struct HomeBentoGrid: View {
                     }
                     .padding(.leading, 18)
                 }
-                .frame(maxWidth: .infinity, minHeight: 150, maxHeight: 150)
+                .frame(maxWidth: .infinity, minHeight: Self.bigScreen ? 176 : 150, maxHeight: Self.bigScreen ? 176 : 150)
                 // Rojo sólido de fondo y, encima, el cristal teñido: se nota el color sin perder el brillo.
                 .background(Color(red: 0.93, green: 0.05, blue: 0.05))
                 .clipShape(.rect(cornerRadius: 26))
@@ -2388,9 +2388,12 @@ struct HomeBentoGrid: View {
         }
     }
 
+    /// iPhone grande (Pro Max / Plus): el banner y sus cartas crecen.
+    private static var bigScreen: Bool { UIScreen.main.bounds.width >= 428 }
+
     private func bannerCard(_ name: String, angle: Double, y: CGFloat) -> some View {
         Image(name).resizable().scaledToFit()
-            .frame(width: 106)
+            .frame(width: Self.bigScreen ? 132 : 106)
             .clipShape(.rect(cornerRadius: 8))
             .shadow(color: .black.opacity(0.22), radius: 8, y: 4)
             .rotationEffect(.degrees(angle))
@@ -2450,7 +2453,7 @@ struct HomeTrendingRow: View {
         if !products.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Image(systemName: "flame.fill").foregroundStyle(.black)
+                    AnimatedFlame()
                     Text("Trending Now").font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                     Spacer()
                     Button(action: onViewAll) {
@@ -2505,7 +2508,7 @@ struct HomeTrendingCardsRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: icon).foregroundStyle(.black)
+                if icon == "flame.fill" { AnimatedFlame() } else { Image(systemName: icon).foregroundStyle(.black) }
                 Text(title).font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                 Spacer()
                 Button(action: onViewAll) {
@@ -2596,5 +2599,29 @@ struct CardEditionBadge: View {
             .padding(.horizontal, 7).padding(.vertical, 5)
             .glassEffect(.regular, in: .capsule)
         }
+    }
+}
+
+
+/// Llama animada: se mece como fuego y su color va del negro al rojo y vuelve.
+struct AnimatedFlame: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            let heat = (sin(t * 2.2) + 1) / 2                       // 0 negro → 1 rojo
+            let flicker = sin(t * 9) * 0.5 + sin(t * 13.7) * 0.5     // temblor irregular
+            Image(systemName: "flame.fill")
+                .font(.system(size: 19, weight: .bold))
+                .foregroundStyle(
+                    LinearGradient(colors: [Color(red: 0.95 * heat, green: 0.08 * heat, blue: 0.04 * heat),
+                                            Color(red: 0.35 + 0.65 * heat, green: 0.05 + 0.25 * heat, blue: 0.02)],
+                                   startPoint: .bottom, endPoint: .top)
+                )
+                .scaleEffect(x: 1 + flicker * 0.05, y: 1 + flicker * 0.09, anchor: .bottom)
+                .rotationEffect(.degrees(flicker * 5), anchor: .bottom)
+                .shadow(color: Color.red.opacity(0.45 * heat), radius: 5)
+        }
+        .frame(width: 22, height: 24)
+        .accessibilityHidden(true)
     }
 }
