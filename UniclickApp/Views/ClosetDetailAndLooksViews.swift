@@ -558,7 +558,7 @@ struct ClosetGarmentDetailView: View {
                 queries: item.marketLookupQueries,
                 badgeLift: 50
             )
-            .blendMode(ClosetView.featuredAccent(item.catalogDisplayName) == nil ? .normal : .multiply)
+            .shoeCutout(ClosetView.featuredAccent(item.catalogDisplayName) != nil)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 230)
@@ -3536,7 +3536,7 @@ struct CatalogShoeBody: View {
                         }
                 } else {
                     Shoe360View(title: product.name, fallbackURL: product.primaryImageURL, brand: product.brand, badgeLift: 50)
-                        .blendMode(ClosetView.featuredAccent(product.name) == nil ? .normal : .multiply)
+                        .shoeCutout(ClosetView.featuredAccent(product.name) != nil)
                 }
             }
             .frame(height: 230)

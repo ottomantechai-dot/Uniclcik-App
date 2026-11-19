@@ -132,6 +132,56 @@ final class Shoe360Loader: ObservableObject {
     }
 }
 
+/// Recorte de una foto de producto con fondo blanco: el blanco unido a los bordes pasa a transparente.
+/// El blanco de dentro del zapato (suela, paneles) no se toca. Cada foto se recorta una sola vez.
+enum ShoeCutout {
+    private static let cache = NSCache<UIImage, UIImage>()
+
+    static func image(_ source: UIImage) -> UIImage {
+        if let hit = cache.object(forKey: source) { return hit }
+        let result = cut(source) ?? source
+        cache.setObject(result, forKey: source)
+        return result
+    }
+
+    private static func cut(_ source: UIImage) -> UIImage? {
+        guard let cg = source.cgImage else { return nil }
+        let w = cg.width, h = cg.height
+        var px = [UInt8](repeating: 255, count: w * h * 4)
+        guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.setFillColor(UIColor.white.cgColor); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var background = [Bool](repeating: false, count: w * h)
+        var stack: [Int] = []
+        stack.reserveCapacity(w * h / 4)
+        for x in 0..<w { stack.append(x); stack.append((h - 1) * w + x) }
+        for y in 0..<h { stack.append(y * w); stack.append(y * w + w - 1) }
+        px.withUnsafeMutableBufferPointer { p in
+            while let i = stack.popLast() {
+                if background[i] || min(p[i * 4], p[i * 4 + 1], p[i * 4 + 2]) < 236 { continue }
+                background[i] = true
+                let x = i % w, y = i / w
+                if x > 0 { stack.append(i - 1) }; if x < w - 1 { stack.append(i + 1) }
+                if y > 0 { stack.append(i - w) }; if y < h - 1 { stack.append(i + w) }
+            }
+            for i in 0..<(w * h) {
+                if background[i] { p[i * 4] = 0; p[i * 4 + 1] = 0; p[i * 4 + 2] = 0; p[i * 4 + 3] = 0; continue }
+                // Borde junto al fondo: se suaviza según lo claro que sea, para que no quede un filo blanco.
+                let x = i % w, y = i / w
+                let edge = (x > 0 && background[i - 1]) || (x < w - 1 && background[i + 1]) || (y > 0 && background[i - w]) || (y < h - 1 && background[i + w])
+                if edge {
+                    let light = Int(min(p[i * 4], p[i * 4 + 1], p[i * 4 + 2]))
+                    let alpha = Double(max(50, min(255, (255 - light) * 4))) / 255
+                    for c in 0..<3 { p[i * 4 + c] = UInt8(Double(p[i * 4 + c]) * alpha) }
+                    p[i * 4 + 3] = UInt8(alpha * 255)
+                }
+            }
+        }
+        return ctx.makeImage().map { UIImage(cgImage: $0, scale: source.scale, orientation: .up) }
+    }
+}
+
 /// Foto del zapato que gira al arrastrar. Sin giro disponible, enseña `fallbackURL`.
 struct Shoe360View: View {
     /// Nombres del zapato a probar, del más fiable (el de StockX) al menos.
@@ -146,6 +196,8 @@ struct Shoe360View: View {
     var brand: String?
     /// Cuánto suben el aviso y la marca: en la ficha quedan a la altura del botón de volver.
     var badgeLift: CGFloat = 0
+    /// Quita el fondo blanco de cada foto: el zapato queda recortado, por delante de un fondo de color.
+    var cutout = false
 
     init(title: String, fallbackURL: URL? = nil, queries: [String] = [], brand: String? = nil, badgeLift: CGFloat = 0) {
         self.badgeLift = badgeLift
@@ -173,7 +225,7 @@ struct Shoe360View: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             if loader.available, let image = loader.frames[index] ?? loader.frames[0] {
-                Image(uiImage: image).resizable().scaledToFit()
+                Image(uiImage: cutout ? ShoeCutout.image(image) : image).resizable().scaledToFit()
                     .gesture(
                         DragGesture(minimumDistance: 2)
                             .onChanged { value in
@@ -222,5 +274,14 @@ struct Shoe360View: View {
         .task(id: titles + queries + [fallbackURL?.absoluteString ?? ""]) {
             await loader.load(titles: titles, imageURLs: [fallbackURL].compactMap { $0 }, queries: queries)
         }
+    }
+}
+
+extension Shoe360View {
+    /// La misma vista, con las fotos recortadas (sin fondo blanco) cuando `on` es verdadero.
+    func shoeCutout(_ on: Bool) -> Shoe360View {
+        var copy = self
+        copy.cutout = on
+        return copy
     }
 }

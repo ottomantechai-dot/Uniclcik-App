@@ -1115,7 +1115,49 @@ enum StockQuickCategory: String, CaseIterable, Identifiable {
     }
 }
 
+/// Tipo de producto, deducido del nombre: sirve para filtrar zapatos, sudaderas, camisetas, pantalones…
+enum StockProductType: String, CaseIterable, Identifiable {
+    case sneakers, hoodies, tees, pants, shorts, bags, hats
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .sneakers: return "Sneakers"
+        case .hoodies: return "Hoodies & sweaters"
+        case .tees: return "T-shirts"
+        case .pants: return "Pants"
+        case .shorts: return "Shorts"
+        case .bags: return "Bags"
+        case .hats: return "Hats"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .sneakers: return "shoe"
+        case .hoodies: return "jacket"
+        case .tees: return "tshirt"
+        case .pants: return "figure.walk"
+        case .shorts: return "figure.run"
+        case .bags: return "bag"
+        case .hats: return "hat.cap"
+        }
+    }
+
+    static func of(name: String, category: String?) -> StockProductType? {
+        let text = " " + name.lowercased() + " "
+        func has(_ words: [String]) -> Bool { words.contains { text.contains($0) } }
+        if has(["hoodie", "hooded", "sweatshirt", "crewneck", "sweater", "fleece full"]) { return .hoodies }
+        if has(["short "]) { return .shorts }
+        if has([" pant", "jeans", "jogger", "trouser"]) { return .pants }
+        if has([" tee ", "t-shirt", " shirt", " jersey"]) { return .tees }
+        if has(["backpack", " bag", "duffle", "tote"]) { return .bags }
+        if has([" hat", " cap ", "beanie", "trucker"]) { return .hats }
+        if (category ?? "shoes").lowercased() == "shoes" { return .sneakers }
+        return nil
+    }
+}
+
 struct StockBrowseFilters: Equatable {
+    var productTypes: Set<String> = []
     var sort: StockSortOrder = .newest
     var categoryKeys: Set<String> = []
     var brands: Set<String> = []
@@ -1154,6 +1196,7 @@ struct StockBrowseFilters: Equatable {
 
     var isActive: Bool {
         !categoryKeys.isEmpty
+            || !productTypes.isEmpty
             || !brands.isEmpty
             || !sizes.isEmpty
             || !genders.isEmpty
@@ -1169,6 +1212,7 @@ struct StockBrowseFilters: Equatable {
 
     mutating func reset() {
         sort = .newest
+        productTypes = []
         categoryKeys = []
         brands = []
         sizes = []
@@ -1205,6 +1249,9 @@ enum StockFilterEngine {
     }
 
     static func matches(_ filters: StockBrowseFilters, closetItem item: ClosetItem) -> Bool {
+        if !filters.productTypes.isEmpty {
+            guard let type = StockProductType.of(name: item.name, category: closetCategoryKey(item)), filters.productTypes.contains(type.rawValue) else { return false }
+        }
         if !filters.categoryKeys.isEmpty,
            !filters.categoryKeys.contains(closetCategoryKey(item)) {
             return false
@@ -1228,6 +1275,9 @@ enum StockFilterEngine {
     }
 
     static func matches(_ filters: StockBrowseFilters, catalogProduct product: UpsoledProduct) -> Bool {
+        if !filters.productTypes.isEmpty {
+            guard let type = StockProductType.of(name: product.name, category: product.category), filters.productTypes.contains(type.rawValue) else { return false }
+        }
         if !filters.categoryKeys.isEmpty,
            !filters.categoryKeys.contains(catalogCategoryKey(product)) {
             return false
@@ -1541,6 +1591,13 @@ struct StockBrowseFiltersSheet: View {
                         }
                     }
 
+                    section("Product type", icon: "square.grid.2x2") {
+                        flow(StockProductType.allCases.map(\.rawValue)) { raw in
+                            let type = StockProductType(rawValue: raw)
+                            chip(type?.label ?? raw, icon: type?.icon, on: filters.productTypes.contains(raw)) { toggleSet(raw, in: &filters.productTypes) }
+                        }
+                    }
+
                     section("Sort", icon: "arrow.up.arrow.down") {
                         flow(StockSortOrder.allCases.map(\.rawValue)) { raw in
                             let order = StockSortOrder(rawValue: raw) ?? .newest
@@ -1607,7 +1664,7 @@ struct StockBrowseFiltersSheet: View {
                         toggle("Below retail price", icon: "arrow.down.right.circle", isOn: $filters.belowRetail)
                     }
 
-                    section("Category", icon: "square.grid.2x2") {
+                    section("Sneaker style", icon: "shoe") {
                         flow(StockSneakerStyleFilter.allCases.map(\.rawValue)) { raw in
                             let style = StockSneakerStyleFilter(rawValue: raw)
                             chip(style?.label ?? raw, on: filters.sneakerStyles.contains(raw)) {
