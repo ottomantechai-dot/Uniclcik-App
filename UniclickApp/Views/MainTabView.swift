@@ -629,7 +629,7 @@ private struct AddStockStepHeader: View {
 private enum MainTabBarAppearance {
     static func applyBlackInactiveBlueSelected() {
         let inactive = UIColor.black
-        let selected = UIColor(red: 0.16, green: 0.44, blue: 0.98, alpha: 1.0)
+        let selected = UIColor.black   // el color principal de la barra es el negro
 
         let item = UITabBarItemAppearance()
         item.normal.iconColor = inactive
