@@ -3234,14 +3234,12 @@ struct ShoeUsedListingsStrip: View {
                 Image(systemName: "arrow.right").font(.system(size: 14, weight: .bold)).foregroundStyle(.black.opacity(0.35))
                     .frame(width: 36, height: 36).glassEffect(.regular, in: .circle)
             }
-            GlassEffectContainer(spacing: -10) {
-                HStack(spacing: -10) {
-                    ForEach(0..<5, id: \.self) { _ in
-                        Image(systemName: "shoe.2").font(.system(size: 16)).foregroundStyle(.black.opacity(0.22))
-                            .frame(width: 58, height: 58).glassEffect(.regular, in: .circle)
-                    }
-                    Spacer(minLength: 0)
+            HStack(spacing: 10) {
+                ForEach(0..<5, id: \.self) { _ in
+                    Image(systemName: "shoe.2").font(.system(size: 15)).foregroundStyle(.black.opacity(0.22))
+                        .frame(width: 52, height: 52).glassEffect(.regular, in: .circle)
                 }
+                Spacer(minLength: 0)
             }
             Text("No used listings connected yet").font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.45))
         }

@@ -797,18 +797,36 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
         }
     }
 
+    /// Las plataformas en una sola cápsula de cristal: el logo de cada una y, debajo, cuánto por
+    /// encima o por debajo de tu precio está allí (en %). Sin precio confirmado, una raya.
     private func marketplaceColumnsRow(compact: Bool) -> some View {
-        HStack(spacing: 6) {
-            ForEach(marketplaceSegment.platforms, id: \.self) { platform in
-                StockRowMarketplaceColumn(
-                    platformName: platform,
-                    price: platformPriceUSD(for: platform),
-                    trendDeltaUSD: platformTrendDeltaUSD(for: platform)
-                )
-                .frame(width: compact ? 72 : nil)
-                .frame(maxWidth: compact ? 72 : .infinity)
+        HStack(spacing: 0) {
+            ForEach(Array(marketplaceSegment.platforms.enumerated()), id: \.element) { index, platform in
+                VStack(spacing: 3) {
+                    StylizedMarketplaceLogo(brand: platform)
+                        .frame(height: 15)
+                        .frame(maxWidth: 58)
+                    let percent = platformPercent(for: platform)
+                    Text(percent.map { String(format: "%+.0f%%", $0) } ?? "—")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(percent == nil ? Color.black.opacity(0.3) : (percent! >= 0 ? Color(red: 0.13, green: 0.55, blue: 0.30) : Color.red))
+                }
+                .frame(maxWidth: .infinity)
+                if index < marketplaceSegment.platforms.count - 1 {
+                    Rectangle().fill(Color.black.opacity(0.08)).frame(width: 1, height: 24)
+                }
             }
         }
+        .padding(.vertical, 8).padding(.horizontal, 6)
+        .glassEffect(.regular, in: .capsule)
+    }
+
+    /// Diferencia entre el precio confirmado de la plataforma y tu precio (o el valor del stock).
+    private func platformPercent(for name: String) -> Double? {
+        guard let price = platformPriceUSD(for: name) else { return nil }
+        let base = askingUSD > 0 ? askingUSD : stockValueUSD
+        guard base > 0 else { return nil }
+        return (Double(price) - base) / base * 100
     }
 
     private var thumbnailBlock: some View {

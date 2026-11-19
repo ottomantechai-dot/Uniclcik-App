@@ -869,11 +869,8 @@ struct ShoeMarketDetailView: View {
 
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Image("AuthSneakerHero")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 160, height: 160)
-            Text("add your first sneaker")
+            Image(systemName: "chart.bar.xaxis").font(.system(size: 28, weight: .semibold)).foregroundStyle(Color.black.opacity(0.25))
+            Text("No market prices yet")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color.black.opacity(0.6))
         }
@@ -1840,17 +1837,32 @@ struct DashboardMarketPricesSection: View {
             }
 
             if tableRows.isEmpty {
-                VStack(spacing: 10) {
-                    Image("AuthSneakerHero")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 160, height: 160)
-                    Text("add your first sneaker")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.black.opacity(0.6))
+                // Sin precios todavía: la tabla sale con sus plataformas y tallas, a la espera de datos.
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        Text("Size").font(.system(size: 11, weight: .bold)).foregroundStyle(Color.black.opacity(0.45))
+                            .frame(width: 44, alignment: .leading)
+                        ForEach(["StockX", "GOAT", "eBay", "Flight Club"], id: \.self) { brand in
+                            StylizedMarketplaceLogo(brand: brand).frame(height: 14).frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(.bottom, 10)
+                    ForEach(["8", "9", "10", "11"], id: \.self) { size in
+                        Divider()
+                        HStack(spacing: 0) {
+                            Text(size).font(.system(size: 14, weight: .bold, design: .rounded)).foregroundStyle(.black)
+                                .frame(width: 44, alignment: .leading)
+                            ForEach(0..<4, id: \.self) { _ in
+                                Text("—").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.black.opacity(0.25))
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .padding(.vertical, 11)
+                    }
+                    Text("Prices appear here as soon as the market responds")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.black.opacity(0.45))
+                        .frame(maxWidth: .infinity).padding(.top, 10)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 28)
             } else {
                 HomeMarketPriceGridTable(
                     platforms: platforms,
