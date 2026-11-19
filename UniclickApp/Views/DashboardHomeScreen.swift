@@ -1873,7 +1873,7 @@ struct DashboardMarketPricesSection: View {
                     }
                     ForEach(featured == nil ? ["8", "9", "10", "11"] : ["7", "8", "9", "10", "11", "12"], id: \.self) { size in
                         HStack(spacing: 8) {
-                            Text(size).font(.system(size: 14, weight: .heavy, design: .rounded)).foregroundStyle(.white)
+                            DotMatrixText(text: size)
                                 .frame(width: 52, height: 40)
                                 .background(Color.black, in: .rect(cornerRadius: 11))
                             ForEach(0..<4, id: \.self) { _ in
@@ -2593,25 +2593,58 @@ struct CardEditionBadge: View {
 }
 
 
-/// Llama animada: se mece como fuego y su color va del negro al rojo y vuelve.
+/// Llama animada (hecha en Higgsfield): 49 fotogramas en bucle, del negro al rojo.
 struct AnimatedFlame: View {
+    private static let frames = 49
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            let heat = (sin(t * 2.2) + 1) / 2                       // 0 negro → 1 rojo
-            let flicker = sin(t * 9) * 0.5 + sin(t * 13.7) * 0.5     // temblor irregular
-            Image(systemName: "flame.fill")
-                .font(.system(size: 19, weight: .bold))
-                .foregroundStyle(
-                    LinearGradient(colors: [Color(red: 0.95 * heat, green: 0.08 * heat, blue: 0.04 * heat),
-                                            Color(red: 0.35 + 0.65 * heat, green: 0.05 + 0.25 * heat, blue: 0.02)],
-                                   startPoint: .bottom, endPoint: .top)
-                )
-                .scaleEffect(x: 1 + flicker * 0.05, y: 1 + flicker * 0.09, anchor: .bottom)
-                .rotationEffect(.degrees(flicker * 5), anchor: .bottom)
-                .shadow(color: Color.red.opacity(0.45 * heat), radius: 5)
+        TimelineView(.animation(minimumInterval: 1.0 / 12)) { context in
+            let index = Int(context.date.timeIntervalSinceReferenceDate * 12) % Self.frames
+            Image(String(format: "Flame-%02d", index))
+                .resizable().scaledToFit()
+                .blendMode(.multiply)   // el fondo blanco del fotograma desaparece sobre la página
         }
-        .frame(width: 22, height: 24)
+        .frame(width: 26, height: 28)
         .accessibilityHidden(true)
+    }
+}
+
+/// Número en matriz de puntos, como un marcador luminoso.
+struct DotMatrixText: View {
+    let text: String
+    var dot: CGFloat = 2.6
+    var color: Color = .white
+
+    private static let glyphs: [Character: [String]] = [
+        "0": ["01110","10001","10011","10101","11001","10001","01110"],
+        "1": ["00100","01100","00100","00100","00100","00100","01110"],
+        "2": ["01110","10001","00001","00010","00100","01000","11111"],
+        "3": ["11110","00001","00001","01110","00001","00001","11110"],
+        "4": ["00010","00110","01010","10010","11111","00010","00010"],
+        "5": ["11111","10000","11110","00001","00001","10001","01110"],
+        "6": ["00110","01000","10000","11110","10001","10001","01110"],
+        "7": ["11111","00001","00010","00100","01000","01000","01000"],
+        "8": ["01110","10001","10001","01110","10001","10001","01110"],
+        "9": ["01110","10001","10001","01111","00001","00010","01100"],
+        ".": ["0","0","0","0","0","0","1"],
+    ]
+
+    var body: some View {
+        let chars = text.compactMap { Self.glyphs[$0] }
+        let step = dot * 1.45
+        let width = chars.reduce(CGFloat(0)) { $0 + CGFloat($1[0].count) * step } + CGFloat(max(0, chars.count - 1)) * step
+        Canvas { context, _ in
+            var x: CGFloat = 0
+            for glyph in chars {
+                for (row, line) in glyph.enumerated() {
+                    for (col, bit) in line.enumerated() where bit == "1" {
+                        let rect = CGRect(x: x + CGFloat(col) * step, y: CGFloat(row) * step, width: dot, height: dot)
+                        context.fill(Path(ellipseIn: rect), with: .color(color))
+                    }
+                }
+                x += CGFloat(glyph[0].count + 1) * step
+            }
+        }
+        .frame(width: width, height: 7 * step)
+        .accessibilityLabel(text)
     }
 }
