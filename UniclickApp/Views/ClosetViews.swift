@@ -1238,6 +1238,7 @@ struct ClosetView: View {
 
     /// Zapatos destacados (los más conocidos del catálogo): su recorte y el color de su fondo.
     private static let featured: [String: (cut: String, accent: Color)] = [
+        "nike-air-force-1-low-supreme-box-logo-white": ("ShoeCut-39", Color(red: 0.55, green: 0.55, blue: 0.58)),
         "air-jordan-1-retro-high-dark-mocha": ("ShoeCut-1", Color(red: 0.55, green: 0.44, blue: 0.36)),
         "new-balance-1906r-silver-metallic-nightwatch-green": ("ShoeCut-2", Color(red: 0.30, green: 0.52, blue: 0.44)),
         "mschf-big-red-boot": ("ShoeCut-3", Color(red: 0.90, green: 0.16, blue: 0.14)),
