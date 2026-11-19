@@ -170,11 +170,20 @@ struct CardTileSkeleton: View {
 }
 
 
-/// Esqueleto con forma de zapatilla: la silueta en gris con el brillo recorriéndola.
+/// Esqueleto con la forma del zapato: la silueta real de ese modelo (en la misma posición que su
+/// foto) con el brillo recorriéndola. Si no hay silueta de ese modelo, una zapatilla genérica.
 struct ShoeSkeleton: View {
+    var silhouette: String?
+
     var body: some View {
         Skeleton(corner: 0)
-            .mask { Image("TabZapatos").resizable().scaledToFit().padding(.horizontal, 14) }
+            .mask {
+                if let silhouette, UIImage(named: silhouette) != nil {
+                    Image(silhouette).resizable().scaledToFit()
+                } else {
+                    Image("TabZapatos").resizable().scaledToFit().padding(.horizontal, 14)
+                }
+            }
             .accessibilityHidden(true)
     }
 }

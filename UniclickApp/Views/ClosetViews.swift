@@ -1238,6 +1238,17 @@ struct ClosetView: View {
 
     /// Zapatos destacados (los más conocidos del catálogo): su recorte y el color de su fondo.
     private static let featured: [String: (cut: String, accent: Color)] = [
+        // Zapatos muy blancos: sin fondo de color apenas se distinguen sobre la ficha blanca.
+        "air-jordan-11-retro-legend-blue-2024": ("ShoeCut-40", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "air-jordan-4-retro-white-oreo-2021": ("ShoeCut-41", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "new-balance-550-white-grey": ("ShoeCut-42", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "nike-air-force-1-low-white-07": ("ShoeCut-43", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "nike-dunk-low-next-nature-white-mint-w": ("ShoeCut-44", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "nike-dunk-low-photon-dust-w": ("ShoeCut-45", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "on-running-cloud-5-all-white": ("ShoeCut-46", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "salomon-xt-6-vanilla-ice-almond-milk": ("ShoeCut-47", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "adidas-yeezy-boost-350-v2-cream-white": ("ShoeCut-48", Color(red: 0.55, green: 0.55, blue: 0.58)),
+        "adidas-yeezy-foam-rnnr-sand": ("ShoeCut-49", Color(red: 0.55, green: 0.55, blue: 0.58)),
         "nike-air-force-1-low-supreme-box-logo-white": ("ShoeCut-39", Color(red: 0.55, green: 0.55, blue: 0.58)),
         "air-jordan-1-retro-high-dark-mocha": ("ShoeCut-1", Color(red: 0.55, green: 0.44, blue: 0.36)),
         "new-balance-1906r-silver-metallic-nightwatch-green": ("ShoeCut-2", Color(red: 0.30, green: 0.52, blue: 0.44)),

@@ -154,7 +154,7 @@ struct StockCachedRemoteImage: View {
                     .resizable()
                     .aspectRatio(contentMode: fillFrame ? .fill : .fit)
             } else if url != nil {
-                ShoeSkeleton()
+                ShoeSkeleton(silhouette: url.flatMap { Shoe360Loader.slugs(fromImageURL: $0).first }.map { "Sil-" + $0.lowercased() })
             } else {
                 Image(systemName: "photo")
                     .font(.system(size: 22))
