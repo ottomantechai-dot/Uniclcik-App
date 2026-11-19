@@ -1185,19 +1185,21 @@ struct ClosetView: View {
 
     private func stockTile<Photo: View>(name: String, brand: String, @ViewBuilder photo: () -> Photo) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            photo().frame(maxWidth: .infinity).frame(height: 104).blendMode(.multiply)
+            // Arriba: la marca a la izquierda y las plataformas a la derecha.
+            HStack {
+                BrandLogoLabel(brand: brand, compact: true).frame(width: 30, height: 30)
+                    .background(.white, in: .circle)
+                    .overlay { Circle().strokeBorder(Color.black.opacity(0.10), lineWidth: 0.5) }
+                Spacer(minLength: 0)
+                MarketplaceDots(brands: ["StockX", "GOAT", "eBay"])
+            }
+            photo().frame(maxWidth: .infinity).frame(height: 96).blendMode(.multiply)
             Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
                 .lineLimit(2).multilineTextAlignment(.leading).frame(maxWidth: .infinity, minHeight: 36, alignment: .topLeading)
         }
-        .padding(12).padding(.top, 16)
+        .padding(10)
         .background(.white, in: .rect(cornerRadius: 20))
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
-        .overlay(alignment: .topLeading) {
-            BrandLogoLabel(brand: brand, compact: true).frame(width: 30, height: 30).background(.white, in: .circle).overlay { Circle().strokeBorder(Color.black.opacity(0.10), lineWidth: 0.5) }.padding(8)
-        }
-        .overlay(alignment: .topTrailing) {
-            MarketplaceDots(brands: ["StockX", "GOAT", "eBay"]).padding(.top, 10).padding(.trailing, 8)
-        }
     }
 
     private var unifiedStockListContent: some View {
