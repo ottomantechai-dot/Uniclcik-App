@@ -87,7 +87,9 @@ struct DashboardView: View {
 
     private var dashboardContent: some View {
         ZStack {
-            DashboardHomePalette.pageBG.ignoresSafeArea()
+            // Fondo con color suave: sobre él se aprecia el cristal de las fichas.
+            LinearGradient(colors: [Color(red: 0.93, green: 0.96, blue: 1.0), Color(red: 0.97, green: 0.93, blue: 1.0), Color(red: 0.93, green: 1.0, blue: 0.90)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     if homeStatsReady {

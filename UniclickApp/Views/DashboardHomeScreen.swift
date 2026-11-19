@@ -279,6 +279,11 @@ struct DashboardHomeScreen: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
 
+            HomeBentoGrid(closetItems: closetItems, catalogProducts: catalogProducts,
+                          onSneakers: onViewStock,
+                          onScan: { tabRouter.scanRequested = true; tabRouter.selected = .closet },
+                          onCards: { tabRouter.selected = .cards })
+
             if !trending.isEmpty {
                 DashboardTrendingSneakersSection(
                     items: trending,
@@ -308,7 +313,7 @@ struct DashboardHomeScreen: View {
                     Button { showOpportunities = true } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "target").font(.system(size: 13)).foregroundStyle(DashboardHomePalette.accentGreen)
-                            Text("Oportunidades").font(.system(size: 13, weight: .bold))
+                            Text("Opportunities").font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(DashboardHomePalette.textPrimary)
                             Spacer(minLength: 2)
                             Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
@@ -1337,16 +1342,6 @@ private struct DashboardHomeBottomGrid: View {
     var body: some View {
         VStack(spacing: 16) {
             PokemonCardsStrip()
-            DashboardHomeCategoryCard(
-                icon: "tshirt.fill",
-                iconColor: DashboardHomePalette.accentGreen,
-                title: "STREETWEAR & APPAREL",
-                product: streetwear,
-                actionColor: DashboardHomePalette.accentGreen,
-                onViewAll: onViewStock
-            ) {
-                streetwearImage(streetwear)
-            }
         }
     }
 
@@ -2265,6 +2260,119 @@ struct WatchRow: View {
         if let comp = (try? await KicksDBClient.fetchComparison(query: item.query)) ?? nil,
            let v = comp.bestBuyOverall?.price {
             price = v
+        }
+    }
+}
+
+
+// MARK: - Inicio en mosaico de cristal
+
+/// Mosaico de fichas de cristal: títulos grandes, un icono redondo y una cifra por ficha.
+struct HomeBentoGrid: View {
+    let closetItems: [ClosetItem]
+    let catalogProducts: [UpsoledProduct]
+    var onSneakers: () -> Void
+    var onScan: () -> Void
+    var onCards: () -> Void
+    @ObservedObject private var reports = SaleReportStore.shared
+
+    private var stock: [ClosetItem] { closetItems.filter(\.isActiveInStock) }
+    private var stockValue: Double { stock.reduce(0) { $0 + $1.stockValueUSD } }
+
+    var body: some View {
+        GlassEffectContainer(spacing: 12) {
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Button(action: onSneakers) {
+                        tile(height: 168) {
+                            Text("Sneakers").font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                            Spacer(minLength: 0)
+                            stat(icon: "shoe.2.fill", label: "With 360°", value: "\(catalogProducts.count)")
+                        }
+                        .background(alignment: .topTrailing) {
+                            StockCachedRemoteImage(url: catalogProducts.first?.primaryImageURL, maxPixelSide: 320, fillFrame: false)
+                                .frame(width: 120, height: 86).blendMode(.multiply).opacity(0.9).offset(x: 14, y: 30)
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    Button(action: onScan) {
+                        tile(height: 168) {
+                            Text("Scan a box,\nget its report").font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                                .multilineTextAlignment(.leading)
+                            Spacer(minLength: 0)
+                            HStack(spacing: -8) {
+                                round("barcode.viewfinder", dark: true)
+                                round("doc.text.magnifyingglass")
+                                round("tag")
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button(action: onSneakers) {
+                    tile(height: 132) {
+                        Text("Your stock").font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                        Spacer(minLength: 0)
+                        HStack(spacing: 0) {
+                            stat(icon: "archivebox.fill", label: "Pairs", value: "\(stock.count)")
+                            Spacer(minLength: 0)
+                            stat(icon: "dollarsign", label: "Stock value", value: stockValue > 0 ? SaleReport.usd(stockValue.rounded()) : "—")
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+
+                tile(height: 118) {
+                    Text("Activity").font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                    Spacer(minLength: 0)
+                    if let last = reports.reports.first {
+                        HStack(spacing: 10) {
+                            round("doc.text.fill", dark: true)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(last.title).font(.system(size: 14, weight: .bold)).foregroundStyle(.black).lineLimit(1)
+                                Text("Sale report · " + last.createdAt.formatted(.relative(presentation: .named)))
+                                    .font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.5)).lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
+                            Text("\(reports.reports.count)").font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                        }
+                    } else {
+                        HStack(spacing: 10) {
+                            round("doc.text")
+                            Text("No sale reports yet. Scan a box to create one.")
+                                .font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.55))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func tile<Content: View>(height: CGFloat, @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8, content: content)
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: height, maxHeight: height, alignment: .topLeading)
+            .contentShape(.rect(cornerRadius: 26))
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 26))
+    }
+
+    private func round(_ symbol: String, dark: Bool = false) -> some View {
+        Image(systemName: symbol).font(.system(size: 17, weight: .bold)).foregroundStyle(dark ? .white : .black)
+            .frame(width: 46, height: 46)
+            .background(dark ? Color.black : Color.white, in: .circle)
+            .overlay { Circle().strokeBorder(.white, lineWidth: 2) }
+    }
+
+    private func stat(icon: String, label: String, value: String) -> some View {
+        HStack(spacing: 10) {
+            round(icon, dark: true)
+            VStack(alignment: .leading, spacing: -2) {
+                Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
+                Text(value).font(.system(size: 26, weight: .heavy, design: .rounded)).foregroundStyle(.black).minimumScaleFactor(0.6).lineLimit(1)
+            }
         }
     }
 }

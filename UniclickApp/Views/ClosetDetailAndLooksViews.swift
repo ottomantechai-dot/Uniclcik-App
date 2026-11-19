@@ -95,6 +95,7 @@ struct ClosetGarmentDetailView: View {
     @State private var savingChanges = false
     @State private var shoeLastSale: Double?
     @State private var shoeSales: [DailySalePoint] = []
+    @State private var shoeSizesOpen = false
     @State private var showShoeMarketData = false
     @State private var shoeExpandedReturnPolicy = false
     @State private var shoeExpandedBuyerPromise = false
@@ -583,37 +584,61 @@ struct ClosetGarmentDetailView: View {
         return comparison.rows.first
     }
 
+    /// Selector de talla: al tocarlo se despliega hacia abajo, dentro de la ficha, con todas las tallas.
     private var shoeSizeSelectorRow: some View {
-        Menu {
-            ForEach(shoeAvailableSizes, id: \.self) { size in
-                Button("EU \(size)") {
-                    sizeDraft = size
-                    item.sizeText = size
-                    saveSilently()
-                    Task { await loadShoeMarketData(force: true) }
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(.snappy(duration: 0.3)) { shoeSizesOpen.toggle() }
+            } label: {
+                HStack(spacing: 10) {
+                    Text("Size")
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundStyle(Color.black.opacity(0.55))
+                    Spacer(minLength: 0)
+                    Text(shoeDisplaySizeLabel)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.88))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.black.opacity(0.45))
+                        .rotationEffect(.degrees(shoeSizesOpen ? 180 : 0))
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 14)
+                .contentShape(.rect)
             }
-        } label: {
-            HStack(spacing: 10) {
-                Text("Size")
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(Color.black.opacity(0.55))
-                Spacer(minLength: 0)
-                Text(shoeDisplaySizeLabel)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.88))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.45))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
-            .background {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.black.opacity(0.12), lineWidth: 1)
+            .buttonStyle(.plain)
+
+            if shoeSizesOpen {
+                Divider().padding(.horizontal, 14)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                    ForEach(shoeAvailableSizes, id: \.self) { size in
+                        let on = StockSizeDisplay.normalizedStorage(from: sizeDraft) == size
+                        Button {
+                            sizeDraft = size
+                            item.sizeText = size
+                            saveSilently()
+                            withAnimation(.snappy(duration: 0.3)) { shoeSizesOpen = false }
+                            Task { await loadShoeMarketData(force: true) }
+                        } label: {
+                            Text("EU \(size)")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundStyle(on ? .white : .black)
+                                .frame(maxWidth: .infinity, minHeight: 42)
+                                .background(on ? Color.black : Color.black.opacity(0.05), in: .rect(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(12)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .buttonStyle(.plain)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.black.opacity(0.12), lineWidth: 1)
+        }
+        .clipShape(.rect(cornerRadius: 14))
     }
 
     private var shoeBuyMarketCard: some View {
