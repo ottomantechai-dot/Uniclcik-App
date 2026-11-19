@@ -59,13 +59,7 @@ struct CardDetailView: View {
 
                     priceCard.padding(.top, 16)
 
-                    Button { report = SaleReport.from(card: card) } label: {
-                        Label("Sale report and listing", systemImage: "doc.text.magnifyingglass")
-                            .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
-                            .frame(maxWidth: .infinity, minHeight: 54)
-                            .background(.black, in: .capsule)
-                    }
-                    .buttonStyle(.plain).padding(.top, 12)
+                    SellButton(item: .card(card)).padding(.top, 12)
 
                     gradeTable.padding(.top, 18)
 

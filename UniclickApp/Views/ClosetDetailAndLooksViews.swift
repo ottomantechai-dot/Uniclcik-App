@@ -362,6 +362,9 @@ struct ClosetGarmentDetailView: View {
             shoeInlineMarketPrices
                 .padding(.top, 12)
 
+            SellButton(item: .shoe(name: item.catalogDisplayName, brand: item.brand ?? "", imageURL: shoeMarketComparison?.imageURL ?? CatalogShelf.imageURL(for: item.catalogDisplayName)))
+                .padding(.top, 14)
+
             ShoeUsedListingsStrip()
                 .padding(.top, 18)
 
@@ -3282,6 +3285,9 @@ enum CatalogShelf {
         if words.first == "Retro" || words.first == "Low" || words.first == "High" || words.first == "V2" { words.removeFirst() }
         return words.joined(separator: " ")
     }
+    static func imageURL(for name: String) -> URL? {
+        products.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }?.primaryImageURL
+    }
     static func variants(of name: String) -> [UpsoledProduct] {
         let key = model(of: name)
         return products.filter { model(of: $0.name) == key && $0.name.caseInsensitiveCompare(name) != .orderedSame }
@@ -3441,6 +3447,7 @@ struct CatalogShoeBody: View {
             .clipShape(.rect(cornerRadius: 20))
             .glassEffect(.regular, in: .rect(cornerRadius: 20))
 
+            SellButton(item: .shoe(name: product.name, brand: product.brand ?? "", imageURL: product.primaryImageURL)).padding(.top, 14)
             ShoeUsedListingsStrip().padding(.top, 18)
             ShoeRelatedShelf(name: product.name, brand: product.brand ?? "", onSelect: onSelect).padding(.top, 22)
             ShoeProductDetailsCard(rows: [
