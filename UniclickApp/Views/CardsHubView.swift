@@ -95,21 +95,6 @@ struct CardSetFilterSheet: View {
             ScrollView {
                 GlassEffectContainer(spacing: 10) {
                     LazyVStack(alignment: .leading, spacing: 18) {
-                        Button { market.choose(nil); dismiss() } label: {
-                            HStack(spacing: 12) {
-                                Image("IconCartas").resizable().scaledToFit().frame(width: 44, height: 44)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text("All cards").font(.system(size: 16, weight: .bold, design: .rounded)).foregroundStyle(.black)
-                                    Text("\(market.sets.count) sets").font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.5))
-                                }
-                                Spacer()
-                                if market.selectedSet == nil { Image(systemName: "checkmark.circle.fill").font(.system(size: 22)).foregroundStyle(.black) }
-                            }
-                            .padding(.horizontal, 14).frame(height: 68)
-                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
-                        }
-                        .buttonStyle(.plain)
-
                         ForEach(groups, id: \.series) { group in
                             VStack(alignment: .leading, spacing: 10) {
                                 Text(group.series.uppercased()).font(.system(size: 12, weight: .heavy)).tracking(0.6)
@@ -127,10 +112,7 @@ struct CardSetFilterSheet: View {
                     .padding(16)
                 }
             }
-            .background {
-                LinearGradient(colors: [Color(red: 0.90, green: 0.93, blue: 1.0), Color(red: 0.95, green: 0.92, blue: 1.0), Color(red: 0.97, green: 0.97, blue: 0.99)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
-            }
+            .background(Color(red: 0.965, green: 0.965, blue: 0.975).ignoresSafeArea())
             .searchable(text: $text, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search sets")
             .navigationTitle("Sets")
             .navigationBarTitleDisplayMode(.inline)
@@ -156,7 +138,7 @@ struct CardSetFilterSheet: View {
             }
             .padding(.horizontal, 8).padding(.vertical, 12)
             .frame(maxWidth: .infinity)
-            .background(on ? Color.white : Color.clear, in: .rect(cornerRadius: 20))
+            .background(Color.white, in: .rect(cornerRadius: 20))
                 .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
             .overlay { RoundedRectangle(cornerRadius: 20).strokeBorder(on ? Color.black : .clear, lineWidth: 1.5) }
         }
