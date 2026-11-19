@@ -849,10 +849,7 @@ struct StockMarketplaceListRow<ImageContent: View>: View {
 
     private var productInfoBlock: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(brandLine)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.48))
-                .lineLimit(1)
+            BrandLogoLabel(brand: brandLine)
 
             Text(nameLine)
                 .font(.system(size: 15, weight: .bold))
@@ -2387,6 +2384,32 @@ struct StockScanResultSheet: View {
         .background {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(background)
+        }
+    }
+}
+
+
+/// La marca del zapato con su logo (Nike, adidas, Jordan, New Balance, Puma, Dior); las demás, con su nombre.
+struct BrandLogoLabel: View {
+    let brand: String
+
+    private var asset: String? {
+        let key = brand.lowercased().replacingOccurrences(of: " ", with: "")
+        for name in ["nike", "adidas", "jordan", "newbalance", "puma", "dior"] where key.contains(name) { return "BrandLogo-" + name }
+        return nil
+    }
+
+    var body: some View {
+        if let asset {
+            Image(asset).resizable().scaledToFit()
+                .frame(width: 26, height: 18, alignment: .leading)
+                .foregroundStyle(.black)
+                .accessibilityLabel(brand)
+        } else {
+            Text(brand)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.black.opacity(0.5))
+                .lineLimit(1)
         }
     }
 }
