@@ -1515,15 +1515,11 @@ struct StockBrowseFiltersSheet: View {
     @Binding var layoutMode: StockLayoutMode
     let closetItems: [ClosetItem]
     let catalogProducts: [UpsoledProduct]
+    var onScan: () -> Void = {}
+    var onReports: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
 
-    @State private var categoryExpanded = true
-    @State private var platformExpanded = true
-    @State private var genderExpanded = false
-    @State private var brandsExpanded = false
-    @State private var shoeHeightExpanded = false
-    @State private var activityExpanded = false
-    @State private var showConnectionsDemo = false
+    private let gray = Color(red: 0.965, green: 0.965, blue: 0.975)
 
     private var brands: [String] {
         StockFilterEngine.availableBrands(closet: closetItems, catalog: catalogProducts)
@@ -1537,338 +1533,186 @@ struct StockBrowseFiltersSheet: View {
         return closet + catalog
     }
 
-    private var resultsLabel: String {
-        resultCount >= 1000 ? "1000+" : "\(resultCount)"
-    }
-
     var body: some View {
-        VStack(spacing: 0) {
-            headerBar
+        ScrollView(showsIndicators: false) {
+            GlassEffectContainer(spacing: 10) {
+                VStack(alignment: .leading, spacing: 14) {
+                    // Vista: cuadrícula o lista.
+                    section("View", icon: "rectangle.grid.2x2") {
+                        HStack(spacing: 10) {
+                            ForEach(StockLayoutMode.allCases) { mode in
+                                chip(mode == .grid ? "Grid" : "List", icon: mode.iconName, on: layoutMode == mode, wide: true) { layoutMode = mode }
+                            }
+                        }
+                    }
 
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    layoutModeRow
-                    filterDivider
+                    section("Sort", icon: "arrow.up.arrow.down") {
+                        flow(StockSortOrder.allCases.map(\.rawValue)) { raw in
+                            let order = StockSortOrder(rawValue: raw) ?? .newest
+                            chip(order.menuLabel, on: filters.sort == order) { filters.sort = order }
+                        }
+                    }
 
-                    toggleRow(title: "Available now", isOn: $filters.availableNow)
-                    filterDivider
-                    toggleRow(title: "Xpress shipping", icon: "🚀", isOn: $filters.expressShipping)
-                    filterDivider
-                    toggleRow(title: "Below retail price", isOn: $filters.belowRetail)
-                    filterDivider
-
-                    accordionSection(title: "Platform", isExpanded: $platformExpanded) {
-                        VStack(alignment: .leading, spacing: 0) {
+                    section("Platforms", icon: "storefront") {
+                        HStack(spacing: 10) {
                             ForEach(StockMarketplacePlatformOption.allCases) { platform in
-                                platformOptionRow(platform)
-                            }
-                        }
-                        .padding(.bottom, 8)
-                    }
-
-                    accordionSection(title: "Category", isExpanded: $categoryExpanded) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("Sneakers")
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(Color.black.opacity(0.88))
-                                .padding(.bottom, 10)
-
-                            ForEach(StockSneakerStyleFilter.allCases) { style in
-                                optionRow(
-                                    title: style.label,
-                                    isSelected: filters.sneakerStyles.contains(style.rawValue)
-                                ) {
-                                    toggleSet(style.rawValue, in: &filters.sneakerStyles)
-                                    if !filters.sneakerStyles.isEmpty {
-                                        filters.categoryKeys.insert(ClothingCategory.shoes.rawValue)
+                                let on = filters.marketplacePlatforms.contains(platform.rawValue)
+                                Button { toggleSet(platform.rawValue, in: &filters.marketplacePlatforms) } label: {
+                                    VStack(spacing: 8) {
+                                        StylizedMarketplaceLogo(brand: platform.rawValue).frame(width: 40, height: 16)
+                                            .frame(width: 58, height: 58)
+                                            .background(.white, in: .circle)
+                                            .glassEffect(.regular.interactive(), in: .circle)
+                                            .overlay { Circle().strokeBorder(on ? Color.black : .clear, lineWidth: 2) }
+                                        Text(platform.rawValue).font(.system(size: 12, weight: on ? .bold : .medium)).foregroundStyle(.black)
                                     }
                                 }
+                                .buttonStyle(.plain)
                             }
+                            Spacer(minLength: 0)
                         }
-                        .padding(.bottom, 8)
                     }
 
-                    accordionSection(title: "Gender", isExpanded: $genderExpanded) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(StockGenderFilter.allCases) { gender in
-                                optionRow(
-                                    title: gender.label,
-                                    isSelected: filters.genders.contains(gender.rawValue)
-                                ) {
-                                    toggleSet(gender.rawValue, in: &filters.genders)
-                                }
-                            }
-                        }
-                        .padding(.bottom, 8)
-                    }
-
-                    accordionSection(title: "Brands", isExpanded: $brandsExpanded) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            if brands.isEmpty {
-                                Text("No brands available")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundStyle(Color.black.opacity(0.45))
-                                    .padding(.vertical, 8)
-                            } else {
-                                ForEach(brands, id: \.self) { brand in
-                                    optionRow(
-                                        title: brand,
-                                        isSelected: filters.brands.contains(brand)
-                                    ) {
-                                        toggleSet(brand, in: &filters.brands)
+                    section("Brands", icon: "tag") {
+                        if brands.isEmpty {
+                            Text("No brands available").font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+                        } else {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 10) {
+                                    ForEach(brands, id: \.self) { brand in
+                                        let on = filters.brands.contains(brand)
+                                        Button { toggleSet(brand, in: &filters.brands) } label: {
+                                            BrandLogoLabel(brand: brand, wide: true)
+                                                .frame(width: 60, height: 26)
+                                                .frame(width: 84, height: 52)
+                                                .background(.white, in: .rect(cornerRadius: 16))
+                                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+                                                .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(on ? Color.black : .clear, lineWidth: 2) }
+                                        }
+                                        .buttonStyle(.plain).accessibilityLabel(brand)
                                     }
                                 }
+                                .padding(.vertical, 2)
                             }
+                            .scrollClipDisabled()
                         }
-                        .padding(.bottom, 8)
                     }
 
-                    accordionSection(title: "Shoe height", isExpanded: $shoeHeightExpanded) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(StockShoeHeightFilter.allCases) { height in
-                                optionRow(
-                                    title: height.label,
-                                    isSelected: filters.shoeHeights.contains(height.rawValue)
-                                ) {
-                                    toggleSet(height.rawValue, in: &filters.shoeHeights)
-                                }
-                            }
-                        }
-                        .padding(.bottom, 8)
+                    section("Availability", icon: "bolt") {
+                        toggle("Available now", icon: "checkmark.circle", isOn: $filters.availableNow)
+                        Divider()
+                        toggle("Xpress shipping", icon: "shippingbox", isOn: $filters.expressShipping)
+                        Divider()
+                        toggle("Below retail price", icon: "arrow.down.right.circle", isOn: $filters.belowRetail)
                     }
 
-                    accordionSection(title: "Activity", isExpanded: $activityExpanded) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(StockActivityFilter.allCases) { activity in
-                                optionRow(
-                                    title: activity.label,
-                                    isSelected: filters.activities.contains(activity.rawValue)
-                                ) {
-                                    toggleSet(activity.rawValue, in: &filters.activities)
-                                }
+                    section("Category", icon: "square.grid.2x2") {
+                        flow(StockSneakerStyleFilter.allCases.map(\.rawValue)) { raw in
+                            let style = StockSneakerStyleFilter(rawValue: raw)
+                            chip(style?.label ?? raw, on: filters.sneakerStyles.contains(raw)) {
+                                toggleSet(raw, in: &filters.sneakerStyles)
+                                if !filters.sneakerStyles.isEmpty { filters.categoryKeys.insert(ClothingCategory.shoes.rawValue) }
                             }
                         }
-                        .padding(.bottom, 8)
                     }
 
-                    marketplaceConnectionsDemoRow
+                    section("Gender", icon: "person.2") {
+                        flow(StockGenderFilter.allCases.map(\.rawValue)) { raw in
+                            chip(StockGenderFilter(rawValue: raw)?.label ?? raw, on: filters.genders.contains(raw)) { toggleSet(raw, in: &filters.genders) }
+                        }
+                    }
+
+                    section("Shoe height", icon: "ruler") {
+                        flow(StockShoeHeightFilter.allCases.map(\.rawValue)) { raw in
+                            chip(StockShoeHeightFilter(rawValue: raw)?.label ?? raw, on: filters.shoeHeights.contains(raw)) { toggleSet(raw, in: &filters.shoeHeights) }
+                        }
+                    }
+
+                    section("Activity", icon: "figure.run") {
+                        flow(StockActivityFilter.allCases.map(\.rawValue)) { raw in
+                            chip(StockActivityFilter(rawValue: raw)?.label ?? raw, on: filters.activities.contains(raw)) { toggleSet(raw, in: &filters.activities) }
+                        }
+                    }
+
+                    section("Tools", icon: "wand.and.stars") {
+                        HStack(spacing: 10) {
+                            chip("Scan a box", icon: "barcode.viewfinder", on: false, wide: true) { dismiss(); onScan() }
+                            chip("Sale reports", icon: "doc.text.magnifyingglass", on: false, wide: true) { dismiss(); onReports() }
+                        }
+                    }
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 24)
+                .padding(.horizontal, 16).padding(.bottom, 110)
             }
-
-            applyButton
         }
-        .background(Color.white)
-        .preferredColorScheme(.light)
-        .sheet(isPresented: $showConnectionsDemo) {
-            StockMarketplaceConnectionsDemoView()
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-        }
-    }
-
-    private var marketplaceConnectionsDemoRow: some View {
-        Button {
-            showConnectionsDemo = true
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "link.circle.fill")
-                    .font(.system(size: 22))
-                    .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Marketplaces")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.black.opacity(0.88))
-                    Text("Estado de StockX, GOAT, eBay y Flight Club")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.black.opacity(0.45))
-                }
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Color.black.opacity(0.28))
-            }
-            .padding(.vertical, 14)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var headerBar: some View {
-        ZStack {
-            Text("Filter by")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.88))
-
+        .background(gray.ignoresSafeArea())
+        .safeAreaInset(edge: .top, spacing: 0) {
             HStack {
+                Button { dismiss() } label: { TopBarGlassButton(systemImage: "xmark") }.buttonStyle(.plain)
                 Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(Color.black.opacity(0.72))
-                        .frame(width: 32, height: 32)
-                }
-                .buttonStyle(.plain)
+                Text("Filters").font(.system(size: 17, weight: .bold, design: .rounded)).foregroundStyle(.black)
+                Spacer()
+                Button { filters.reset() } label: { TopBarGlassButton(systemImage: "arrow.counterclockwise") }
+                    .buttonStyle(.plain).accessibilityLabel("Reset filters")
             }
+            .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 10)
+            .background { LinearGradient(colors: [gray, gray.opacity(0)], startPoint: .center, endPoint: .bottom).ignoresSafeArea(edges: .top) }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 18)
-        .padding(.bottom, 14)
-    }
-
-    private var layoutModeRow: some View {
-        HStack {
-            Text("Results view")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Color.black.opacity(0.88))
-            Spacer(minLength: 12)
-            HStack(spacing: 14) {
-                ForEach(StockLayoutMode.allCases) { mode in
-                    Button {
-                        layoutMode = mode
-                    } label: {
-                        Image(systemName: mode.iconName)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(layoutMode == mode ? Color.black : Color.black.opacity(0.28))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(mode.accessibilityLabel)
-                }
-            }
-        }
-        .padding(.vertical, 16)
-    }
-
-    private func toggleRow(title: String, icon: String? = nil, isOn: Binding<Bool>) -> some View {
-        HStack(spacing: 8) {
-            if let icon {
-                Text(icon)
-                    .font(.system(size: 14))
-            }
-            Text(title)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Color.black.opacity(0.88))
-            Spacer(minLength: 12)
-            Toggle("", isOn: isOn)
-                .labelsHidden()
-                .tint(.black)
-        }
-        .padding(.vertical, 16)
-    }
-
-    private func accordionSection<Content: View>(
-        title: String,
-        isExpanded: Binding<Bool>,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(spacing: 0) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.22)) {
-                    isExpanded.wrappedValue.toggle()
-                }
-            } label: {
-                HStack {
-                    Text(title.uppercased())
-                        .font(.system(size: 13, weight: .heavy))
-                        .foregroundStyle(Color.black.opacity(0.88))
-                        .tracking(0.3)
-                    Spacer(minLength: 12)
-                    Image(systemName: isExpanded.wrappedValue ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.black.opacity(0.55))
-                }
-                .padding(.vertical, 18)
-                .contentShape(Rectangle())
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Button { dismiss() } label: {
+                Text("See \(resultCount >= 1000 ? "1000+" : "\(resultCount)") results")
+                    .font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 56).background(.black, in: .capsule)
             }
             .buttonStyle(.plain)
-
-            if isExpanded.wrappedValue {
-                content()
-            }
-
-            filterDivider
+            .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 8)
+            .background { LinearGradient(colors: [gray.opacity(0), gray], startPoint: .top, endPoint: .center).ignoresSafeArea(edges: .bottom) }
         }
+        .preferredColorScheme(.light)
     }
 
-    private func platformOptionRow(_ platform: StockMarketplacePlatformOption) -> some View {
-        Button {
-            toggleSet(platform.rawValue, in: &filters.marketplacePlatforms)
-        } label: {
-            HStack(spacing: 12) {
-                StylizedMarketplaceLogo(brand: platform.rawValue)
-                    .frame(width: 40, height: 40)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                Text(platform.rawValue)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.88))
-
-                Spacer(minLength: 12)
-
-                if filters.marketplacePlatforms.contains(platform.rawValue) {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color.black)
-                }
+    private func section<Content: View>(_ title: String, icon: String, @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
+                    .frame(width: 32, height: 32).glassEffect(.regular, in: .circle)
+                Text(title).font(.system(size: 17, weight: .bold, design: .rounded)).foregroundStyle(.black)
             }
-            .padding(.vertical, 10)
-            .contentShape(Rectangle())
+            content()
         }
-        .buttonStyle(.plain)
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white, in: .rect(cornerRadius: 24))
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
     }
 
-    private func optionRow(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+    private func chip(_ title: String, icon: String? = nil, on: Bool, wide: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack {
-                Text(title)
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(Color.black.opacity(0.82))
-                Spacer(minLength: 12)
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color.black)
-                }
+            HStack(spacing: 6) {
+                if let icon { Image(systemName: icon).font(.system(size: 14, weight: .semibold)) }
+                Text(title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
             }
-            .padding(.vertical, 10)
-            .contentShape(Rectangle())
+            .foregroundStyle(on ? .white : .black)
+            .padding(.horizontal, 14).frame(maxWidth: wide ? .infinity : nil, minHeight: 40)
+            .background(on ? Color.black : Color.black.opacity(0.05), in: .capsule)
         }
         .buttonStyle(.plain)
     }
 
-    private var filterDivider: some View {
-        Rectangle()
-            .fill(Color.black.opacity(0.08))
-            .frame(height: 1)
+    /// Fichas que van saltando de línea según quepan.
+    private func flow<Content: View>(_ items: [String], @ViewBuilder _ content: @escaping (String) -> Content) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8, alignment: .leading)], alignment: .leading, spacing: 8) {
+            ForEach(items, id: \.self) { content($0).frame(maxWidth: .infinity, alignment: .leading) }
+        }
     }
 
-    private var applyButton: some View {
-        Button {
-            dismiss()
-        } label: {
-            Text("See \(resultsLabel) results")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(Capsule(style: .continuous).fill(Color.black))
+    private func toggle(_ title: String, icon: String, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            Label(title, systemImage: icon).font(.system(size: 15, weight: .medium)).foregroundStyle(.black)
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
-        .padding(.bottom, 20)
-        .background(Color.white)
+        .tint(.black)
     }
 
     private func toggleSet(_ value: String, in set: inout Set<String>) {
-        if set.contains(value) {
-            set.remove(value)
-        } else {
-            set.insert(value)
-        }
+        if set.contains(value) { set.remove(value) } else { set.insert(value) }
     }
 }
 

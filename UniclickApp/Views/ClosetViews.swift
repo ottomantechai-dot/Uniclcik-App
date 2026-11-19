@@ -205,6 +205,7 @@ struct ClosetView: View {
     /// Ficha grande de una prenda (estudio) — push en el stack de Your stock.
     @State private var garmentDetailItemID: UUID?
     @State private var stockSearchOpen = false
+    @State private var showSaleReports = false
 
     @State private var stockSearchText = ""
     @FocusState private var stockSearchFocused: Bool
@@ -489,18 +490,9 @@ struct ClosetView: View {
                     Button { showStockBarcodeScanner = true } label: { TopBarGlassButton(systemImage: "barcode.viewfinder") }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Scan a box barcode")
-                    Menu {
-                        Button { showStockFiltersSheet = true } label: { Label("Filters", systemImage: "line.3.horizontal.decrease") }
-                        Button { showStockBarcodeScanner = true } label: { Label("Scan a box", systemImage: "barcode.viewfinder") }
-                        NavigationLink { SaleReportsHistoryView() } label: { Label("Sale reports", systemImage: "doc.text.magnifyingglass") }
-                        Section("Sort") {
-                            ForEach(StockSortOrder.allCases) { order in
-                                Button { stockFilters.sort = order } label: {
-                                    if stockFilters.sort == order { Label(order.menuLabel, systemImage: "checkmark") } else { Text(order.menuLabel) }
-                                }
-                            }
-                        }
-                    } label: { TopBarGlassButton(systemImage: "slider.horizontal.3") }
+                    // Abre directamente la pantalla completa de filtros (orden, vista, plataformas, marcas…).
+                    Button { showStockFiltersSheet = true } label: { TopBarGlassButton(systemImage: "slider.horizontal.3") }
+                        .buttonStyle(.plain)
                         .accessibilityLabel("Filters and sort")
                 }
             }
@@ -675,11 +667,12 @@ struct ClosetView: View {
                 filters: $stockFilters,
                 layoutMode: stockLayoutModeBinding,
                 closetItems: activeClosetItems,
-                catalogProducts: catalogVM.products
+                catalogProducts: catalogVM.products,
+                onScan: { showStockBarcodeScanner = true },
+                onReports: { showSaleReports = true }
             )
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
         }
+        .navigationDestination(isPresented: $showSaleReports) { SaleReportsHistoryView() }
         .sheet(item: $scanLookupPayload) { payload in
             StockScanResultSheet(
                 payload: payload,
@@ -1128,27 +1121,30 @@ struct ClosetView: View {
     private var unifiedStockGridContent: some View {
         LazyVStack(alignment: .leading, spacing: 12) {
             ForEach(filteredUnifiedStockSections) { section in
-                LazyVGrid(columns: gridColumns, spacing: 12) {
-                    ForEach(section.closetItems) { item in
-                        closetCell(item)
-                            .id("\(item.id)-\(item.priceText ?? "")-\(item.purchasePriceText ?? "")")
-                            .padding(.top, 10)
-                    }
-                    ForEach(section.catalogProducts) { product in
-                        UpsoledProductCard(
-                            product: product,
-                            selectionMode: closetSelectionMode,
-                            isSelected: catalogSelectedIDs.contains(product.id)
-                        ) {
-                            if closetSelectionMode {
-                                toggleCatalogSelection(product)
-                            } else {
-                                openCatalogDetail(product)
+                // Mismas fichas que en Inicio: marca arriba a la izquierda y plataformas a la derecha.
+                GlassEffectContainer(spacing: 10) {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                        ForEach(mergedRows(section)) { row in
+                            switch row.kind {
+                            case .closet(let item):
+                                Button { garmentDetailItemID = item.id } label: {
+                                    stockTile(name: item.catalogDisplayName, brand: item.brand ?? "") {
+                                        ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            case .catalog(let product):
+                                Button { openCatalogDetail(product) } label: {
+                                    stockTile(name: product.name, brand: product.brand ?? "") {
+                                        StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 320, fillFrame: false)
+                                    }
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .padding(.top, 10)
                     }
                 }
+                .padding(.horizontal, 16)
             }
         }
         .padding(.bottom, bottomInsetForClosetGrid)
@@ -1185,6 +1181,23 @@ struct ClosetView: View {
             round += 1
         }
         return mixed
+    }
+
+    private func stockTile<Photo: View>(name: String, brand: String, @ViewBuilder photo: () -> Photo) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            photo().frame(maxWidth: .infinity).frame(height: 104).blendMode(.multiply)
+            Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
+                .lineLimit(2).multilineTextAlignment(.leading).frame(maxWidth: .infinity, minHeight: 36, alignment: .topLeading)
+        }
+        .padding(12).padding(.top, 16)
+        .background(.white, in: .rect(cornerRadius: 20))
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+        .overlay(alignment: .topLeading) {
+            BrandLogoLabel(brand: brand, compact: true).frame(width: 30, height: 30).background(.white, in: .circle).overlay { Circle().strokeBorder(Color.black.opacity(0.10), lineWidth: 0.5) }.padding(8)
+        }
+        .overlay(alignment: .topTrailing) {
+            MarketplaceDots(brands: ["StockX", "GOAT", "eBay"]).padding(.top, 10).padding(.trailing, 8)
+        }
     }
 
     private var unifiedStockListContent: some View {

@@ -2799,7 +2799,7 @@ struct MarketplaceDots: View {
                 }
                 .frame(width: size, height: size)
                 .background(.white, in: .circle)
-                .glassEffect(.regular, in: .circle)
+                .overlay { Circle().strokeBorder(Color.black.opacity(0.10), lineWidth: 0.5) }
                 .zIndex(Double(index))
                 .accessibilityLabel(brand)
             }
