@@ -362,6 +362,10 @@ struct ClosetGarmentDetailView: View {
             ShoeProductDetailsCard(rows: shoeDetailRows)
                 .padding(.top, 22)
 
+            // Comparativa por talla y plataforma, y debajo el historial de precios.
+            DashboardMarketPricesSection(comparison: shoeMarketComparison, maxVisibleRows: 6)
+                .padding(.top, 18)
+
             ShoeMarketHistoryCard(sales: shoeSales)
                 .padding(.top, 18)
                 .padding(.bottom, 24)
