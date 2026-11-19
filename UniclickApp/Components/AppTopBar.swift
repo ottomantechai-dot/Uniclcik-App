@@ -16,11 +16,10 @@ struct AppTopBar<Extra: View>: View {
             HStack(spacing: 10) {
                 HStack(spacing: 9) {
                     Image("UniclickMark").resizable().scaledToFill()
-                        .frame(width: 30, height: 30).clipShape(.rect(cornerRadius: 9))
-                    Text(title).font(.system(size: 17, weight: .bold, design: .rounded)).foregroundStyle(.black)
+                        .frame(width: 34, height: 34).clipShape(.rect(cornerRadius: 10))
+                    Text(title).font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                 }
-                .padding(.leading, 7).padding(.trailing, 14).frame(height: 44)
-                .glassEffect(.regular, in: .capsule)
+                .frame(height: 44)
 
                 Spacer(minLength: 0)
                 extra()

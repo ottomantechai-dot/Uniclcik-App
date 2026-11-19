@@ -119,23 +119,32 @@ struct MainTabView: View {
     /// Solo el `TabView` con sus ítems; los `.environmentObject`/`task`/`onReceive` van en `mainTabChrome`.
     private var bareTabView: some View {
         TabView(selection: $tabRouter.selected) {
-            Tab("Inicio", systemImage: "house.fill", value: UpsoledMainTab.home) {
+            Tab(value: UpsoledMainTab.home) {
                 NavigationStack {
                     DashboardView()
                         .safeAreaInset(edge: .top, spacing: 0) { AppTopBar(title: "Uniclick") }
                 }
+            } label: {
+                // Solo el icono, sin texto debajo.
+                Image("TabInicio").accessibilityLabel("Inicio")
             }
 
-            Tab("Zapatos", systemImage: "shoe.2.fill", value: UpsoledMainTab.closet) {
+            Tab(value: UpsoledMainTab.closet) {
                 NavigationStack {
                     ClosetView()
                 }
+            } label: {
+                // Solo el icono, sin texto debajo.
+                Image("TabZapatos").accessibilityLabel("Zapatos")
             }
 
-            Tab("Cartas", systemImage: "rectangle.portrait.on.rectangle.portrait.fill", value: UpsoledMainTab.cards) {
+            Tab(value: UpsoledMainTab.cards) {
                 NavigationStack {
                     CardsHubView()
                 }
+            } label: {
+                // Solo el icono, sin texto debajo.
+                Image("TabCartas").accessibilityLabel("Cartas")
             }
         }
     }
