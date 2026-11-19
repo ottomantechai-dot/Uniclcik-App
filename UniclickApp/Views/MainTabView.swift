@@ -129,12 +129,6 @@ struct MainTabView: View {
             Tab("Zapatos", systemImage: "shoe.2.fill", value: UpsoledMainTab.closet) {
                 NavigationStack {
                     ClosetView()
-                        .safeAreaInset(edge: .top, spacing: 0) {
-                            AppTopBar(title: "Zapatos") {
-                                NavigationLink { SaleReportsHistoryView() } label: { TopBarGlassButton(systemImage: "doc.text.magnifyingglass") }
-                                    .buttonStyle(.plain)
-                            }
-                        }
                 }
             }
 

@@ -204,6 +204,7 @@ struct ClosetView: View {
 
     /// Ficha grande de una prenda (estudio) — push en el stack de Your stock.
     @State private var garmentDetailItemID: UUID?
+    @State private var stockChromeHidden = false
 
     @State private var stockSearchText = ""
     @FocusState private var stockSearchFocused: Bool
@@ -464,22 +465,32 @@ struct ClosetView: View {
         return h
     }
 
-    private var yourStockHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Hey, Sneakerhead 👋")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(Color.black)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-            Text("Find the most exclusive sneakers.")
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(Color.black.opacity(0.45))
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+    /// Barra flotante de arriba: el contenido pasa por detrás. Debajo, el buscador y los filtros,
+    /// que se esconden al bajar por la lista.
+    private var stockTopChrome: some View {
+        VStack(spacing: 8) {
+            AppTopBar(title: "Zapatos") {
+                NavigationLink { SaleReportsHistoryView() } label: { TopBarGlassButton(systemImage: "doc.text.magnifyingglass") }
+                    .buttonStyle(.plain)
+            }
+            if hasAnyStockContent, !stockChromeHidden {
+                VStack(spacing: 10) {
+                    StockBrowseSearchBar(
+                        searchText: $stockSearchText,
+                        searchFocused: $stockSearchFocused,
+                        onScanBarcode: { showStockBarcodeScanner = true }
+                    )
+                    stockFilterSortToolbar
+                }
+                .padding(.horizontal, 16)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        .padding(.bottom, 10)
+        .background {
+            LinearGradient(colors: [.white, .white.opacity(0.92), .white.opacity(0)], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea(edges: .top)
+        }
     }
 
     private func openAddStockFlow(openPipeline: Bool = false) {
@@ -494,50 +505,36 @@ struct ClosetView: View {
         ZStack(alignment: .bottom) {
             Color.white.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                VStack(spacing: 8) {
-                    yourStockHeader
-
-                    if hasAnyStockContent {
-                        VStack(spacing: 10) {
-                            StockBrowseSearchBar(
-                                searchText: $stockSearchText,
-                                searchFocused: $stockSearchFocused,
-                                onScanBarcode: { showStockBarcodeScanner = true }
-                            )
-
-                            stockFilterSortToolbar
-                        }
+            ScrollViewReader { scrollProxy in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Color.clear
+                            .frame(height: hasAnyStockContent ? 176 : 64)
+                            .id("stockScrollTop")
+                        productsTabContent
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 6)
-                .background(Color.white)
-
-                ScrollViewReader { scrollProxy in
-                    ScrollView(showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Color.clear
-                                .frame(height: 1)
-                                .id("stockScrollTop")
-                            productsTabContent
-                        }
+                .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { old, new in
+                    // Al bajar se esconden el buscador y los filtros; al subir un poco, vuelven.
+                    if new < 30 { if stockChromeHidden { withAnimation(.snappy(duration: 0.28)) { stockChromeHidden = false } } }
+                    else if new - old > 6, !stockChromeHidden, !stockSearchFocused { withAnimation(.snappy(duration: 0.28)) { stockChromeHidden = true } }
+                    else if old - new > 6, stockChromeHidden { withAnimation(.snappy(duration: 0.28)) { stockChromeHidden = false } }
+                }
+                .refreshable {
+                    await catalogVM.reload()
+                }
+                .onChange(of: stockFilters.quickCategory) { _, _ in
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        scrollProxy.scrollTo("stockScrollTop", anchor: .top)
                     }
-                    .refreshable {
-                        await catalogVM.reload()
-                    }
-                    .onChange(of: stockFilters.quickCategory) { _, _ in
-                        withAnimation(.easeOut(duration: 0.28)) {
-                            scrollProxy.scrollTo("stockScrollTop", anchor: .top)
-                        }
-                    }
-                    .onChange(of: stockFilters.categoryKeys) { _, _ in
-                        withAnimation(.easeOut(duration: 0.28)) {
-                            scrollProxy.scrollTo("stockScrollTop", anchor: .top)
-                        }
+                }
+                .onChange(of: stockFilters.categoryKeys) { _, _ in
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        scrollProxy.scrollTo("stockScrollTop", anchor: .top)
                     }
                 }
             }
+            .overlay(alignment: .top) { stockTopChrome }
 
             if draftBannerCount > 0 {
                 draftResumeBanner
@@ -4335,6 +4332,11 @@ struct MarketComparison {
     let skuAligned: Bool
 
     var matchedTitle: String? { platforms.compactMap(\.matchedTitle).first }
+    /// Nombres para buscar el giro 360°: primero el de StockX, que es quien publica esas fotos.
+    var spinTitles: [String] {
+        let stockx = platforms.first { $0.platform.lowercased().contains("stockx") }?.matchedTitle
+        return ([stockx] + platforms.map(\.matchedTitle)).compactMap { $0 }
+    }
     var matchedSKU: String? { platforms.compactMap(\.matchedSKU).first }
     /// Imagen del producto (la primera plataforma que la traiga).
     var imageURL: URL? { platforms.compactMap(\.imageURL).first }

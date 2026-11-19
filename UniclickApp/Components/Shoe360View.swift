@@ -26,21 +26,32 @@ final class Shoe360Loader: ObservableObject {
         URL(string: String(format: "https://images.stockx.com/360/%@/Images/%@/Lv2/img%02d.jpg?w=700&q=60&fm=jpg", slug, slug, frame + 1))
     }
 
-    func load(title: String) async {
-        guard title != loadedTitle else { return }
-        loadedTitle = title
+    /// Prueba cada nombre (el de StockX primero) hasta dar con uno que tenga giro.
+    func load(titles: [String]) async {
+        let key = titles.joined(separator: "|")
+        guard key != loadedTitle else { return }
+        loadedTitle = key
         frames = Array(repeating: nil, count: Self.frameCount)
         available = false
-        let slug = Self.slug(title)
-        guard !slug.isEmpty, let first = await Self.image(slug: slug, frame: 0) else { return }
-        guard loadedTitle == title else { return }
-        frames[0] = first
+        var slugs: [String] = []
+        for title in titles {
+            for option in [Self.slug(title), Self.slug(title.replacingOccurrences(of: "Adidas", with: "adidas"))] where !option.isEmpty && !slugs.contains(option) {
+                slugs.append(option)
+            }
+        }
+        var found: (slug: String, image: UIImage)?
+        for slug in slugs.prefix(6) {
+            if let first = await Self.image(slug: slug, frame: 0) { found = (slug, first); break }
+        }
+        guard let found, loadedTitle == key else { return }
+        frames[0] = found.image
         available = true
+        let slug = found.slug
         await withTaskGroup(of: (Int, UIImage?).self) { group in
             for frame in 1..<Self.frameCount {
                 group.addTask { (frame, await Self.image(slug: slug, frame: frame)) }
             }
-            for await (frame, image) in group where loadedTitle == title {
+            for await (frame, image) in group where loadedTitle == key {
                 frames[frame] = image
             }
         }
@@ -60,8 +71,22 @@ final class Shoe360Loader: ObservableObject {
 
 /// Foto del zapato que gira al arrastrar. Sin giro disponible, enseña `fallbackURL`.
 struct Shoe360View: View {
-    let title: String
+    /// Nombres del zapato a probar, del más fiable (el de StockX) al menos.
+    let titles: [String]
     var fallbackURL: URL?
+    /// Lo que se enseña si no hay giro (por ejemplo, la foto propia del stock).
+    var fallback: AnyView?
+
+    init(title: String, fallbackURL: URL? = nil) {
+        self.titles = [title]
+        self.fallbackURL = fallbackURL
+    }
+
+    init(titles: [String], fallbackURL: URL? = nil, fallback: AnyView? = nil) {
+        self.titles = titles.filter { !$0.isEmpty }
+        self.fallbackURL = fallbackURL
+        self.fallback = fallback
+    }
 
     @StateObject private var loader = Shoe360Loader()
     @State private var index = 0
@@ -92,6 +117,8 @@ struct Shoe360View: View {
                 .padding(.horizontal, 10).padding(.vertical, 6)
                 .glassEffect(.regular, in: .capsule)
                 .padding(.bottom, 8)
+            } else if let fallback {
+                fallback
             } else {
                 AsyncImage(url: fallbackURL) { phase in
                     if let image = phase.image { image.resizable().scaledToFit() } else {
@@ -101,7 +128,7 @@ struct Shoe360View: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .task(id: title) { await loader.load(title: title) }
+        .task(id: titles) { await loader.load(titles: titles) }
         .onChange(of: ready) { _, count in
             // Cuando están todas las fotos, da una vuelta sola para enseñar que gira.
             guard count == Shoe360Loader.frameCount, !didIntro else { return }

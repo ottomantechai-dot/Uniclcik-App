@@ -494,13 +494,18 @@ struct ClosetGarmentDetailView: View {
     private var shoeDetailHero: some View {
         ZStack(alignment: .top) {
             Color.white
-            ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
-                .padding(.horizontal, 6)
-                .scaleEffect(1.14)
-                .offset(y: -10)
+            Shoe360View(
+                titles: (shoeMarketComparison?.spinTitles ?? []) + [item.catalogDisplayName, item.name],
+                fallback: AnyView(
+                    ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
+                        .padding(.horizontal, 6)
+                        .scaleEffect(1.14)
+                        .offset(y: -10)
+                )
+            )
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 210)
+        .frame(height: 230)
         .clipped()
     }
 

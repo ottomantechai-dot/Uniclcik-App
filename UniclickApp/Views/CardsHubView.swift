@@ -7,35 +7,64 @@ import SwiftUI
 struct CardsHubView: View {
     enum Mode: String, CaseIterable { case packs = "Sobres", market = "Mercado" }
     @State private var mode: Mode = .packs
+    @State private var chromeHidden = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("", selection: $mode) {
-                ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 16).padding(.vertical, 10)
-
+        Group {
             switch mode {
-            case .packs: CardPacksView()
-            case .market: CardsMarketView()
+            case .packs: CardPacksView(chromeHidden: $chromeHidden)
+            case .market: CardsMarketView(chromeHidden: $chromeHidden)
             }
         }
-        .background(Color(red: 0.96, green: 0.96, blue: 0.97))
+        .background(Color(red: 0.96, green: 0.96, blue: 0.97).ignoresSafeArea())
+        .overlay(alignment: .top) { chrome }
         .toolbar(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .onChange(of: mode) { _, _ in chromeHidden = false }
+        .preferredColorScheme(.light)
+    }
+
+    /// Barra flotante: las cartas pasan por detrás y el selector se esconde al bajar.
+    private var chrome: some View {
+        VStack(spacing: 8) {
             AppTopBar(title: "Cartas") {
                 NavigationLink { SaleReportsHistoryView() } label: { TopBarGlassButton(systemImage: "doc.text.magnifyingglass") }
                     .buttonStyle(.plain)
             }
+            if !chromeHidden {
+                Picker("", selection: $mode) {
+                    ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
-        .preferredColorScheme(.light)
+        .padding(.bottom, 10)
+        .background {
+            LinearGradient(colors: [Color(red: 0.96, green: 0.96, blue: 0.97), Color(red: 0.96, green: 0.96, blue: 0.97).opacity(0.9), Color(red: 0.96, green: 0.96, blue: 0.97).opacity(0)],
+                           startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea(edges: .top)
+        }
+    }
+}
+
+/// Esconde la parte de arriba al bajar por la lista y la devuelve al subir.
+struct HidesChromeOnScroll: ViewModifier {
+    @Binding var hidden: Bool
+
+    func body(content: Content) -> some View {
+        content.onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { old, new in
+            if new < 30 { if hidden { withAnimation(.snappy(duration: 0.28)) { hidden = false } } }
+            else if new - old > 6, !hidden { withAnimation(.snappy(duration: 0.28)) { hidden = true } }
+            else if old - new > 6, hidden { withAnimation(.snappy(duration: 0.28)) { hidden = false } }
+        }
     }
 }
 
 // MARK: - Mercado de cartas reales
 
 struct CardsMarketView: View {
+    @Binding var chromeHidden: Bool
     @State private var query = ""
     @State private var cards: [PokemonCardData] = []
     @State private var loading = false
@@ -47,6 +76,7 @@ struct CardsMarketView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                Color.clear.frame(height: 96)
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                     TextField("Buscar una carta por nombre", text: $query)
@@ -84,6 +114,7 @@ struct CardsMarketView: View {
             }
             .padding(16)
         }
+        .modifier(HidesChromeOnScroll(hidden: $chromeHidden))
         .task { if cards.isEmpty { await search("Charizard") } }
         .sheet(item: $report) { SaleReportView(report: $0) }
     }
@@ -125,17 +156,20 @@ struct CardsMarketView: View {
 // MARK: - Sobres
 
 struct CardPacksView: View {
+    @Binding var chromeHidden: Bool
     @ObservedObject private var store = CardPackStore.shared
     @State private var opened: [UniCard]?
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                Color.clear.frame(height: 96)
                 packCard
                 collection
             }
             .padding(16)
         }
+        .modifier(HidesChromeOnScroll(hidden: $chromeHidden))
         .fullScreenCover(isPresented: Binding(get: { opened != nil }, set: { if !$0 { opened = nil } })) {
             if let opened { PackOpeningView(cards: opened) { self.opened = nil } }
         }
