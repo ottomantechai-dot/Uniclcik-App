@@ -1184,20 +1184,37 @@ enum PokemonTCGClient {
     }
     private struct SetImgs: Decodable { let logo: String?; let symbol: String? }
 
-    /// Todas las colecciones, de la más nueva a la más antigua.
-    static func fetchSets() async -> [PokemonSetData] {
-        guard let url = URL(string: "https://api.pokemontcg.io/v2/sets?orderBy=-releaseDate&pageSize=250") else { return [] }
-        var req = URLRequest(url: url)
-        req.timeoutInterval = 20
-        req.cachePolicy = .returnCacheDataElseLoad
-        guard let data = await dataWithRetry(req), let env = try? JSONDecoder().decode(SetEnv.self, from: data) else { return [] }
-        return env.data.map {
-            PokemonSetData(id: $0.id, name: $0.name, series: $0.series ?? "", total: $0.total ?? 0,
-                           year: String(($0.releaseDate ?? "").prefix(4)), logoURL: $0.images?.logo.flatMap { URL(string: $0) })
-        }
+    private struct SeedSet: Codable { let id: String; let name: String; let series: String; let total: Int; let year: String; let logo: String }
+    private static let cacheFolder: URL = {
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("cards", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }()
+    private static func sets(from data: Data?) -> [PokemonSetData] {
+        guard let data, let rows = try? JSONDecoder().decode([SeedSet].self, from: data) else { return [] }
+        return rows.map { PokemonSetData(id: $0.id, name: $0.name, series: $0.series, total: $0.total, year: $0.year, logoURL: URL(string: $0.logo)) }
     }
 
-    /// Una página de cartas (30 por página), con o sin precio, en el orden de la colección.
+    /// Colecciones disponibles al instante: las últimas guardadas en el teléfono o las incluidas en la app.
+    static func storedSets() -> [PokemonSetData] {
+        let saved = sets(from: try? Data(contentsOf: cacheFolder.appendingPathComponent("sets.json")))
+        return saved.isEmpty ? sets(from: CardSetsSeed.json.data(using: .utf8)) : saved
+    }
+
+    /// Todas las colecciones, de la más nueva a la más antigua. Si el catálogo falla, las guardadas.
+    static func fetchSets() async -> [PokemonSetData] {
+        guard let url = URL(string: "https://api.pokemontcg.io/v2/sets?orderBy=-releaseDate&pageSize=250") else { return storedSets() }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 12
+        guard let data = await dataWithRetry(req), let env = try? JSONDecoder().decode(SetEnv.self, from: data), !env.data.isEmpty else { return storedSets() }
+        let rows = env.data.map { SeedSet(id: $0.id, name: $0.name, series: $0.series ?? "", total: $0.total ?? 0, year: String(($0.releaseDate ?? "").prefix(4)), logo: $0.images?.logo ?? "") }
+        if let encoded = try? JSONEncoder().encode(rows) {
+            try? encoded.write(to: cacheFolder.appendingPathComponent("sets.json"), options: .atomic)
+            return sets(from: encoded)
+        }
+        return storedSets()
+    }
+
     /// El catálogo a veces responde con error; se reintenta un par de veces antes de rendirse.
     private static func dataWithRetry(_ request: URLRequest, attempts: Int = 3) async -> Data? {
         for attempt in 0..<attempts {
@@ -1221,8 +1238,16 @@ enum PokemonTCGClient {
         guard let url = comps.url else { return nil }
         var req = URLRequest(url: url)
         req.timeoutInterval = 20
-        guard let data = await dataWithRetry(req), let env = try? JSONDecoder().decode(Env.self, from: data) else { return nil }
-        return env.data.map(map)
+        req.timeoutInterval = 12
+        let key = Data((query + "|\(page)|\(pageSize)").utf8).base64EncodedString().replacingOccurrences(of: "/", with: "_").prefix(120)
+        let file = cacheFolder.appendingPathComponent("page-\(key).json")
+        if let data = await dataWithRetry(req, attempts: 4), let env = try? JSONDecoder().decode(Env.self, from: data) {
+            try? data.write(to: file, options: .atomic)
+            return env.data.map(map)
+        }
+        // El catálogo no respondió: se enseña lo último que se guardó de esta misma página.
+        if let data = try? Data(contentsOf: file), let env = try? JSONDecoder().decode(Env.self, from: data) { return env.data.map(map) }
+        return nil
     }
 
     private static func map(_ c: Card) -> PokemonCardData {

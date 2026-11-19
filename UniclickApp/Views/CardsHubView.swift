@@ -59,7 +59,7 @@ final class CardsMarketModel: ObservableObject {
     @Published var query = ""
     @Published var searchOpen = false
     @Published var showFilter = false
-    @Published var sets: [PokemonSetData] = []
+    @Published var sets: [PokemonSetData] = PokemonTCGClient.storedSets()
     @Published var selectedSet: PokemonSetData?
     /// Sube cada vez que hay que volver a pedir las cartas.
     @Published var reloadToken = 0
@@ -238,7 +238,8 @@ struct CardsMarketView: View {
         .modifier(HidesChromeOnScroll(hidden: $chromeHidden))
         .task {
             if cards.isEmpty { await reload() }
-            if market.sets.isEmpty { market.sets = await PokemonTCGClient.fetchSets() }
+            let fresh = await PokemonTCGClient.fetchSets()
+            if !fresh.isEmpty { market.sets = fresh }
         }
         .onChange(of: market.reloadToken) { _, _ in Task { await reload() } }
         .fullScreenCover(item: $report) { SaleReportView(report: $0) }
