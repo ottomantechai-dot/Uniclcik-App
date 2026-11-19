@@ -2673,10 +2673,10 @@ struct CardsShowcase: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
-                // Logo de PSA (el archivo original), recortado a su recuadro rojo, sin sombra.
-                Image("LogoPSA").resizable().scaledToFill()
-                    .frame(width: 54, height: 34)
-                    .clipShape(.rect(cornerRadius: 9))
+                // Las letras del logo de PSA (sacadas del archivo original), en rojo y sin recuadro.
+                Image("LogoPSAMark").resizable().scaledToFit()
+                    .frame(height: 20)
+                    .foregroundStyle(red)
                     .accessibilityLabel("PSA")
                 Text("Trading Cards").font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                 Spacer()
