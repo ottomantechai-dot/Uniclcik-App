@@ -8,18 +8,21 @@ struct CardsHubView: View {
     enum Mode: String, CaseIterable { case packs = "Sobres", market = "Mercado" }
     @State private var mode: Mode = .packs
     @State private var chromeHidden = false
+    @StateObject private var market = CardsMarketModel()
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         Group {
             switch mode {
             case .packs: CardPacksView(chromeHidden: $chromeHidden)
-            case .market: CardsMarketView(chromeHidden: $chromeHidden)
+            case .market: CardsMarketView(chromeHidden: $chromeHidden, market: market)
             }
         }
         .background(Color(red: 0.96, green: 0.96, blue: 0.97).ignoresSafeArea())
         .overlay(alignment: .top) { chrome }
         .toolbar(.hidden, for: .navigationBar)
         .onChange(of: mode) { _, _ in chromeHidden = false }
+        .sheet(isPresented: $market.showFilter) { CardSetFilterSheet(market: market) }
         .preferredColorScheme(.light)
     }
 
@@ -27,8 +30,30 @@ struct CardsHubView: View {
     private var chrome: some View {
         VStack(spacing: 8) {
             AppTopBar(title: "Cartas") {
-                NavigationLink { SaleReportsHistoryView() } label: { TopBarGlassButton(systemImage: "doc.text.magnifyingglass") }
-                    .buttonStyle(.plain)
+                Button {
+                    mode = .market
+                    withAnimation(.snappy(duration: 0.28)) { market.searchOpen.toggle() }
+                    searchFocused = market.searchOpen
+                    if !market.searchOpen, !market.query.isEmpty { market.query = ""; market.reloadToken += 1 }
+                } label: { TopBarGlassButton(systemImage: market.searchOpen ? "xmark" : "magnifyingglass") }
+                    .buttonStyle(.plain).accessibilityLabel("Buscar cartas")
+                Button {
+                    mode = .market
+                    market.showFilter = true
+                } label: { TopBarGlassButton(systemImage: "line.3.horizontal.decrease") }
+                    .buttonStyle(.plain).accessibilityLabel("Filtrar por colección")
+            }
+            if market.searchOpen {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Buscar una carta por nombre", text: $market.query)
+                        .submitLabel(.search).autocorrectionDisabled().focused($searchFocused)
+                        .onSubmit { market.reloadToken += 1 }
+                }
+                .padding(.horizontal, 14).frame(height: 46)
+                .glassEffect(.regular, in: .capsule)
+                .padding(.horizontal, 16)
+                .transition(.move(edge: .top).combined(with: .opacity))
             }
             if !chromeHidden {
                 Picker("", selection: $mode) {
@@ -44,6 +69,86 @@ struct CardsHubView: View {
             LinearGradient(colors: [Color(red: 0.96, green: 0.96, blue: 0.97), Color(red: 0.96, green: 0.96, blue: 0.97).opacity(0.9), Color(red: 0.96, green: 0.96, blue: 0.97).opacity(0)],
                            startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea(edges: .top)
+        }
+    }
+}
+
+/// Lo que comparten la barra de arriba y el mercado de cartas: búsqueda, colección elegida y filtro.
+@MainActor
+final class CardsMarketModel: ObservableObject {
+    @Published var query = ""
+    @Published var searchOpen = false
+    @Published var showFilter = false
+    @Published var sets: [PokemonSetData] = []
+    @Published var selectedSet: PokemonSetData?
+    /// Sube cada vez que hay que volver a pedir las cartas.
+    @Published var reloadToken = 0
+
+    func choose(_ set: PokemonSetData?) {
+        selectedSet = set
+        reloadToken += 1
+    }
+}
+
+/// Todas las colecciones, ordenadas por serie, con su logo y su nombre.
+struct CardSetFilterSheet: View {
+    @ObservedObject var market: CardsMarketModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+
+    private var groups: [(series: String, sets: [PokemonSetData])] {
+        let shown = text.isEmpty ? market.sets : market.sets.filter { $0.name.localizedCaseInsensitiveContains(text) || $0.series.localizedCaseInsensitiveContains(text) }
+        var order: [String] = []
+        var bySeries: [String: [PokemonSetData]] = [:]
+        for set in shown {
+            let key = set.series.isEmpty ? "Otras" : set.series
+            if bySeries[key] == nil { order.append(key) }
+            bySeries[key, default: []].append(set)
+        }
+        return order.map { ($0, bySeries[$0] ?? []) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Button { market.choose(nil); dismiss() } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "square.grid.2x2.fill").font(.system(size: 18, weight: .semibold)).frame(width: 84, height: 36)
+                        Text("Todas las cartas").font(.system(size: 15, weight: .semibold))
+                        Spacer()
+                        if market.selectedSet == nil { Image(systemName: "checkmark").fontWeight(.bold) }
+                    }
+                    .foregroundStyle(.primary)
+                }
+                ForEach(groups, id: \.series) { group in
+                    Section(group.series) {
+                        ForEach(group.sets) { set in
+                            Button { market.choose(set); dismiss() } label: {
+                                HStack(spacing: 14) {
+                                    AsyncImage(url: set.logoURL) { phase in
+                                        if let image = phase.image { image.resizable().scaledToFit() } else { Color.clear }
+                                    }
+                                    .frame(width: 84, height: 36)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(set.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary)
+                                        Text("\(set.total) cartas · \(set.year)").font(.system(size: 12)).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if market.selectedSet?.id == set.id { Image(systemName: "checkmark").fontWeight(.bold).foregroundStyle(.primary) }
+                                }
+                            }
+                        }
+                    }
+                }
+                if market.sets.isEmpty {
+                    Text("Cargando colecciones…").foregroundStyle(.secondary)
+                }
+            }
+            .searchable(text: $text, placement: .navigationBarDrawer(displayMode: .always), prompt: "Buscar colección")
+            .navigationTitle("Colecciones")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cerrar") { dismiss() } } }
+            .task { if market.sets.isEmpty { market.sets = await PokemonTCGClient.fetchSets() } }
         }
     }
 }
@@ -65,9 +170,10 @@ struct HidesChromeOnScroll: ViewModifier {
 
 struct CardsMarketView: View {
     @Binding var chromeHidden: Bool
-    @State private var query = ""
-    @State private var sets: [PokemonSetData] = []
-    @State private var selectedSet: PokemonSetData?
+    @ObservedObject var market: CardsMarketModel
+    private var query: String { market.query }
+    private var sets: [PokemonSetData] { market.sets }
+    private var selectedSet: PokemonSetData? { market.selectedSet }
     @State private var cards: [PokemonCardData] = []
     @State private var page = 0
     @State private var reachedEnd = false
@@ -90,18 +196,7 @@ struct CardsMarketView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
-                Color.clear.frame(height: 96)
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Buscar una carta por nombre", text: $query)
-                        .submitLabel(.search).autocorrectionDisabled()
-                        .onSubmit { Task { await reload() } }
-                    if !query.isEmpty {
-                        Button { query = ""; Task { await reload() } } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                    }
-                }
-                .padding(.horizontal, 14).frame(height: 46)
-                .background(Color.white, in: .rect(cornerRadius: 14))
+                Color.clear.frame(height: market.searchOpen ? 150 : 96)
 
                 if !sets.isEmpty { setsStrip }
 
@@ -140,8 +235,9 @@ struct CardsMarketView: View {
         .modifier(HidesChromeOnScroll(hidden: $chromeHidden))
         .task {
             if cards.isEmpty { await reload() }
-            if sets.isEmpty { sets = await PokemonTCGClient.fetchSets() }
+            if market.sets.isEmpty { market.sets = await PokemonTCGClient.fetchSets() }
         }
+        .onChange(of: market.reloadToken) { _, _ in Task { await reload() } }
         .sheet(item: $report) { SaleReportView(report: $0) }
     }
 
@@ -162,8 +258,7 @@ struct CardsMarketView: View {
     private func setChip(_ set: PokemonSetData?) -> some View {
         let on = selectedSet?.id == set?.id
         return Button {
-            selectedSet = set
-            Task { await reload() }
+            market.choose(set)
         } label: {
             let blue = Color(red: 0.16, green: 0.44, blue: 0.98)
             if let set {
