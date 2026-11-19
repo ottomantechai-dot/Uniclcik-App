@@ -2677,8 +2677,8 @@ struct CardsShowcase: View {
                 Image("LogoPSAMark").resizable().scaledToFit()
                     .frame(height: 20)
                     .foregroundStyle(red)
-                    .accessibilityLabel("PSA")
-                Text("Trading Cards").font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                    .padding(.leading, 12)   // a la misma altura que el contenido de las fichas de arriba
+                    .accessibilityLabel("PSA trading cards")
                 Spacer()
                 Button(action: onViewAll) {
                     HStack(spacing: 4) { Text("View all"); Image(systemName: "arrow.right").font(.system(size: 11, weight: .bold)) }
