@@ -475,7 +475,7 @@ struct ClosetView: View {
                         withAnimation(.snappy(duration: 0.28)) { stockSearchOpen.toggle() }
                         stockSearchFocused = stockSearchOpen
                         if !stockSearchOpen { stockSearchText = "" }
-                    } label: { TopBarGlassButton(systemImage: stockSearchOpen ? "xmark" : "magnifyingglass") }
+                    } label: { TopBarGlassButton(systemImage: "xmark", asset: stockSearchOpen ? nil : "IconBuscar") }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Buscar")
                     Menu {
@@ -489,7 +489,7 @@ struct ClosetView: View {
                                 }
                             }
                         }
-                    } label: { TopBarGlassButton(systemImage: "line.3.horizontal.decrease") }
+                    } label: { TopBarGlassButton(systemImage: "line.3.horizontal.decrease", asset: "IconFiltro") }
                         .accessibilityLabel("Filtros y orden")
                 }
             }
@@ -6453,7 +6453,7 @@ struct ComparisonSaleReportButton: View {
                 .background(Color.black, in: RoundedRectangle(cornerRadius: 13))
         }
         .buttonStyle(.plain)
-        .sheet(item: $report) { item in
+        .fullScreenCover(item: $report) { item in
             SaleReportView(report: item, sizes: comparison.sizes) { size, cost in
                 SaleReport.from(comparison: comparison, size: size, costUSD: cost)
             }

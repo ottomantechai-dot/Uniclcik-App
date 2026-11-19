@@ -22,7 +22,7 @@ struct CardsHubView: View {
         .overlay(alignment: .top) { chrome }
         .toolbar(.hidden, for: .navigationBar)
         .onChange(of: mode) { _, _ in chromeHidden = false }
-        .sheet(isPresented: $market.showFilter) { CardSetFilterSheet(market: market) }
+        .fullScreenCover(isPresented: $market.showFilter) { CardSetFilterSheet(market: market) }
         .preferredColorScheme(.light)
     }
 
@@ -35,12 +35,12 @@ struct CardsHubView: View {
                     withAnimation(.snappy(duration: 0.28)) { market.searchOpen.toggle() }
                     searchFocused = market.searchOpen
                     if !market.searchOpen, !market.query.isEmpty { market.query = ""; market.reloadToken += 1 }
-                } label: { TopBarGlassButton(systemImage: market.searchOpen ? "xmark" : "magnifyingglass") }
+                } label: { TopBarGlassButton(systemImage: "xmark", asset: market.searchOpen ? nil : "IconBuscar") }
                     .buttonStyle(.plain).accessibilityLabel("Buscar cartas")
                 Button {
                     mode = .market
                     market.showFilter = true
-                } label: { TopBarGlassButton(systemImage: "line.3.horizontal.decrease") }
+                } label: { TopBarGlassButton(systemImage: "line.3.horizontal.decrease", asset: "IconFiltro") }
                     .buttonStyle(.plain).accessibilityLabel("Filtrar por colección")
             }
             if market.searchOpen {
@@ -108,48 +108,78 @@ struct CardSetFilterSheet: View {
         return order.map { ($0, bySeries[$0] ?? []) }
     }
 
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
+    private let blue = Color(red: 0.16, green: 0.44, blue: 0.98)
+
     var body: some View {
         NavigationStack {
-            List {
-                Button { market.choose(nil); dismiss() } label: {
-                    HStack(spacing: 14) {
-                        Image(systemName: "square.grid.2x2.fill").font(.system(size: 18, weight: .semibold)).frame(width: 84, height: 36)
-                        Text("Todas las cartas").font(.system(size: 15, weight: .semibold))
-                        Spacer()
-                        if market.selectedSet == nil { Image(systemName: "checkmark").fontWeight(.bold) }
-                    }
-                    .foregroundStyle(.primary)
-                }
-                ForEach(groups, id: \.series) { group in
-                    Section(group.series) {
-                        ForEach(group.sets) { set in
-                            Button { market.choose(set); dismiss() } label: {
-                                HStack(spacing: 14) {
-                                    AsyncImage(url: set.logoURL) { phase in
-                                        if let image = phase.image { image.resizable().scaledToFit() } else { Color.clear }
-                                    }
-                                    .frame(width: 84, height: 36)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(set.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary)
-                                        Text("\(set.total) cartas · \(set.year)").font(.system(size: 12)).foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    if market.selectedSet?.id == set.id { Image(systemName: "checkmark").fontWeight(.bold).foregroundStyle(.primary) }
+            ScrollView {
+                GlassEffectContainer(spacing: 10) {
+                    LazyVStack(alignment: .leading, spacing: 18) {
+                        Button { market.choose(nil); dismiss() } label: {
+                            HStack(spacing: 12) {
+                                Image("IconCartas").resizable().scaledToFit().frame(width: 44, height: 44)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Todas las cartas").font(.system(size: 16, weight: .bold, design: .rounded)).foregroundStyle(.black)
+                                    Text("\(market.sets.count) colecciones").font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                                }
+                                Spacer()
+                                if market.selectedSet == nil { Image(systemName: "checkmark.circle.fill").font(.system(size: 22)).foregroundStyle(blue) }
+                            }
+                            .padding(.horizontal, 14).frame(height: 68)
+                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
+                        }
+                        .buttonStyle(.plain)
+
+                        ForEach(groups, id: \.series) { group in
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(group.series.uppercased()).font(.system(size: 12, weight: .heavy)).tracking(0.6)
+                                    .foregroundStyle(.black.opacity(0.5)).padding(.leading, 4)
+                                LazyVGrid(columns: columns, spacing: 10) {
+                                    ForEach(group.sets) { set in cell(set) }
                                 }
                             }
                         }
+
+                        if market.sets.isEmpty {
+                            ProgressView().frame(maxWidth: .infinity).padding(.top, 40)
+                        }
                     }
+                    .padding(16)
                 }
-                if market.sets.isEmpty {
-                    Text("Cargando colecciones…").foregroundStyle(.secondary)
-                }
+            }
+            .background {
+                LinearGradient(colors: [Color(red: 0.90, green: 0.93, blue: 1.0), Color(red: 0.95, green: 0.92, blue: 1.0), Color(red: 0.97, green: 0.97, blue: 0.99)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea()
             }
             .searchable(text: $text, placement: .navigationBarDrawer(displayMode: .always), prompt: "Buscar colección")
             .navigationTitle("Colecciones")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cerrar") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Image(systemName: "xmark") } } }
             .task { if market.sets.isEmpty { market.sets = await PokemonTCGClient.fetchSets() } }
         }
+        .preferredColorScheme(.light)
+    }
+
+    /// Ficha de cristal de una colección: logo arriba, nombre y año debajo.
+    private func cell(_ set: PokemonSetData) -> some View {
+        let on = market.selectedSet?.id == set.id
+        return Button { market.choose(set); dismiss() } label: {
+            VStack(spacing: 6) {
+                AsyncImage(url: set.logoURL) { phase in
+                    if let image = phase.image { image.resizable().scaledToFit() } else { Color.clear }
+                }
+                .frame(height: 40).frame(maxWidth: .infinity)
+                Text(set.name).font(.system(size: 11, weight: .bold, design: .rounded)).foregroundStyle(.black)
+                    .lineLimit(2).multilineTextAlignment(.center).frame(height: 28, alignment: .top)
+                Text("\(set.total) · \(set.year)").font(.system(size: 10, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+            }
+            .padding(.horizontal, 8).padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .glassEffect(on ? .regular.tint(blue.opacity(0.25)).interactive() : .regular.interactive(), in: .rect(cornerRadius: 20))
+            .overlay { RoundedRectangle(cornerRadius: 20).strokeBorder(on ? blue : .clear, lineWidth: 2) }
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -238,7 +268,7 @@ struct CardsMarketView: View {
             if market.sets.isEmpty { market.sets = await PokemonTCGClient.fetchSets() }
         }
         .onChange(of: market.reloadToken) { _, _ in Task { await reload() } }
-        .sheet(item: $report) { SaleReportView(report: $0) }
+        .fullScreenCover(item: $report) { SaleReportView(report: $0) }
     }
 
     private var setsStrip: some View {

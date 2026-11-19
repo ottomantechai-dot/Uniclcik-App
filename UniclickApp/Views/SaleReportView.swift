@@ -493,6 +493,6 @@ struct SaleReportsHistoryView: View {
             }
         }
         .navigationTitle("Informes")
-        .sheet(item: $open) { SaleReportView(report: $0) }
+        .fullScreenCover(item: $open) { SaleReportView(report: $0) }
     }
 }

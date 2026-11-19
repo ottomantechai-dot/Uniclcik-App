@@ -55,11 +55,19 @@ extension AppTopBar where Extra == EmptyView {
 /// Botón redondo de cristal para la barra superior.
 struct TopBarGlassButton: View {
     let systemImage: String
+    /// Icono propio (de Assets) en lugar del símbolo del sistema.
+    var asset: String?
+
     var body: some View {
-        Image(systemName: systemImage)
-            .font(.system(size: 16, weight: .semibold)).foregroundStyle(.black)
-            .frame(width: 44, height: 44)
-            .glassEffect(.regular.interactive(), in: .circle)
+        Group {
+            if let asset {
+                Image(asset).resizable().scaledToFit().frame(width: 28, height: 28)
+            } else {
+                Image(systemName: systemImage).font(.system(size: 16, weight: .semibold)).foregroundStyle(.black)
+            }
+        }
+        .frame(width: 44, height: 44)
+        .glassEffect(.regular.interactive(), in: .circle)
     }
 }
 

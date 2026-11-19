@@ -2304,7 +2304,7 @@ struct StockScanResultSheet: View {
             .buttonStyle(.plain)
             .padding(.horizontal, 18)
             .padding(.top, 16)
-            .sheet(item: $saleReport) { SaleReportView(report: $0) }
+            .fullScreenCover(item: $saleReport) { SaleReportView(report: $0) }
 
             if let itemID = payload.matchingStockItemID {
                 Button {
