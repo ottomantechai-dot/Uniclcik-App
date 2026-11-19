@@ -20,7 +20,7 @@ struct CardDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    CardImage(url: card.imageURL)
+                    CardImage(url: card.imageURL, preview: card.thumbURL)
                     .frame(height: 330).frame(maxWidth: .infinity)
                     .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
                     .padding(.top, 6)
@@ -255,6 +255,8 @@ struct CardDetailView: View {
 struct CardImage: View {
     let url: URL?
     var placeholder = true
+    /// Versión pequeña que se enseña al instante mientras llega la grande.
+    var preview: URL?
     @State private var image: UIImage?
 
     private static let memory: NSCache<NSURL, UIImage> = { let c = NSCache<NSURL, UIImage>(); c.countLimit = 600; return c }()
@@ -267,10 +269,12 @@ struct CardImage: View {
         folder.appendingPathComponent(url.absoluteString.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_"))
     }
 
-    init(url: URL?, placeholder: Bool = true) {
+    init(url: URL?, placeholder: Bool = true, preview: URL? = nil) {
         self.url = url
         self.placeholder = placeholder
-        _image = State(initialValue: url.flatMap { Self.memory.object(forKey: $0 as NSURL) })
+        self.preview = preview
+        _image = State(initialValue: url.flatMap { Self.memory.object(forKey: $0 as NSURL) }
+                       ?? preview.flatMap { Self.memory.object(forKey: $0 as NSURL) })
     }
 
     var body: some View {
@@ -282,7 +286,8 @@ struct CardImage: View {
         .task(id: url) {
             guard let url else { image = nil; return }
             if let hit = Self.memory.object(forKey: url as NSURL) { image = hit; return }
-            image = await Self.load(url)
+            if let preview, image == nil { image = await Self.load(preview) }
+            if let full = await Self.load(url) { image = full }
         }
     }
 

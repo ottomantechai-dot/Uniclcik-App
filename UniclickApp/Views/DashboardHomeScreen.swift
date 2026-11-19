@@ -1082,7 +1082,10 @@ struct PokemonCardData: Identifiable {
     /// Versión pequeña de la imagen, para rejillas: pesa mucho menos y carga al instante.
     var thumbURL: URL? {
         guard let imageURL else { return nil }
-        return URL(string: imageURL.absoluteString.replacingOccurrences(of: "_hires.png", with: ".png"))
+        let text = imageURL.absoluteString
+        // Las cartas nuevas van en otro servidor: «…/large» (casi 1 MB) frente a «…/small» (50 KB).
+        if text.hasSuffix("/large") { return URL(string: String(text.dropLast("large".count)) + "small") }
+        return URL(string: text.replacingOccurrences(of: "_hires.png", with: ".png"))
     }
 }
 
