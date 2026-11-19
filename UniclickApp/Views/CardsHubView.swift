@@ -291,11 +291,7 @@ struct CardsMarketView: View {
 
     private func tile(_ card: PokemonCardData) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            AsyncImage(url: card.thumbURL) { phase in
-                if let image = phase.image { image.resizable().scaledToFit() } else {
-                    RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.06))
-                }
-            }
+            CardImage(url: card.thumbURL)
             .aspectRatio(0.72, contentMode: .fit)
             .frame(maxWidth: .infinity)
             Text(card.name).font(.system(size: 11, weight: .bold)).foregroundStyle(.black).lineLimit(1)
@@ -329,5 +325,6 @@ struct CardsMarketView: View {
         if next.count < 30 { reachedEnd = true }
         let known = Set(cards.map(\.id))
         cards += next.filter { !known.contains($0.id) }
+        CardImage.prefetch(next.compactMap(\.thumbURL))
     }
 }

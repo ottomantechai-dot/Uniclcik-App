@@ -9,7 +9,10 @@ struct CardDetailView: View {
     @State var card: PokemonCardData
     @State private var related: [PokemonCardData] = []
     @State private var report: SaleReport?
+    /// Cartas de cada colección ya pedidas: al volver a una colección salen al instante.
+    private static var relatedCache: [String: [PokemonCardData]] = [:]
 
+    private let gray = Color(red: 0.965, green: 0.965, blue: 0.975)
     private var number: String { card.id.split(separator: "-").last.map { "#" + $0 } ?? "—" }
     private var setLogo: URL? { PokemonTCGClient.storedSets().first { $0.name == card.setName }?.logoURL }
 
@@ -17,11 +20,7 @@ struct CardDetailView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    AsyncImage(url: card.imageURL) { phase in
-                        if let image = phase.image { image.resizable().scaledToFit() } else {
-                            RoundedRectangle(cornerRadius: 14).fill(Color.black.opacity(0.05)).aspectRatio(0.72, contentMode: .fit)
-                        }
-                    }
+                    CardImage(url: card.imageURL)
                     .frame(height: 330).frame(maxWidth: .infinity)
                     .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
                     .padding(.top, 6)
@@ -40,9 +39,7 @@ struct CardDetailView: View {
                             HStack(spacing: 8) {
                                 ForEach(related.prefix(10)) { other in
                                     Button { select(other) } label: {
-                                        AsyncImage(url: other.thumbURL) { phase in
-                                            if let image = phase.image { image.resizable().scaledToFit() } else { Color.black.opacity(0.05) }
-                                        }
+                                        CardImage(url: other.thumbURL)
                                         .frame(width: 46, height: 64)
                                         .padding(5)
                                         .background(Color.white, in: .rect(cornerRadius: 12))
@@ -67,6 +64,8 @@ struct CardDetailView: View {
 
                     comparisonCard.padding(.top, 18)
 
+                    gradeTable.padding(.top, 18)
+
                     ShoeProductDetailsCard(rows: [
                         (icon: "square.stack.3d.up", title: "Set", value: card.setName),
                         (icon: "number", title: "Card number", value: number),
@@ -82,9 +81,7 @@ struct CardDetailView: View {
                                 ForEach(related) { other in
                                     Button { select(other) } label: {
                                         VStack(alignment: .leading, spacing: 6) {
-                                            AsyncImage(url: other.thumbURL) { phase in
-                                                if let image = phase.image { image.resizable().scaledToFit() } else { Color.black.opacity(0.05) }
-                                            }
+                                            CardImage(url: other.thumbURL)
                                             .frame(width: 118, height: 160)
                                             Text(other.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black).lineLimit(1).frame(width: 118, alignment: .leading)
                                             Text(other.tcgMarketUSD.map(SaleReport.usd) ?? "No price")
@@ -108,18 +105,28 @@ struct CardDetailView: View {
                 .id(card.id)
             }
             .background(Color(red: 0.965, green: 0.965, blue: 0.975).ignoresSafeArea())
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Image(systemName: "xmark") } }
-                ToolbarItem(placement: .principal) {
-                    AsyncImage(url: setLogo) { phase in
-                        if let image = phase.image { image.resizable().scaledToFit() } else { Color.clear }
-                    }
-                    .frame(width: 90, height: 28)
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) { Color.clear.frame(height: 52) }
+            .overlay(alignment: .top) {
+                HStack {
+                    Button { dismiss() } label: { TopBarGlassButton(systemImage: "xmark") }.buttonStyle(.plain)
+                    Spacer()
+                    CardImage(url: setLogo, placeholder: false).frame(width: 96, height: 30)
+                    Spacer()
+                    Color.clear.frame(width: 44, height: 44)
+                }
+                .padding(.horizontal, 16).padding(.bottom, 14)
+                .background {
+                    LinearGradient(colors: [gray, gray.opacity(0.92), gray.opacity(0)], startPoint: .top, endPoint: .bottom)
+                        .ignoresSafeArea(edges: .top)
                 }
             }
+            .modifier(BottomFade(color: gray))
             .task(id: card.setName) {
+                if let known = Self.relatedCache[card.setName] { related = known.filter { $0.id != card.id }; return }
                 let found = await PokemonTCGClient.fetchPage(query: "set.name:\"\(card.setName)\"", page: 1, pageSize: 30) ?? []
+                if !found.isEmpty { Self.relatedCache[card.setName] = found }
+                CardImage.prefetch(found.compactMap(\.thumbURL))
                 related = found.filter { $0.id != card.id }
             }
             .fullScreenCover(item: $report) { SaleReportView(report: $0) }
@@ -183,6 +190,49 @@ struct CardDetailView: View {
         .glassEffect(.regular, in: .rect(cornerRadius: 22))
     }
 
+    /// «Market prices» de la carta: una fila por gradación y una columna por plataforma.
+    private var gradeTable: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                Image("IconMercado").resizable().scaledToFit().frame(width: 20, height: 20).foregroundStyle(.black)
+                Text("MARKET PRICES").font(.system(size: 12, weight: .heavy)).tracking(0.9).foregroundStyle(.black.opacity(0.88))
+            }
+            .padding(.bottom, 6)
+            HStack(spacing: 8) {
+                Image("LogoPSAMark").resizable().scaledToFit().frame(height: 11).foregroundStyle(Color(red: 0.93, green: 0.05, blue: 0.05))
+                    .frame(width: 58, height: 38).background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
+                Text("TCGplayer").font(.system(size: 10, weight: .heavy)).foregroundStyle(.black)
+                    .frame(maxWidth: .infinity, minHeight: 38).background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
+                ForEach(["eBay", "StockX"], id: \.self) { brand in
+                    StylizedMarketplaceLogo(brand: brand).frame(height: 13).padding(.horizontal, 6)
+                        .frame(maxWidth: .infinity, minHeight: 38).background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
+                }
+            }
+            ForEach(["Raw", "8", "9", "10"], id: \.self) { grade in
+                HStack(spacing: 8) {
+                    Group {
+                        if grade == "Raw" { Text("RAW").font(.system(size: 12, weight: .heavy, design: .rounded)).foregroundStyle(.white) }
+                        else { DotMatrixText(text: grade) }
+                    }
+                    .frame(width: 58, height: 40).background(Color.black, in: .rect(cornerRadius: 11))
+                    ForEach(0..<3, id: \.self) { column in
+                        let value = grade == "Raw" && column == 0 ? card.tcgMarketUSD.map(SaleReport.usd) : nil
+                        Text(value ?? "—").font(.system(size: 14, weight: value == nil ? .semibold : .heavy, design: .rounded))
+                            .foregroundStyle(value == nil ? Color.black.opacity(0.25) : .black)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background { RoundedRectangle(cornerRadius: 11).strokeBorder(Color.black.opacity(0.08)) }
+                    }
+                }
+            }
+            Text("Graded prices appear here as soon as the market responds")
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+                .frame(maxWidth: .infinity).padding(.top, 4)
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white, in: .rect(cornerRadius: 22))
+        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+    }
+
     private func source(name: String, logo: String?, value: String?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if let logo {
@@ -195,5 +245,67 @@ struct CardDetailView: View {
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.black.opacity(0.04), in: .rect(cornerRadius: 14))
+    }
+}
+
+
+// MARK: - Imágenes de cartas con caché
+
+/// Imagen de carta que carga al instante si ya se vio: memoria → disco → red.
+struct CardImage: View {
+    let url: URL?
+    var placeholder = true
+    @State private var image: UIImage?
+
+    private static let memory: NSCache<NSURL, UIImage> = { let c = NSCache<NSURL, UIImage>(); c.countLimit = 600; return c }()
+    private static let folder: URL = {
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("card-images", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }()
+    private static func file(_ url: URL) -> URL {
+        folder.appendingPathComponent(url.absoluteString.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_"))
+    }
+
+    init(url: URL?, placeholder: Bool = true) {
+        self.url = url
+        self.placeholder = placeholder
+        _image = State(initialValue: url.flatMap { Self.memory.object(forKey: $0 as NSURL) })
+    }
+
+    var body: some View {
+        Group {
+            if let image { Image(uiImage: image).resizable().scaledToFit() }
+            else if placeholder { RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.05)) }
+            else { Color.clear }
+        }
+        .task(id: url) {
+            guard let url else { image = nil; return }
+            if let hit = Self.memory.object(forKey: url as NSURL) { image = hit; return }
+            image = await Self.load(url)
+        }
+    }
+
+    static func load(_ url: URL) async -> UIImage? {
+        if let hit = memory.object(forKey: url as NSURL) { return hit }
+        let path = file(url)
+        if let data = try? Data(contentsOf: path), let image = UIImage(data: data) {
+            memory.setObject(image, forKey: url as NSURL)
+            return image
+        }
+        guard let (data, response) = try? await URLSession.shared.data(from: url),
+              (response as? HTTPURLResponse)?.statusCode == 200, let image = UIImage(data: data) else { return nil }
+        memory.setObject(image, forKey: url as NSURL)
+        try? data.write(to: path, options: .atomic)
+        return image
+    }
+
+    /// Baja por adelantado las imágenes de una lista (las siguientes cartas, las de la colección).
+    static func prefetch(_ urls: [URL]) {
+        Task.detached(priority: .utility) {
+            await withTaskGroup(of: Void.self) { group in
+                for url in urls.prefix(60) { group.addTask { _ = await load(url) } }
+            }
+        }
     }
 }

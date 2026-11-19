@@ -2545,9 +2545,7 @@ struct HomeTrendingCardsRow: View {
                     ForEach(cards) { card in
                         Button { openedCard = card } label: {
                             VStack(alignment: .leading, spacing: 8) {
-                                AsyncImage(url: card.thumbURL) { phase in
-                                    if let image = phase.image { image.resizable().scaledToFit() } else { Color.black.opacity(0.05) }
-                                }
+                                CardImage(url: card.thumbURL)
                                 .frame(width: 118, height: 150)
                                 Text(card.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black).lineLimit(1).frame(width: 118, alignment: .leading)
                                 Text(card.tcgMarketUSD.map(SaleReport.usd) ?? card.setName)
@@ -2580,6 +2578,7 @@ struct HomeTrendingCardsRow: View {
                 if picked.count == 12 { break }
             }
             cards = picked.isEmpty ? Array(found.prefix(12)) : picked
+            CardImage.prefetch(cards.compactMap(\.thumbURL) + cards.compactMap(\.imageURL))
         }
         .fullScreenCover(item: $report) { SaleReportView(report: $0) }
         .fullScreenCover(item: $openedCard) { CardDetailView(card: $0) }
