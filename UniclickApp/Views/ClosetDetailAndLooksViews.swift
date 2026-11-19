@@ -543,6 +543,8 @@ struct ClosetGarmentDetailView: View {
     private var shoeDetailHero: some View {
         ZStack(alignment: .top) {
             Color.white
+            // Zapato destacado: el mismo fondo de color y logo que en su tarjeta.
+            Color.clear.background { FeaturedHeroBackdrop(name: item.catalogDisplayName, brand: item.brand ?? "") }
             Shoe360View(
                 titles: (shoeMarketComparison?.spinTitles ?? []) + [item.catalogDisplayName, item.name],
                 brand: item.brand,
@@ -556,6 +558,7 @@ struct ClosetGarmentDetailView: View {
                 queries: item.marketLookupQueries,
                 badgeLift: 50
             )
+            .blendMode(ClosetView.featuredAccent(item.catalogDisplayName) == nil ? .normal : .multiply)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 230)
@@ -3155,6 +3158,7 @@ struct ShoeMarketHistoryCard: View {
     /// Datos históricos ya calculados por el mercado (si no, se calculan de las ventas).
     var summary: [(String, String)]? = nil
     var source: String? = nil
+    var sourceBrand = "StockX"
     @State private var range = 0   // 0 = todo, o días
 
     private var shown: [DailySalePoint] {
@@ -3175,7 +3179,11 @@ struct ShoeMarketHistoryCard: View {
                     // Origen de los datos: logo de la plataforma y fecha, en una cápsula de cristal.
                     HStack(spacing: 7) {
                         Circle().fill(Color.green).frame(width: 7, height: 7)
-                        StylizedMarketplaceLogo(brand: "StockX").frame(width: 50, height: 14)
+                        if sourceBrand == "StockX" { StylizedMarketplaceLogo(brand: "StockX").frame(width: 50, height: 14) }
+                        else {
+                            Image("Logo" + sourceBrand).resizable().scaledToFit().frame(width: 16, height: 16).clipShape(.rect(cornerRadius: 4))
+                            Text(sourceBrand).font(.system(size: 11, weight: .heavy)).foregroundStyle(.black).lineLimit(1).fixedSize()
+                        }
                         Text(source).font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.6)).lineLimit(1).fixedSize()
                     }
                     .padding(.horizontal, 11).frame(height: 30)
@@ -3202,8 +3210,10 @@ struct ShoeMarketHistoryCard: View {
                     LineMark(x: .value("Date", point.date), y: .value("Price", point.avg))
                         .interpolationMethod(.monotone)
                         .foregroundStyle(.black).lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round))
-                    PointMark(x: .value("Date", point.date), y: .value("Price", point.avg))
-                        .symbolSize(28).foregroundStyle(.black)
+                    if sales.count <= 20 {
+                        PointMark(x: .value("Date", point.date), y: .value("Price", point.avg))
+                            .symbolSize(28).foregroundStyle(.black)
+                    }
                 }
                 .chartXScale(domain: from...max(last, from.addingTimeInterval(86400)))
                 .chartYScale(domain: 0...max(top, 25))
@@ -3434,6 +3444,30 @@ struct ShoeRelatedShelf: View {
     }
 }
 
+/// Fondo de la foto en la ficha de un producto destacado: el mismo barrido de color y el logo de la
+/// marca en grande que lleva su tarjeta en la lista.
+struct FeaturedHeroBackdrop: View {
+    let name: String
+    let brand: String
+    var body: some View {
+        if let accent = ClosetView.featuredAccent(name) {
+            ZStack {
+                Ellipse().fill(accent.opacity(0.55)).frame(width: 420, height: 170).blur(radius: 46).rotationEffect(.degrees(-16))
+                if let logo = BrandLogoLabel.assetName(for: brand) {
+                    let wide = logo.hasSuffix("supreme")
+                    Image(logo).resizable().scaledToFit().frame(width: wide ? 250 : 150, height: 150)
+                        .foregroundStyle(.white.opacity(0.9)).offset(x: wide ? 0 : 70, y: -34)
+                } else {
+                    Text(brand.uppercased()).font(.system(size: 64, weight: .black, design: .rounded))
+                        .lineLimit(1).minimumScaleFactor(0.4).frame(width: 300)
+                        .foregroundStyle(.white.opacity(0.9)).offset(y: -40)
+                }
+            }
+            .padding(.horizontal, -16)
+        }
+    }
+}
+
 /// Detalles del producto, cada uno con su icono.
 struct ShoeProductDetailsCard: View {
     let rows: [(icon: String, title: String, value: String)]
@@ -3479,21 +3513,44 @@ struct CatalogShoeBody: View {
     @State private var sizesOpen = false
     @State private var size: String?
     private var sample: ShoeSample? { ShoeSample.find(product.name) }
-    private var sizes: [String] { sample?.sizes ?? ["7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"] }
+    private var isShoe: Bool { (product.category ?? "shoes") == "shoes" }
+    private var sizes: [String] {
+        if let sample { return sample.sizes }
+        switch product.category ?? "shoes" {
+        case "clothing": return ["XS", "S", "M", "L", "XL", "XXL"]
+        case "accessories": return []
+        default: return ["7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"]
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Shoe360View(title: product.name, fallbackURL: product.primaryImageURL, brand: product.brand, badgeLift: 50)
-                .frame(height: 230)
+            Group {
+                if !isShoe, let cut = ClosetView.featuredCutout(product.name) {
+                    // Ropa y bolsos: la foto recortada, con la marca arriba a la derecha.
+                    Image(cut).resizable().scaledToFit().shadow(color: .black.opacity(0.18), radius: 8, y: 6)
+                        .frame(maxWidth: .infinity)
+                        .overlay(alignment: .topTrailing) {
+                            BrandLogoLabel(brand: product.brand ?? "", compact: true).frame(width: 34, height: 34)
+                                .background(.white, in: .circle).glassEffect(.regular, in: .circle).offset(y: -50)
+                        }
+                } else {
+                    Shoe360View(title: product.name, fallbackURL: product.primaryImageURL, brand: product.brand, badgeLift: 50)
+                        .blendMode(ClosetView.featuredAccent(product.name) == nil ? .normal : .multiply)
+                }
+            }
+            .frame(height: 230)
+            .background { FeaturedHeroBackdrop(name: product.name, brand: product.brand ?? "") }
             Text(product.name.firstUppercased).font(.system(size: 18, weight: .bold)).foregroundStyle(.black).padding(.top, 8).padding(.bottom, 12)
             ShoeVariantsStrip(name: product.name, onSelect: onSelect).padding(.bottom, 12)
 
+            if !sizes.isEmpty {
             VStack(spacing: 0) {
                 Button { withAnimation(.snappy(duration: 0.3)) { sizesOpen.toggle() } } label: {
                     HStack {
                         Text("Size").font(.system(size: 15)).foregroundStyle(.black.opacity(0.55))
                         Spacer()
-                        Text(size.map { "US \($0)" } ?? "Select").font(.system(size: 15, weight: .semibold)).foregroundStyle(.black)
+                        Text(size.map { isShoe ? "US \($0)" : $0 } ?? "Select").font(.system(size: 15, weight: .semibold)).foregroundStyle(.black)
                         Image(systemName: "chevron.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(.black.opacity(0.45))
                             .rotationEffect(.degrees(sizesOpen ? 180 : 0))
                     }
@@ -3506,7 +3563,7 @@ struct CatalogShoeBody: View {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                         ForEach(sizes, id: \.self) { option in
                             Button { size = option; withAnimation(.snappy(duration: 0.3)) { sizesOpen = false } } label: {
-                                Text("US \(option)").font(.system(size: 13, weight: .bold, design: .rounded))
+                                Text(isShoe ? "US \(option)" : option).font(.system(size: 13, weight: .bold, design: .rounded))
                                     .foregroundStyle(size == option ? .white : .black)
                                     .frame(maxWidth: .infinity, minHeight: 42)
                                     .background(size == option ? Color.black : Color.white, in: .rect(cornerRadius: 12))
@@ -3522,6 +3579,7 @@ struct CatalogShoeBody: View {
             .background(.white)
             .clipShape(.rect(cornerRadius: 20))
             .glassEffect(.regular, in: .rect(cornerRadius: 20))
+            }
 
             if let sample { ShoeSamplePriceCard(sample: sample, size: size).padding(.top, 12) }
             SellButton(item: .shoe(name: product.name, brand: product.brand ?? "", imageURL: product.primaryImageURL)).padding(.top, 14)
@@ -3531,10 +3589,10 @@ struct CatalogShoeBody: View {
                 (icon: "tag", title: "Brand", value: product.brand ?? "—"),
                 (icon: "paintpalette", title: "Colorway", value: sample?.colorway ?? CatalogShelf.colorway(of: product.name)),
                 (icon: "shippingbox", title: "Condition", value: "New"),
-            ] + (sample.map { [(icon: "number", title: "Style", value: $0.style),
-                               (icon: "dollarsign.circle", title: "Retail price", value: SaleReport.usd($0.retail)),
-                               (icon: "calendar", title: "Release date", value: $0.release)] } ?? [])).padding(.top, 22)
-            DashboardMarketPricesSection(comparison: sample?.comparison, maxVisibleRows: sample == nil ? 6 : nil).padding(.top, 18)
+            ] + (sample?.details ?? [])).padding(.top, 22)
+            if isShoe || sample?.comparison != nil {
+                DashboardMarketPricesSection(comparison: sample?.comparison, maxVisibleRows: sample == nil ? 6 : nil).padding(.top, 18)
+            }
             ShoeMarketHistoryCard(sales: sample?.sales ?? [], summary: sample?.stats, source: sample?.asOf)
                 .padding(.top, 18).padding(.bottom, 24)
         }

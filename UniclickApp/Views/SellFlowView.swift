@@ -65,7 +65,8 @@ struct SellItem: Identifiable {
         SellItem(title: name.firstUppercased, brand: brand, imageURL: imageURL, snapshot: .sample(for: name))
     }
     static func card(_ card: PokemonCardData) -> SellItem {
-        SellItem(kind: .card, title: card.name, brand: card.setName, subtitle: card.setName, imageURL: card.imageURL, marketPrice: card.tcgMarketUSD)
+        SellItem(kind: .card, title: card.name, brand: card.setName, subtitle: card.setName, imageURL: card.imageURL,
+                 marketPrice: CardSample.find(card)?.market ?? card.tcgMarketUSD, snapshot: CardSample.find(card)?.snapshot)
     }
 }
 
@@ -95,7 +96,7 @@ struct SellButton: View {
             }
             .buttonStyle(.plain)
 
-            if item.snapshot != nil {
+            if item.snapshot != nil, item.kind == .shoe {
                 Button { showMarket = true } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "chart.bar.xaxis")
@@ -706,17 +707,23 @@ struct UsedListing: Identifiable {
 /// Ficha completa del zapato de ejemplo (Jordan 1 Low Green Toe GS, 553560-371). Todas las cifras se
 /// leyeron de las páginas públicas de cada plataforma el 19 nov 2026; no hay nada estimado.
 struct ShoeSample {
-    let asOf = "Nov 19, 2026"
-    let style = "553560-371"
-    let colorway = "Noble Green/White/Black/Pollen"
-    let retail = 85.0
-    let release = "Oct 12, 2021"
-    let buyNow = 49.0
-    let lastSale = 74.0
-    let highestOffer = 67.0
-    let sizes = ["3.5Y", "4Y", "4.5Y", "5Y", "5.5Y", "6Y", "6.5Y", "7Y"]
+    var asOf = "Nov 19, 2026"
+    var colorway = "Noble Green/White/Black/Pollen"
+    var retail: Double? = 85.0
+    var buyNow = 49.0
+    var lastSale = 74.0
+    var highestOffer = 67.0
+    var sizes = ["3.5Y", "4Y", "4.5Y", "5Y", "5.5Y", "6Y", "6.5Y", "7Y"]
+    var platforms = ["StockX", "GOAT", "eBay", "Flight Club"]
+    /// Filas extra de «Product details».
+    var details: [(icon: String, title: String, value: String)] = [
+        (icon: "number", title: "Style", value: "553560-371"),
+        (icon: "dollarsign.circle", title: "Retail price", value: "$85"),
+        (icon: "calendar", title: "Release date", value: "Oct 12, 2021"),
+    ]
+    var hasSales = true
     /// talla → plataforma → precio más bajo en venta
-    let asks: [String: [String: Double]] = [
+    var asks: [String: [String: Double]] = [
         "3.5Y": ["StockX": 57, "GOAT": 98, "Flight Club": 98],
         "4Y": ["StockX": 88, "GOAT": 65, "eBay": 67, "Flight Club": 65],
         "4.5Y": ["StockX": 69, "GOAT": 45, "eBay": 139.49, "Flight Club": 45],
@@ -727,7 +734,7 @@ struct ShoeSample {
         "7Y": ["StockX": 77, "GOAT": 86, "eBay": 100, "Flight Club": 94],
     ]
     /// Datos históricos tal como los da StockX.
-    let stats: [(String, String)] = [
+    var stats: [(String, String)] = [
         ("Price range · 12 months", "$20 – $158"),
         ("Price range · 3 months", "$29 – $145"),
         ("Volatility", "19%"),
@@ -735,7 +742,7 @@ struct ShoeSample {
         ("Price premium · last sale", "−13%"),
         ("Average sale price · 3 months", "$73"),
     ]
-    let used: [UsedListing] = {
+    var used: [UsedListing] = {
         let base = "https://listing-images.stockx.com/users/9b8a22b4-8ef1-11ec-b819-124738b50e12/listings/75e79d5b-6909-4c22-b619-36037ca74ca8/"
         let photos = ["01a1cad1-d2ea-7136-b10f-2d7a77c11de3", "01a1cad1-d2ea-7637-9f71-4af1fb976e0a", "01a1cad1-d2ea-77ac-80d9-24c4492c821f", "01a1cad1-d2ea-78fa-a338-8a259a5ae7be"]
             .compactMap { URL(string: base + $0 + "?w=900") }
@@ -744,7 +751,31 @@ struct ShoeSample {
     }()
 
     static func find(_ name: String) -> ShoeSample? {
-        name.localizedCaseInsensitiveContains("Jordan 1 Low Green Toe") ? ShoeSample() : nil
+        if name.localizedCaseInsensitiveContains("Jordan 1 Low Green Toe") { return ShoeSample() }
+        if name.localizedCaseInsensitiveContains("Polartec Face Mask Half Zip") {
+            return apparel(color: "Hearts", buyNow: 209, lastSale: 287, offer: 260, release: "Nov 12, 2026",
+                           range: "$172 – $388", volatility: "19%", sales: "80", premium: "0%", average: "$245")
+        }
+        if name.localizedCaseInsensitiveContains("Applique Flannel Backpack") {
+            return apparel(color: "Red", buyNow: 248, lastSale: 248, offer: 235, release: "Nov 19, 2026",
+                           range: "$200 – $402", volatility: "5%", sales: "113", premium: "0%", average: "$240")
+        }
+        return nil
+    }
+
+    /// Ropa y bolsos de ejemplo: datos leídos de su página de StockX (solo esa plataforma los vende).
+    private static func apparel(color: String, buyNow: Double, lastSale: Double, offer: Double, release: String,
+                                range: String, volatility: String, sales: String, premium: String, average: String) -> ShoeSample {
+        var sample = ShoeSample()
+        sample.colorway = color; sample.retail = nil
+        sample.buyNow = buyNow; sample.lastSale = lastSale; sample.highestOffer = offer
+        sample.sizes = []; sample.platforms = ["StockX"]
+        sample.asks = ["All": ["StockX": buyNow]]
+        sample.details = [(icon: "leaf", title: "Season", value: "FW26"), (icon: "calendar", title: "Release date", value: release)]
+        sample.stats = [("Price range · 12 months", range), ("Price range · 3 months", range), ("Volatility", volatility),
+                        ("Number of sales · 3 months", sales), ("Price premium · last sale", premium), ("Average sale price · 3 months", average)]
+        sample.used = []; sample.hasSales = false
+        return sample
     }
 
     func lowest(_ size: String?) -> (platform: String, price: Double)? {
@@ -755,20 +786,22 @@ struct ShoeSample {
     /// Ventas reales con fecha (talla 3.5Y), para la gráfica.
     var sales: [DailySalePoint] {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "MMM d, yyyy"
+        guard hasSales else { return [] }
         return (MarketSnapshot.sample(for: "Jordan 1 Low Green Toe")?.sales ?? [])
             .compactMap { row in row.date.flatMap(f.date(from:)).map { DailySalePoint(date: $0, avg: row.price, orders: 1) } }
             .sorted { $0.date < $1.date }
     }
 
     /// La misma comparativa que usa la tabla de precios por talla y plataforma.
-    var comparison: MarketComparison {
+    var comparison: MarketComparison? {
+        guard !sizes.isEmpty else { return nil }
         func key(_ s: String) -> String { s.replacingOccurrences(of: "Y", with: "") }
-        let names = ["StockX", "GOAT", "eBay", "Flight Club"]
+        let names = platforms
         let quotes = names.map { name -> MarketPlatformQuote in
             var bySize: [String: Double] = [:]
             for (size, row) in asks { if let v = row[name] { bySize[key(size)] = v } }
             let values = Array(bySize.values)
-            return MarketPlatformQuote(platform: name, color: .black, matchedTitle: "Jordan 1 Low Green Toe (GS)", matchedSKU: style, productURL: nil,
+            return MarketPlatformQuote(platform: name, color: .black, matchedTitle: "Jordan 1 Low Green Toe (GS)", matchedSKU: details.first?.value, productURL: nil,
                                        asksBySize: bySize, avg: values.isEmpty ? nil : values.reduce(0, +) / Double(values.count),
                                        lowestAsk: values.min(), highestAsk: values.max())
         }
@@ -795,19 +828,21 @@ struct ShoeSamplePriceCard: View {
                 if let best {
                     VStack(alignment: .trailing, spacing: 6) {
                         StylizedMarketplaceLogo(brand: best.platform).frame(width: 62, height: 18, alignment: .trailing)
-                        let diff = sample.retail - best.price
-                        Text(diff >= 0 ? "\(SaleReport.usd(diff)) below retail" : "\(SaleReport.usd(-diff)) above retail")
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(diff >= 0 ? sellGreen : .black.opacity(0.6))
+                        if let retail = sample.retail {
+                            let diff = retail - best.price
+                            Text(diff >= 0 ? "\(SaleReport.usd(diff)) below retail" : "\(SaleReport.usd(-diff)) above retail")
+                                .font(.system(size: 12, weight: .bold)).foregroundStyle(diff >= 0 ? sellGreen : .black.opacity(0.6))
+                        }
                     }
                 }
             }
             HStack(spacing: 8) {
                 stat("Last sale", sample.lastSale)
                 stat("Highest offer", sample.highestOffer)
-                stat("Retail", sample.retail)
+                if let retail = sample.retail { stat("Retail", retail) }
             }
             VStack(spacing: 0) {
-                let names = ["StockX", "GOAT", "eBay", "Flight Club"]
+                let names = sample.platforms
                 ForEach(Array(names.enumerated()), id: \.element) { index, name in
                     let price = size.flatMap { sample.asks[$0]?[name] } ?? (size == nil ? sample.asks.values.compactMap { $0[name] }.min() : nil)
                     HStack {
@@ -897,5 +932,62 @@ struct UsedListingView: View {
         .background(sellGray.ignoresSafeArea())
         .preferredColorScheme(.light)
         .swipeBackToDismiss()
+    }
+}
+
+
+// MARK: - Carta de ejemplo con todos sus datos
+
+/// Ficha completa de la carta de ejemplo: Umbreon VMAX (Alternate Art Secret) 215/203, Evolving Skies.
+/// Cifras leídas el 19 nov 2026 de TCGplayer (precio de mercado e historial semanal), Collectr
+/// (sin gradar y gradadas) y eBay (anuncio más barato a la venta por gradación).
+struct CardSample {
+    let asOf = "Nov 19, 2026"
+    let market = 2195.10
+    let lastSale = 1998.99
+    let changePercent = -6.77
+    /// gradación → plataforma → precio
+    let grades: [String: [String: Double]] = [
+        "Raw": ["Collectr": 2211.14, "TCGplayer": 2195.10],
+        "8": ["Collectr": 1752],
+        "9": ["Collectr": 1920, "eBay": 2025],
+        "10": ["Collectr": 3478, "eBay": 3550],
+    ]
+    let stats: [(String, String)] = [
+        ("Market price", "$2,195.10"),
+        ("Most recent sale", "$1,998.99"),
+        ("High sale · 12 months", "$2,799.99"),
+        ("Copies sold · 12 months", "117"),
+        ("Volatility · 30 days", "Low"),
+        ("Listings · sellers", "76 · 62"),
+    ]
+    /// Precio de mercado semanal de TCGplayer (fin de semana : precio : copias vendidas), nov 2025 → nov 2026.
+    private let weekly = "11/23:2133:2 11/30:2006:4 12/7:1924:1 12/14:1924:0 12/21:1775:8 12/28:1784:0 1/4:1776:6 1/11:1791:3 1/18:1789:2 1/25:1789:0 2/1:1784:3 2/8:1730:0 2/15:1680:1 2/22:1679:6 3/1:1743:6 3/8:1743:4 3/15:1853:11 3/22:1878:1 3/29:1878:0 4/5:1888:1 4/12:1995:7 4/19:2031:2 4/26:2136:5 5/3:2160:2 5/10:2080:3 5/17:2094:0 5/24:1954:2 5/31:2261:1 6/7:2292:2 6/14:2206:1 6/21:2210:0 6/28:2242:2 7/5:2351:4 7/12:2321:5 7/19:2396:0 7/26:2319:2 8/2:2327:0 8/9:2244:2 8/16:2410:2 8/23:2310:2 8/30:2368:1 9/6:2300:0 9/13:2283:0 9/20:2214:0 9/27:2292:0 10/4:2264:3 10/11:2324:2 10/18:2298:2 10/25:2298:0 11/1:2324:3 11/8:2324:0 11/15:2195:3"
+
+    /// La carta de ejemplo, lista para enseñarla la primera en el catálogo.
+    static let card = PokemonCardData(id: "swsh7-215", name: "Umbreon VMAX", setName: "Evolving Skies", rarity: "Rare Secret",
+                                      tcgMarketUSD: 2195.10, cardmarketEUR: nil, changePercent: -6.77,
+                                      imageURL: URL(string: "https://images.pokemontcg.io/swsh7/215_hires.png"))
+
+    static func find(_ card: PokemonCardData) -> CardSample? {
+        card.id == "swsh7-215" || (card.name.localizedCaseInsensitiveContains("Umbreon VMAX") && card.id.hasSuffix("-215")) ? CardSample() : nil
+    }
+
+    var history: [DailySalePoint] {
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
+        return weekly.split(separator: " ").compactMap { item in
+            let parts = item.split(separator: ":"); let md = parts[0].split(separator: "/")
+            guard parts.count == 3, md.count == 2, let m = Int(md[0]), let d = Int(md[1]), let price = Double(parts[1]) else { return nil }
+            let year = m >= 11 && !(m == 11 && d < 20) ? 2025 : 2026
+            return calendar.date(from: DateComponents(year: year, month: m, day: d)).map { DailySalePoint(date: $0, avg: price, orders: Int(parts[2]) ?? 0) }
+        }
+        .sorted { $0.date < $1.date }
+    }
+
+    /// Referencias para vender: lo más barato a la venta por gradación y la última venta.
+    var snapshot: MarketSnapshot {
+        MarketSnapshot(asOf: asOf, sizes: ["Raw", "PSA 8", "PSA 9", "PSA 10"],
+                       lowestAsk: ["Raw": 2195.10, "PSA 8": 1752, "PSA 9": 1920, "PSA 10": 3478],
+                       highestBid: [:], lastSale: lastSale, asks: [], sales: [])
     }
 }

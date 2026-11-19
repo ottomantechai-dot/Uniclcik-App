@@ -14,6 +14,7 @@ struct CardDetailView: View {
 
     private let gray = Color(red: 0.965, green: 0.965, blue: 0.975)
     private var number: String { card.id.split(separator: "-").last.map { "#" + $0 } ?? "—" }
+    private var sample: CardSample? { CardSample.find(card) }
     private var setLogo: URL? { PokemonTCGClient.storedSets().first { $0.name == card.setName }?.logoURL }
 
     var body: some View {
@@ -62,6 +63,12 @@ struct CardDetailView: View {
                     SellButton(item: .card(card)).padding(.top, 12)
 
                     gradeTable.padding(.top, 18)
+
+                    if let sample {
+                        ShoeMarketHistoryCard(sales: sample.history, summary: sample.stats, source: sample.asOf, sourceBrand: "TCGplayer")
+                            .background(.white, in: .rect(cornerRadius: 24))
+                            .padding(.top, 18)
+                    }
 
                     ShoeProductDetailsCard(rows: [
                         (icon: "square.stack.3d.up", title: "Set", value: card.setName),
@@ -151,15 +158,20 @@ struct CardDetailView: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Market price").font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.55))
-                Text(card.tcgMarketUSD.map(SaleReport.usd) ?? "—")
+                Text((sample?.market ?? card.tcgMarketUSD).map(SaleReport.usd) ?? "—")
                     .font(.system(size: 34, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                if let sample {
+                    Text("Last sale \(SaleReport.usd(sample.lastSale)) · TCGplayer · \(sample.asOf)")
+                        .font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+                }
             }
             Spacer()
-            if card.changePercent != 0 {
-                Text(String(format: "%+.0f%%", card.changePercent))
+            let change = sample?.changePercent ?? card.changePercent
+            if change != 0 {
+                Text(String(format: "%+.0f%%", change))
                     .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                     .padding(.horizontal, 10).frame(height: 30)
-                    .background(card.changePercent >= 0 ? Color(red: 0.13, green: 0.55, blue: 0.30) : Color.red, in: .capsule)
+                    .background(change >= 0 ? Color(red: 0.13, green: 0.55, blue: 0.30) : Color.red, in: .capsule)
             }
         }
         .padding(16).frame(maxWidth: .infinity)
@@ -203,7 +215,9 @@ struct CardDetailView: View {
                     }
                     .frame(width: 58, height: 40).background(Color.black, in: .rect(cornerRadius: 11))
                     ForEach(0..<3, id: \.self) { column in
-                        let value: String? = grade == "Raw" && column == 1 ? card.tcgMarketUSD.map(SaleReport.usd) : nil
+                        let platform = ["Collectr", "TCGplayer", "eBay"][column]
+                        let value: String? = sample.map { $0.grades[grade]?[platform].map { SaleReport.usd($0.rounded()) } }
+                            ?? (grade == "Raw" && column == 1 ? card.tcgMarketUSD.map(SaleReport.usd) : nil)
                         Text(value ?? "—").font(.system(size: 14, weight: value == nil ? .semibold : .heavy, design: .rounded))
                             .foregroundStyle(value == nil ? Color.black.opacity(0.25) : .black)
                             .frame(maxWidth: .infinity, minHeight: 40)
@@ -211,7 +225,7 @@ struct CardDetailView: View {
                     }
                 }
             }
-            Text("Graded prices appear here as soon as the market responds")
+            Text(sample.map { "Prices read from each marketplace · \($0.asOf)" } ?? "Graded prices appear here as soon as the market responds")
                 .font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.45))
                 .frame(maxWidth: .infinity).padding(.top, 4)
         }

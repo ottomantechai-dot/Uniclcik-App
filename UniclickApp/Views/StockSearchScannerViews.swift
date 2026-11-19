@@ -2248,7 +2248,7 @@ struct BrandLogoLabel: View {
     static func assetName(for brand: String) -> String? {
         let key = brand.lowercased().replacingOccurrences(of: " ", with: "")
         if key == "on" || key == "onrunning" { return "BrandLogo-on" }   // «On» va aparte: su nombre está dentro de otros
-        for name in ["nike", "adidas", "jordan", "newbalance", "puma", "dior", "vans", "crocs", "asics", "ugg", "salomon", "timberland"] where key.contains(name) { return "BrandLogo-" + name }
+        for name in ["supreme", "nike", "adidas", "jordan", "newbalance", "puma", "dior", "vans", "crocs", "asics", "ugg", "salomon", "timberland"] where key.contains(name) { return "BrandLogo-" + name }
         return nil
     }
 
@@ -2262,7 +2262,7 @@ struct BrandLogoLabel: View {
             }
         } else if compact {
             if let asset {
-                Image(asset).resizable().scaledToFit().frame(width: 18, height: 14).foregroundStyle(.black)
+                Image(asset).resizable().scaledToFit().frame(width: asset.hasSuffix("supreme") ? 24 : 18, height: 14).foregroundStyle(.black)
                     .accessibilityLabel(brand)
             } else {
                 Text(String(brand.prefix(1)).uppercased()).font(.system(size: 13, weight: .heavy, design: .rounded)).foregroundStyle(.black)

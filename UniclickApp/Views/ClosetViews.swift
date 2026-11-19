@@ -1209,7 +1209,7 @@ struct ClosetView: View {
                 if let price = ShoeSample.find(name)?.lowest(nil)?.price {
                     Text(SaleReport.usd(price)).font(.system(size: 15, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                         .padding(.horizontal, 13).frame(height: 32)
-                        .glassEffect(.clear, in: .capsule)
+                        .glassEffect(.regular, in: .capsule)
                         .offset(x: 2, y: 4)
                 }
             }
@@ -1227,11 +1227,14 @@ struct ClosetView: View {
                     Ellipse().fill(accent.opacity(0.55)).frame(width: 230, height: 90).blur(radius: 28)
                         .rotationEffect(.degrees(-16)).offset(x: 14, y: -6)
                     if let logo = BrandLogoLabel.assetName(for: brand) {
-                        Image(logo).resizable().scaledToFit().frame(width: 78, height: 78)
-                            .foregroundStyle(.white.opacity(0.9)).offset(x: 42, y: -22)
+                        // El logo de Supreme es apaisado: va centrado y más ancho.
+                        let wide = logo.hasSuffix("supreme")
+                        Image(logo).resizable().scaledToFit().frame(width: wide ? 132 : 78, height: 78)
+                            .foregroundStyle(.white.opacity(0.9)).offset(x: wide ? 0 : 42, y: -22)
                     } else {
                         // Marca sin logo: su nombre en grande.
                         Text(brand.uppercased()).font(.system(size: 38, weight: .black, design: .rounded))
+                            .lineLimit(1).minimumScaleFactor(0.4).frame(width: 150)
                             .foregroundStyle(.white.opacity(0.9)).offset(x: 0, y: -26)
                     }
                     LinearGradient(stops: [.init(color: .white, location: 0), .init(color: .white.opacity(0), location: 0.26),
@@ -1249,6 +1252,25 @@ struct ClosetView: View {
 
     /// Zapatos destacados (los más conocidos del catálogo): su recorte y el color de su fondo.
     private static let featured: [String: (cut: String, accent: Color)] = [
+        // Ropa y bolsos.
+        "supreme-cargo-pant-fw26-woodland-camo": ("ShoeCut-59", Color(red: 0.36, green: 0.44, blue: 0.26)),
+        "supreme-cargo-pant-olive-fw23": ("ShoeCut-60", Color(red: 0.45, green: 0.52, blue: 0.36)),
+        "supreme-gore-tex-cargo-pant-fw26-red": ("ShoeCut-61", Color(red: 0.86, green: 0.12, blue: 0.16)),
+        "supreme-martine-rose-champion-tee-black": ("ShoeCut-62", Color(red: 0.86, green: 0.10, blue: 0.10)),
+        "supreme-prayer-card-box-logo-tee-black": ("ShoeCut-63", Color(red: 0.86, green: 0.10, blue: 0.10)),
+        "supreme-sith-tee-black": ("ShoeCut-64", Color(red: 0.25, green: 0.55, blue: 0.80)),
+        "supreme-box-logo-crewneck-fw22-heather-grey": ("ShoeCut-67", Color(red: 0.86, green: 0.10, blue: 0.10)),
+        "denim-tears-cotton-wreath-zip-hoodie-grey": ("ShoeCut-68", Color(red: 0.55, green: 0.60, blue: 0.50)),
+        "sp5der-pnk-v2-hoodie-black": ("ShoeCut-69", Color(red: 0.95, green: 0.45, blue: 0.70)),
+        "supreme-polartec-face-mask-half-zip-hooded-sweatshirt-hearts": ("ShoeCut-50", Color(red: 0.90, green: 0.36, blue: 0.52)),
+        "supreme-applique-flannel-backpack-red": ("ShoeCut-51", Color(red: 0.80, green: 0.20, blue: 0.20)),
+        "supreme-box-logo-hooded-sweatshirt-fw25-heather-grey": ("ShoeCut-52", Color(red: 0.86, green: 0.10, blue: 0.10)),
+        "supreme-shoulder-bag-fw26-black": ("ShoeCut-53", Color(red: 0.86, green: 0.10, blue: 0.10)),
+        "fear-of-god-essentials-fleece-hoodie-light-heather-gray": ("ShoeCut-54", Color(red: 0.62, green: 0.58, blue: 0.52)),
+        "sp5der-og-web-hoodie-black": ("ShoeCut-55", Color(red: 0.95, green: 0.35, blue: 0.65)),
+        "denim-tears-the-cotton-wreath-sweatshirt-black": ("ShoeCut-56", Color(red: 0.30, green: 0.50, blue: 0.80)),
+        "bape-abc-camo-2nd-shark-full-zip-hoodie-blue": ("ShoeCut-57", Color(red: 0.25, green: 0.55, blue: 0.85)),
+        "nike-sportswear-tech-fleece-windrunner-full-zip-hoodie-black": ("ShoeCut-58", Color(red: 0.55, green: 0.55, blue: 0.58)),
         // Zapatos muy blancos: sin fondo de color apenas se distinguen sobre la ficha blanca.
         "air-jordan-11-retro-legend-blue-2024": ("ShoeCut-40", Color(red: 0.55, green: 0.55, blue: 0.58)),
         "air-jordan-4-retro-white-oreo-2021": ("ShoeCut-41", Color(red: 0.55, green: 0.55, blue: 0.58)),
@@ -1304,8 +1326,8 @@ struct ClosetView: View {
     private static func featuredKey(_ name: String) -> String {
         name.replacingOccurrences(of: " (Women's)", with: " W").replacingOccurrences(of: " ", with: "-").lowercased()
     }
-    private static func featuredCutout(_ name: String) -> String? { featured[featuredKey(name)]?.cut }
-    private static func featuredAccent(_ name: String) -> Color? { featured[featuredKey(name)]?.accent }
+    static func featuredCutout(_ name: String) -> String? { featured[featuredKey(name)]?.cut }
+    static func featuredAccent(_ name: String) -> Color? { featured[featuredKey(name)]?.accent }
 
     private var unifiedStockListContent: some View {
         LazyVStack(alignment: .leading, spacing: 10) {

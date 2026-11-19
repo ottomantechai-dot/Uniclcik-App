@@ -153,7 +153,7 @@ struct MainTabView: View {
                 }
                 .modifier(BottomFade())
             } label: {
-                Image(tabRouter.selected == .closet ? "TabZapatos" : "TabZapatosLinea").accessibilityLabel("Sneakers")
+                Image(tabRouter.selected == .closet ? "TabZapatos" : "TabZapatosLinea").accessibilityLabel("Shop")
             }
 
             Tab(value: UpsoledMainTab.cards) {

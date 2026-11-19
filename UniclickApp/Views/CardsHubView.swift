@@ -226,7 +226,8 @@ struct CardsMarketView: View {
                 if !sets.isEmpty { setsStrip }
 
                 LazyVGrid(columns: columns, spacing: 8) {
-                    ForEach(cards) { card in
+                    // La carta de ejemplo (con todos sus datos de mercado) va siempre la primera.
+                    ForEach([CardSample.card] + cards.filter { $0.id != CardSample.card.id }) { card in
                         Button { openedCard = card } label: { tile(card) }
                             .buttonStyle(.plain)
                             .onAppear { if card.id == cards.last?.id { Task { await loadMore() } } }
