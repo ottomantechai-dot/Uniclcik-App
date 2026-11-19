@@ -234,10 +234,10 @@ struct ClosetGarmentDetailView: View {
             NavigationStack {
                 ScrollView(showsIndicators: false) {
                     if shoeMarketLoading {
-                        ProgressView()
-                            .controlSize(.large)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 40)
+                        VStack(spacing: 10) {
+                            ForEach(0..<6, id: \.self) { _ in Skeleton(corner: 11).frame(height: 40) }
+                        }
+                        .padding(16)
                     } else {
                         DashboardMarketPricesSection(
                             comparison: shoeMarketComparison,
@@ -623,8 +623,10 @@ struct ClosetGarmentDetailView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 14)
                 .contentShape(.rect)
+                .background(.white)
             }
             .buttonStyle(.plain)
+            .zIndex(1)
 
             if shoeSizesOpen {
                 Divider().padding(.horizontal, 14)
@@ -652,7 +654,8 @@ struct ClosetGarmentDetailView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(.white, in: .rect(cornerRadius: 20))
+        .background(.white)
+        .clipShape(.rect(cornerRadius: 20))
         .glassEffect(.regular, in: .rect(cornerRadius: 20))
     }
 
@@ -1524,7 +1527,7 @@ struct ClosetGarmentDetailView: View {
 
             if marketPriceBusy {
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    Skeleton(corner: 5).frame(width: 60, height: 14)
                     Text("Fetching live prices from StockX & GOAT…")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(secondary)
@@ -3412,9 +3415,10 @@ struct CatalogShoeBody: View {
                         Image(systemName: "chevron.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(.black.opacity(0.45))
                             .rotationEffect(.degrees(sizesOpen ? 180 : 0))
                     }
-                    .padding(14).contentShape(.rect)
+                    .padding(14).contentShape(.rect).background(.white)
                 }
                 .buttonStyle(.plain)
+                .zIndex(1)
                 if sizesOpen {
                     Divider().padding(.horizontal, 14)
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
@@ -3430,9 +3434,11 @@ struct CatalogShoeBody: View {
                         }
                     }
                     .padding(12)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            .background(.white, in: .rect(cornerRadius: 20))
+            .background(.white)
+            .clipShape(.rect(cornerRadius: 20))
             .glassEffect(.regular, in: .rect(cornerRadius: 20))
 
             ShoeUsedListingsStrip().padding(.top, 18)
