@@ -391,11 +391,11 @@ struct ClosetGarmentDetailView: View {
     @ViewBuilder
     private var shoeInlineMarketPrices: some View {
         if shoeMarketLoading || marketPriceBusy {
-            HStack(spacing: 10) {
-                ProgressView().controlSize(.small)
-                Text("Consultando precios en StockX y GOAT…")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.55))
+            // Mientras llegan los precios: tres líneas en esqueleto, en vez de la rueda de carga.
+            VStack(alignment: .leading, spacing: 8) {
+                Skeleton(corner: 6).frame(width: 190, height: 12)
+                Skeleton(corner: 6).frame(height: 12)
+                Skeleton(corner: 6).frame(width: 120, height: 12)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
@@ -542,6 +542,7 @@ struct ClosetGarmentDetailView: View {
             Color.white
             Shoe360View(
                 titles: (shoeMarketComparison?.spinTitles ?? []) + [item.catalogDisplayName, item.name],
+                brand: item.brand,
                 fallbackURL: shoeMarketComparison?.imageURL,
                 fallback: AnyView(
                     ClosetDiskThumbnail(relativePath: ImageStore.displayRelativePath(for: item))
@@ -670,8 +671,8 @@ struct ClosetGarmentDetailView: View {
                         .minimumScaleFactor(0.7)
                         .lineLimit(1)
                 } else if shoeMarketLoading || marketPriceBusy {
-                    ProgressView().controlSize(.regular)
-                        .padding(.vertical, 8)
+                    Skeleton(corner: 8).frame(width: 130, height: 34)
+                        .padding(.vertical, 4)
                 } else {
                     Text("—")
                         .font(.system(size: 34, weight: .bold, design: .rounded))
@@ -689,7 +690,7 @@ struct ClosetGarmentDetailView: View {
                             .font(.system(size: 15, weight: .bold))
                             .foregroundStyle(Color.black.opacity(0.88))
                     } else if shoeMarketLoading {
-                        ProgressView().controlSize(.small)
+                        Skeleton(corner: 5).frame(width: 60, height: 14)
                     } else {
                         Text("—")
                             .font(.system(size: 15, weight: .bold))
@@ -3399,7 +3400,7 @@ struct CatalogShoeBody: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Shoe360View(title: product.name, fallbackURL: product.primaryImageURL)
+            Shoe360View(title: product.name, fallbackURL: product.primaryImageURL, brand: product.brand)
                 .frame(height: 230)
             Text(product.name.firstUppercased).font(.system(size: 18, weight: .bold)).foregroundStyle(.black).padding(.top, 8).padding(.bottom, 12)
             ShoeVariantsStrip(name: product.name, onSelect: onSelect).padding(.bottom, 12)

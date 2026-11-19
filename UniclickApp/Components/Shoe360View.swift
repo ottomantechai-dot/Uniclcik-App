@@ -142,15 +142,19 @@ struct Shoe360View: View {
 
     /// Búsquedas (SKU o nombre) para preguntar a StockX su ficha si con el nombre no aparece el giro.
     var queries: [String] = []
+    /// Marca del zapato: su logo sale arriba a la derecha, junto al aviso de que se puede girar.
+    var brand: String?
 
-    init(title: String, fallbackURL: URL? = nil, queries: [String] = []) {
+    init(title: String, fallbackURL: URL? = nil, queries: [String] = [], brand: String? = nil) {
         self.titles = [title]
         self.fallbackURL = fallbackURL
         self.queries = queries
+        self.brand = brand
     }
 
-    init(titles: [String], fallbackURL: URL? = nil, fallback: AnyView? = nil, queries: [String] = []) {
+    init(titles: [String], brand: String? = nil, fallbackURL: URL? = nil, fallback: AnyView? = nil, queries: [String] = []) {
         self.titles = titles.filter { !$0.isEmpty }
+        self.brand = brand
         self.fallbackURL = fallbackURL
         self.fallback = fallback
         self.queries = queries
@@ -175,15 +179,6 @@ struct Shoe360View: View {
                             }
                             .onEnded { _ in dragStart = index }
                     )
-                HStack(spacing: 6) {
-                    Image(systemName: "rotate.3d")
-                    Text(ready < Shoe360Loader.frameCount ? "Loading spin…" : "Drag to spin · 360°")
-                }
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.black.opacity(0.65))
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .glassEffect(.regular, in: .capsule)
-                .padding(.bottom, 8)
             } else if let fallback {
                 fallback
             } else {
@@ -195,6 +190,30 @@ struct Shoe360View: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .overlay(alignment: .topTrailing) {
+            // Aviso de que el zapato gira (solo informa) y, a su lado, la marca.
+            HStack(spacing: 8) {
+                if loader.available {
+                    HStack(spacing: 5) {
+                        Image(systemName: "rotate.3d")
+                        Text("360°")
+                    }
+                    .font(.system(size: 12, weight: .bold)).foregroundStyle(.black.opacity(0.7))
+                    .padding(.horizontal, 10).frame(height: 34)
+                    .background(.white, in: .capsule)
+                    .glassEffect(.regular, in: .capsule)
+                    .accessibilityLabel("Drag to spin 360 degrees")
+                }
+                if let brand, !brand.isEmpty {
+                    BrandLogoLabel(brand: brand, compact: true)
+                        .frame(width: 34, height: 34)
+                        .background(.white, in: .circle)
+                        .glassEffect(.regular, in: .circle)
+                }
+            }
+            .padding(.trailing, 4).padding(.top, 4)
+            .allowsHitTesting(false)
+        }
         .task(id: titles + queries + [fallbackURL?.absoluteString ?? ""]) {
             await loader.load(titles: titles, imageURLs: [fallbackURL].compactMap { $0 }, queries: queries)
         }
