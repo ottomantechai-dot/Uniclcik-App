@@ -331,8 +331,11 @@ struct ClosetGarmentDetailView: View {
             shoeInlineMarketPrices
                 .padding(.top, 12)
 
+            ShoeUsedListingsStrip()
+                .padding(.top, 18)
+
             ShoeMarketHistoryCard(sales: shoeSales)
-                .padding(.top, 14)
+                .padding(.top, 18)
 
             shoePolicyAccordions
                 .padding(.top, 8)
@@ -383,7 +386,7 @@ struct ClosetGarmentDetailView: View {
             Button {
                 Task { await loadShoeMarketData(force: true) }
             } label: {
-                Label("Consultar precios de mercado", systemImage: "chart.line.uptrend.xyaxis")
+                Label("Check market prices", systemImage: "chart.line.uptrend.xyaxis")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color.white)
                     .frame(maxWidth: .infinity, minHeight: 44)
@@ -520,7 +523,7 @@ struct ClosetGarmentDetailView: View {
         if let core = StockSizeDisplay.normalizedStorage(from: sizeDraft), !core.isEmpty {
             return "EU \(core)"
         }
-        return "Seleccionar"
+        return "Select"
     }
 
     private var shoeAvailableSizes: [String] {
@@ -571,7 +574,7 @@ struct ClosetGarmentDetailView: View {
             }
         } label: {
             HStack(spacing: 10) {
-                Text("Talla (no.)")
+                Text("Size")
                     .font(.system(size: 15, weight: .regular))
                     .foregroundStyle(Color.black.opacity(0.55))
                 Spacer(minLength: 0)
@@ -595,7 +598,7 @@ struct ClosetGarmentDetailView: View {
     private var shoeBuyMarketCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Comprar ahora por")
+                Text("Buy now for")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(Color.black.opacity(0.55))
                 if let buy = shoeBuyNowUSD {
@@ -616,7 +619,7 @@ struct ClosetGarmentDetailView: View {
 
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Última venta")
+                    Text("Last sale")
                         .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(Color.black.opacity(0.55))
                     if let last = shoeLastSale {
@@ -634,7 +637,7 @@ struct ClosetGarmentDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Oferta más baja")
+                    Text("Lowest ask")
                         .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(Color.black.opacity(0.55))
                     if let ask = shoeLowestAskUSD {
@@ -652,7 +655,7 @@ struct ClosetGarmentDetailView: View {
                 Button {
                     showShoeMarketData = true
                 } label: {
-                    Text("Datos del\nmercado")
+                    Text("Market\ndata")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color(red: 0.13, green: 0.55, blue: 0.30))
                         .multilineTextAlignment(.trailing)
@@ -676,12 +679,12 @@ struct ClosetGarmentDetailView: View {
         VStack(spacing: 0) {
             shoeAccordionRow(
                 icon: "arrow.uturn.backward",
-                title: "Política de devolución",
-                subtitle: shoeExpandedReturnPolicy ? nil : "Plazo de 14 días para la devolución.",
+                title: "Return policy",
+                subtitle: shoeExpandedReturnPolicy ? nil : "14-day return window.",
                 subtitleColor: Color(red: 0.13, green: 0.55, blue: 0.30),
                 isExpanded: $shoeExpandedReturnPolicy
             ) {
-                Text("Puedes solicitar la devolución en un plazo de 14 días desde la entrega, siempre que el artículo esté en las mismas condiciones en las que lo recibiste.")
+                Text("You can request a return within 14 days of delivery, as long as the item is in the same condition.")
                     .font(.system(size: 13))
                     .foregroundStyle(Color.black.opacity(0.62))
                     .fixedSize(horizontal: false, vertical: true)
@@ -691,10 +694,10 @@ struct ClosetGarmentDetailView: View {
 
             shoeAccordionRow(
                 icon: "shield.lefthalf.filled",
-                title: "Promesa del comprador",
+                title: "Buyer promise",
                 isExpanded: $shoeExpandedBuyerPromise
             ) {
-                Text("Verificamos la autenticidad y el estado del producto antes de que llegue a tus manos.")
+                Text("We verify authenticity and condition before the product reaches you.")
                     .font(.system(size: 13))
                     .foregroundStyle(Color.black.opacity(0.62))
                     .fixedSize(horizontal: false, vertical: true)
@@ -708,7 +711,7 @@ struct ClosetGarmentDetailView: View {
 
     private var shoeDetailActionBar: some View {
         HStack(spacing: 0) {
-            shoeDetailActionButton(title: "Editar", icon: "pencil") {
+            shoeDetailActionButton(title: "Edit", icon: "pencil") {
                 showShoeEditDetails = true
             }
 
@@ -716,7 +719,7 @@ struct ClosetGarmentDetailView: View {
                 .fill(Color.black.opacity(0.10))
                 .frame(width: 1, height: 28)
 
-            shoeDetailActionButton(title: "Pantalla completa", icon: "arrow.up.left.and.arrow.down.right") {
+            shoeDetailActionButton(title: "Full screen", icon: "arrow.up.left.and.arrow.down.right") {
                 showShoeFullscreenImage = true
             }
 
@@ -724,7 +727,7 @@ struct ClosetGarmentDetailView: View {
                 .fill(Color.black.opacity(0.10))
                 .frame(width: 1, height: 28)
 
-            shoeDetailActionButton(title: "Muestra todo", icon: "square.grid.2x2") {
+            shoeDetailActionButton(title: "Show all", icon: "square.grid.2x2") {
                 showShoeAllDetails = true
             }
         }
@@ -756,7 +759,7 @@ struct ClosetGarmentDetailView: View {
     }
 
     private var shoeRelatedProductsHeader: some View {
-        Text("Productos similares")
+        Text("Related products")
             .font(.system(size: 18, weight: .bold))
             .foregroundStyle(Color.black.opacity(0.92))
     }
@@ -766,7 +769,7 @@ struct ClosetGarmentDetailView: View {
             shoeRelatedProductsHeader
 
             if similarStockItems.isEmpty {
-                Text("No hay más artículos en tu stock.")
+                Text("No more items in your stock.")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.45))
             } else {
@@ -3089,14 +3092,22 @@ struct ShoeMarketHistoryCard: View {
         let from = last.addingTimeInterval(-Double(range) * 86400)
         return sales.filter { $0.date >= from }
     }
+    private var hasData: Bool { sales.count >= 2 }
 
     private static func usd(_ v: Double) -> String { SaleReport.usd(v.rounded()) }
 
     var body: some View {
-        if sales.count >= 2 {
-            VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
                 Text("Price history").font(.system(size: 18, weight: .bold)).foregroundStyle(.black)
+                Spacer()
+                HStack(spacing: 5) {
+                    Circle().fill(hasData ? Color.green : Color.black.opacity(0.25)).frame(width: 7, height: 7)
+                    Text(hasData ? "Live" : "Waiting for data").font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
+                }
+            }
 
+            if hasData {
                 Chart(shown) { point in
                     AreaMark(x: .value("Date", point.date), y: .value("Price", point.avg))
                         .foregroundStyle(LinearGradient(colors: [Color.black.opacity(0.16), .clear], startPoint: .top, endPoint: .bottom))
@@ -3106,35 +3117,51 @@ struct ShoeMarketHistoryCard: View {
                 .chartXAxis(.hidden)
                 .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) }
                 .frame(height: 170)
-
-                GlassEffectContainer(spacing: 8) {
-                    HStack(spacing: 8) {
-                        ForEach([(0, "All"), (30, "1M"), (90, "3M"), (180, "6M"), (365, "1Y")], id: \.0) { days, label in
-                            Button { withAnimation(.snappy) { range = days } } label: {
-                                Text(label).font(.system(size: 13, weight: .bold)).foregroundStyle(range == days ? .white : .black)
-                                    .frame(maxWidth: .infinity, minHeight: 36)
-                                    .glassEffect(range == days ? .regular.tint(.black).interactive() : .regular.interactive(), in: .capsule)
-                            }
-                            .buttonStyle(.plain)
+            } else {
+                // Sin ventas todavía: se enseña el hueco de la gráfica, sin dibujar una curva inventada.
+                ZStack {
+                    VStack(spacing: 0) {
+                        ForEach(0..<4, id: \.self) { _ in
+                            Rectangle().fill(Color.black.opacity(0.07)).frame(height: 1)
+                            Spacer(minLength: 0)
                         }
+                        Rectangle().fill(Color.black.opacity(0.07)).frame(height: 1)
+                    }
+                    VStack(spacing: 6) {
+                        Image(systemName: "chart.xyaxis.line").font(.system(size: 26, weight: .semibold)).foregroundStyle(.black.opacity(0.3))
+                        Text("No sales data yet").font(.system(size: 13, weight: .semibold)).foregroundStyle(.black.opacity(0.45))
                     }
                 }
+                .frame(height: 170)
+            }
 
-                let prices = shown.map(\.avg)
-                if let hi = prices.max(), let lo = prices.min(), !prices.isEmpty {
-                    let mean = prices.reduce(0, +) / Double(prices.count)
-                    let deviation = (prices.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(prices.count)).squareRoot()
-                    VStack(spacing: 0) {
-                        row("Price range", "\(Self.usd(lo)) – \(Self.usd(hi))")
-                        row("Average sale price", Self.usd(mean))
-                        row("Volatility", mean > 0 ? String(format: "%.0f%%", deviation / mean * 100) : "—")
-                        row("Number of sales", "\(shown.reduce(0) { $0 + $1.orders })", last: true)
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: 8) {
+                    ForEach([(0, "All"), (30, "1M"), (90, "3M"), (180, "6M"), (365, "1Y")], id: \.0) { days, label in
+                        Button { withAnimation(.snappy) { range = days } } label: {
+                            Text(label).font(.system(size: 13, weight: .bold)).foregroundStyle(range == days ? .white : .black)
+                                .frame(maxWidth: .infinity, minHeight: 36)
+                                .glassEffect(range == days ? .regular.tint(.black).interactive() : .regular.interactive(), in: .capsule)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
-            .padding(16)
-            .glassEffect(.regular, in: .rect(cornerRadius: 24))
+
+            Text("Historical data").font(.system(size: 18, weight: .bold)).foregroundStyle(.black).padding(.top, 6)
+            let prices = shown.map(\.avg)
+            let mean = prices.isEmpty ? 0 : prices.reduce(0, +) / Double(prices.count)
+            let deviation = prices.isEmpty ? 0 : (prices.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(prices.count)).squareRoot()
+            VStack(spacing: 0) {
+                row("Price range high", hasData ? Self.usd(prices.max() ?? 0) : "—")
+                row("Price range low", hasData ? Self.usd(prices.min() ?? 0) : "—")
+                row("Volatility", hasData && mean > 0 ? String(format: "%.0f%%", deviation / mean * 100) : "—")
+                row("Number of sales", hasData ? "\(shown.reduce(0) { $0 + $1.orders })" : "—")
+                row("Average sale price", hasData ? Self.usd(mean) : "—", last: true)
+            }
         }
+        .padding(16)
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
     }
 
     private func row(_ title: String, _ value: String, last: Bool = false) -> some View {
@@ -3146,6 +3173,31 @@ struct ShoeMarketHistoryCard: View {
             }
             .padding(.vertical, 11)
             if !last { Divider() }
+        }
+    }
+}
+
+/// «Shop used listings»: fila de círculos con anuncios de usados. Hasta que haya una fuente de usados
+/// conectada, enseña los huecos vacíos en vez de fotos inventadas.
+struct ShoeUsedListingsStrip: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Shop used listings").font(.system(size: 18, weight: .bold)).foregroundStyle(.black)
+                Spacer()
+                Image(systemName: "arrow.right").font(.system(size: 14, weight: .bold)).foregroundStyle(.black.opacity(0.35))
+                    .frame(width: 36, height: 36).glassEffect(.regular, in: .circle)
+            }
+            GlassEffectContainer(spacing: -10) {
+                HStack(spacing: -10) {
+                    ForEach(0..<5, id: \.self) { _ in
+                        Image(systemName: "shoe.2").font(.system(size: 16)).foregroundStyle(.black.opacity(0.22))
+                            .frame(width: 58, height: 58).glassEffect(.regular, in: .circle)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            Text("No used listings connected yet").font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.45))
         }
     }
 }
