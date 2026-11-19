@@ -1898,6 +1898,7 @@ struct DashboardMarketPricesSection: View {
         .padding(.horizontal, 18)
         .padding(.top, 18)
         .padding(.bottom, 16)
+        .background(.white, in: .rect(cornerRadius: 26))
         .glassEffect(.regular, in: .rect(cornerRadius: 26))
         .task(id: comparison?.matchedSKU ?? comparison?.query ?? "") { await loadLastSale() }
     }
@@ -2330,18 +2331,17 @@ struct HomeBentoGrid: View {
                 ZStack(alignment: .leading) {
                     // Tres cartas gradadas en abanico, a la derecha, que se difuminan hacia el texto y hacia abajo.
                     HStack(spacing: -30) {
-                        bannerCard("BannerCard1", angle: -9, y: 12)
-                        bannerCard("BannerCard2", angle: 0, y: 0).zIndex(1)
-                        bannerCard("BannerCard3", angle: 9, y: 12)
+                        bannerCard("BannerCard1", angle: -7, y: 8)
+                        bannerCard("BannerCard2", angle: 7, y: 8).zIndex(1)
                     }
                     .frame(maxWidth: .infinity, alignment: .trailing)
-                    .padding(.trailing, 2)
-                    .offset(y: 14)
+                    .padding(.trailing, 0)
+                    .offset(x: 6, y: 34)
                     .mask {
-                        LinearGradient(stops: [.init(color: .clear, location: 0.46), .init(color: .black, location: 0.60)], startPoint: .leading, endPoint: .trailing)
+                        LinearGradient(stops: [.init(color: .clear, location: 0.40), .init(color: .black, location: 0.54)], startPoint: .leading, endPoint: .trailing)
                     }
                     .mask {
-                        LinearGradient(stops: [.init(color: .black, location: 0.70), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom)
+                        LinearGradient(stops: [.init(color: .black, location: 0.78), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom)
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
@@ -2361,7 +2361,6 @@ struct HomeBentoGrid: View {
                 .background(Color(red: 0.93, green: 0.05, blue: 0.05))
                 .clipShape(.rect(cornerRadius: 26))
                 .glassEffect(.clear.tint(Color(red: 0.93, green: 0.05, blue: 0.05).opacity(0.35)).interactive(), in: .rect(cornerRadius: 26))
-                .shadow(color: Color(red: 0.93, green: 0.05, blue: 0.05).opacity(0.28), radius: 14, y: 8)
             }
             .buttonStyle(.plain)
 
@@ -2398,8 +2397,8 @@ struct HomeBentoGrid: View {
 
     private func bannerCard(_ name: String, angle: Double, y: CGFloat) -> some View {
         Image(name).resizable().scaledToFit()
-            .frame(width: 78)
-            .clipShape(.rect(cornerRadius: 6))
+            .frame(width: 106)
+            .clipShape(.rect(cornerRadius: 8))
             .shadow(color: .black.opacity(0.22), radius: 8, y: 4)
             .rotationEffect(.degrees(angle))
             .offset(y: y)
@@ -2414,6 +2413,7 @@ struct HomeBentoGrid: View {
             Text(value).font(.system(size: 28, weight: .heavy, design: .rounded)).foregroundStyle(.black).minimumScaleFactor(0.5).lineLimit(1)
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white, in: .rect(cornerRadius: 22))
         .glassEffect(.regular, in: .rect(cornerRadius: 22))
     }
 
@@ -2432,6 +2432,7 @@ struct HomeBentoGrid: View {
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(.rect(cornerRadius: 18))
+        .background(.white, in: .rect(cornerRadius: 18))
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
     }
 
@@ -2442,7 +2443,8 @@ struct HomeBentoGrid: View {
         }
         .frame(maxWidth: .infinity, minHeight: 78)
         .contentShape(.rect(cornerRadius: 18))
-        .glassEffect(highlighted ? .regular.tint(Color.black.opacity(0.10)).interactive() : .regular.interactive(), in: .rect(cornerRadius: 18))
+        .background(highlighted ? Color(white: 0.90) : .white, in: .rect(cornerRadius: 18))
+        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
     }
 }
 
@@ -2475,6 +2477,7 @@ struct HomeTrendingRow: View {
                                         .lineLimit(2).multilineTextAlignment(.leading).frame(width: 118, height: 34, alignment: .topLeading)
                                 }
                                 .padding(12).padding(.top, 14)
+                                .background(.white, in: .rect(cornerRadius: 20))
                                 .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
                                 .overlay(alignment: .topLeading) {
                                     // La marca, en un círculo de cristal en la esquina.
@@ -2538,6 +2541,7 @@ struct HomeTrendingCardsRow: View {
                                     .foregroundStyle(card.tcgMarketUSD == nil ? Color.black.opacity(0.5) : .black).lineLimit(1).frame(width: 118, alignment: .leading)
                             }
                             .padding(12)
+                            .background(.white, in: .rect(cornerRadius: 20))
                             .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
                             .overlay(alignment: .topTrailing) { CardEditionBadge(card: card).padding(6) }
                         }
