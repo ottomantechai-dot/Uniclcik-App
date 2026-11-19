@@ -62,8 +62,6 @@ struct CardDetailView: View {
                     }
                     .buttonStyle(.plain).padding(.top, 12)
 
-                    comparisonCard.padding(.top, 18)
-
                     gradeTable.padding(.top, 18)
 
                     ShoeProductDetailsCard(rows: [
@@ -108,11 +106,6 @@ struct CardDetailView: View {
             // Barra nativa, como en la ficha de un zapato: así el gesto de volver funciona igual que en la ficha de un zapato
             // y se ve la pantalla anterior por detrás al deslizar.
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    CardImage(url: setLogo, placeholder: false).frame(width: 96, height: 30)
-                }
-            }
             .modifier(BottomFade(color: gray))
             .task(id: card.setName) {
                 if let known = Self.relatedCache[card.setName] { related = known.filter { $0.id != card.id }; return }
@@ -159,23 +152,6 @@ struct CardDetailView: View {
             }
         }
         .padding(16).frame(maxWidth: .infinity)
-        .background(.white, in: .rect(cornerRadius: 22))
-        .glassEffect(.regular, in: .rect(cornerRadius: 22))
-    }
-
-    /// Dónde comprarla o venderla: precios confirmados donde los hay; raya donde no.
-    private var comparisonCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Price comparison").font(.system(size: 18, weight: .bold)).foregroundStyle(.black)
-            source(name: "Collectr", logo: nil, value: nil)
-            HStack(spacing: 8) {
-                source(name: "TCGplayer", logo: nil, value: card.tcgMarketUSD.map(SaleReport.usd))
-                source(name: "eBay", logo: "eBay", value: nil)
-            }
-            Text("TCGplayer prices are live. Collectr and eBay appear once connected.")
-                .font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.45))
-        }
-        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(.white, in: .rect(cornerRadius: 22))
         .glassEffect(.regular, in: .rect(cornerRadius: 22))
     }
@@ -231,23 +207,6 @@ struct CardDetailView: View {
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(.white, in: .rect(cornerRadius: 22))
         .glassEffect(.regular, in: .rect(cornerRadius: 22))
-    }
-
-    private func source(name: String, logo: String?, value: String?) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let logo {
-                StylizedMarketplaceLogo(brand: logo).frame(height: 18).frame(maxWidth: 62, alignment: .leading).frame(height: 24)
-            } else {
-                HStack(spacing: 8) {
-                    Image("Logo" + name).resizable().scaledToFit().frame(width: 24, height: 24).clipShape(.rect(cornerRadius: 6))
-                    Text(name).font(.system(size: 13, weight: .heavy)).foregroundStyle(.black)
-                }
-            }
-            Text(value ?? "—").font(.system(size: 19, weight: .heavy, design: .rounded))
-                .foregroundStyle(value == nil ? Color.black.opacity(0.25) : .black)
-        }
-        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.black.opacity(0.04), in: .rect(cornerRadius: 14))
     }
 }
 
