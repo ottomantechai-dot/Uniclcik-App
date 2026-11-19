@@ -287,6 +287,8 @@ struct DashboardHomeScreen: View {
                           onScan: { tabRouter.scanRequested = true; tabRouter.selected = .closet },
                           onCards: { tabRouter.selected = .cards })
 
+            CardsShowcase(onViewAll: { tabRouter.selected = .cards })
+
             if homeShowsCards {
                 HomeTrendingCardsRow(onViewAll: { tabRouter.selected = .cards })
             } else {
@@ -1340,7 +1342,7 @@ private struct DashboardHomeBottomGrid: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            HomeTrendingCardsRow(title: "Trading Cards", icon: "rectangle.portrait.on.rectangle.portrait.fill", onViewAll: { NotificationCenter.default.post(name: .homeOpenCards, object: nil) })
+            HomeTrendingCardsRow(title: "Card Catalog", icon: "rectangle.portrait.on.rectangle.portrait.fill", onViewAll: { NotificationCenter.default.post(name: .homeOpenCards, object: nil) })
         }
     }
 
@@ -2651,5 +2653,100 @@ struct DotMatrixText: View {
         }
         .frame(width: width, height: 7 * step)
         .accessibilityLabel(text)
+    }
+}
+
+
+// MARK: - Escaparate giratorio de cartas
+
+/// Cartas gradadas en un carrusel que gira: la del centro va grande y de frente; las demás se
+/// alejan hacia los lados. Se arrastra para girar y, si no se toca, avanza solo.
+struct CardsShowcase: View {
+    var onViewAll: () -> Void
+    private let cards = ["ShowCard1", "ShowCard2", "ShowCard3", "ShowCard4", "ShowCard5"]
+    private let red = Color(red: 0.93, green: 0.05, blue: 0.05)
+
+    @State private var position: Double = 0      // carta que está en el centro (puede ser fraccionaria)
+    @State private var dragStart: Double?
+    @State private var lastTouch = Date.distantPast
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Image("IconSlab").resizable().scaledToFit().frame(width: 20, height: 20).foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(red, in: .rect(cornerRadius: 11))
+                    .shadow(color: red.opacity(0.45), radius: 8, y: 3)
+                Text("Trading Cards").font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                Spacer()
+                Button(action: onViewAll) {
+                    HStack(spacing: 4) { Text("View all"); Image(systemName: "arrow.right").font(.system(size: 11, weight: .bold)) }
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(.black)
+                }
+                .buttonStyle(.plain)
+            }
+
+            ZStack(alignment: .bottom) {
+                // Plataforma luminosa bajo las cartas.
+                Ellipse().fill(RadialGradient(colors: [red.opacity(0.35), red.opacity(0)], center: .center, startRadius: 4, endRadius: 170))
+                    .frame(width: 340, height: 70)
+                Ellipse().strokeBorder(LinearGradient(colors: [.white, red.opacity(0.7)], startPoint: .top, endPoint: .bottom), lineWidth: 3)
+                    .frame(width: 250, height: 38).blur(radius: 0.6)
+                    .shadow(color: red.opacity(0.8), radius: 10)
+                    .padding(.bottom, 10)
+
+                ZStack {
+                    ForEach(Array(cards.enumerated()), id: \.offset) { index, name in
+                        let d = offset(of: index)
+                        let depth = min(abs(d), 2.5)
+                        Image(name).resizable().scaledToFit()
+                            .frame(height: 250)
+                            .clipShape(.rect(cornerRadius: 10))
+                            .shadow(color: .black.opacity(0.22 - depth * 0.05), radius: 10, y: 6)
+                            .scaleEffect(1 - depth * 0.19)
+                            .rotation3DEffect(.degrees(-d * 16), axis: (x: 0, y: 1, z: 0), perspective: 0.6)
+                            .offset(x: sin(d * 0.62) * 150, y: depth * 4)
+                            .opacity(depth > 2.2 ? 0 : 1 - depth * 0.16)
+                            .zIndex(10 - depth)
+                    }
+                }
+                .padding(.bottom, 26)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 300)
+            .contentShape(.rect)
+            .gesture(
+                DragGesture(minimumDistance: 6)
+                    .onChanged { value in
+                        if dragStart == nil { dragStart = position }
+                        position = (dragStart ?? 0) - value.translation.width / 110
+                        lastTouch = Date()
+                    }
+                    .onEnded { value in
+                        let target = ((dragStart ?? position) - value.predictedEndTranslation.width / 110).rounded()
+                        dragStart = nil
+                        lastTouch = Date()
+                        withAnimation(.spring(duration: 0.5, bounce: 0.25)) { position = target }
+                    }
+            )
+            .onTapGesture { onViewAll() }
+        }
+        .task {
+            // Si nadie lo toca, gira solo a la siguiente carta cada pocos segundos.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                guard dragStart == nil, Date().timeIntervalSince(lastTouch) > 4 else { continue }
+                withAnimation(.spring(duration: 0.8, bounce: 0.15)) { position = position.rounded() + 1 }
+            }
+        }
+    }
+
+    /// Distancia de la carta al centro, dando la vuelta (de −2,5 a 2,5 con cinco cartas).
+    private func offset(of index: Int) -> Double {
+        let count = Double(cards.count)
+        var d = (Double(index) - position).truncatingRemainder(dividingBy: count)
+        if d > count / 2 { d -= count }
+        if d < -count / 2 { d += count }
+        return d
     }
 }
