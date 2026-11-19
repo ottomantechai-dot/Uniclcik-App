@@ -2593,32 +2593,22 @@ struct CardEditionBadge: View {
 }
 
 
-/// Llama animada, pequeña y bien centrada: no se ladea ni se desplaza. Solo «respira» hacia arriba
-/// desde su base, a saltos como un GIF, y su color va del negro al rojo.
+/// Llama animada: el icono de fuego con contorno negro, centrado, que arde a saltos como un GIF
+/// (crece y encoge desde la base y cambia un poco de brillo).
 struct AnimatedFlame: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1.0 / 10)) { context in
             let t = (context.date.timeIntervalSinceReferenceDate * 10).rounded() / 10
-            let heat = (sin(t * 2.4) + 1) / 2
-            let outer = sin(t * 11) * 0.6 + sin(t * 17.3) * 0.4
-            let inner = sin(t * 13 + 1.7) * 0.6 + sin(t * 7.1) * 0.4
-            ZStack(alignment: .bottom) {
-                Image(systemName: "flame.fill")
-                    .resizable().scaledToFit()
-                    .frame(width: 15, height: 18)
-                    .foregroundStyle(Color(red: 0.92 * heat, green: 0.06 * heat, blue: 0.03 * heat))
-                    .scaleEffect(x: 1, y: 1 + outer * 0.07, anchor: .bottom)
-                Image(systemName: "flame.fill")
-                    .resizable().scaledToFit()
-                    .frame(width: 7, height: 9)
-                    .foregroundStyle(Color(red: 1, green: 0.5 + 0.3 * heat, blue: 0.1).opacity(0.2 + 0.8 * heat))
-                    .scaleEffect(x: 1, y: 1 + inner * 0.18, anchor: .bottom)
-                    .padding(.bottom, 1.5)
-            }
-            .frame(width: 18, height: 21, alignment: .bottom)
+            let flicker = sin(t * 11) * 0.6 + sin(t * 17.3) * 0.4
+            let glow = (sin(t * 2.4) + 1) / 2
+            Image("FlameIcon")
+                .resizable().scaledToFit()
+                .frame(width: 17, height: 22)
+                .scaleEffect(x: 1 - flicker * 0.04, y: 1 + flicker * 0.08, anchor: .bottom)
+                .brightness(-0.10 + glow * 0.14)
+                .saturation(0.9 + glow * 0.3)
         }
-        .frame(width: 18, height: 21)
-        .alignmentGuide(VerticalAlignment.center) { $0[VerticalAlignment.center] + 1 }
+        .frame(width: 19, height: 24, alignment: .bottom)
         .accessibilityHidden(true)
     }
 }
