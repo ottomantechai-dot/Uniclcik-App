@@ -2537,6 +2537,7 @@ struct HomeTrendingCardsRow: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 CardImage(url: card.thumbURL)
                                 .frame(width: 118, height: 150)
+                                .overlay(alignment: .bottomLeading) { CardSourceDots(size: 20).padding(.leading, 2).padding(.bottom, 3) }
                                 Text(card.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black).lineLimit(1).frame(width: 118, alignment: .leading)
                                 Text(card.tcgMarketUSD.map(SaleReport.usd) ?? card.setName)
                                     .font(.system(size: 12, weight: card.tcgMarketUSD == nil ? .medium : .heavy, design: .rounded))

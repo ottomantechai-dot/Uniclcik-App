@@ -39,11 +39,14 @@ struct CardDetailView: View {
                             HStack(spacing: 8) {
                                 ForEach(related.prefix(10)) { other in
                                     Button { select(other) } label: {
+                                        // Mismo contenedor que en la rejilla: carta, edición arriba y fuentes abajo.
                                         CardImage(url: other.thumbURL)
-                                        .frame(width: 46, height: 64)
-                                        .padding(5)
-                                        .background(Color.white, in: .rect(cornerRadius: 12))
-                                        .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Color.black.opacity(0.08)) }
+                                        .frame(width: 82, height: 114)
+                                        .overlay(alignment: .bottomLeading) { CardSourceDots(size: 16).padding(2) }
+                                        .padding(6)
+                                        .background(Color.white, in: .rect(cornerRadius: 14))
+                                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+                                        .overlay(alignment: .topTrailing) { CardEditionBadge(card: other).scaleEffect(0.62, anchor: .topTrailing).padding(3) }
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -81,6 +84,7 @@ struct CardDetailView: View {
                                         VStack(alignment: .leading, spacing: 6) {
                                             CardImage(url: other.thumbURL)
                                             .frame(width: 118, height: 160)
+                                            .overlay(alignment: .bottomLeading) { CardSourceDots(size: 20).padding(.leading, 2).padding(.bottom, 3) }
                                             Text(other.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black).lineLimit(1).frame(width: 118, alignment: .leading)
                                             Text(other.tcgMarketUSD.map(SaleReport.usd) ?? "No price")
                                                 .font(.system(size: 12, weight: .heavy, design: .rounded))
@@ -89,6 +93,7 @@ struct CardDetailView: View {
                                         .padding(10)
                                         .background(.white, in: .rect(cornerRadius: 18))
                                         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 18))
+                                        .overlay(alignment: .topTrailing) { CardEditionBadge(card: other).padding(6) }
                                     }
                                     .buttonStyle(.plain)
                                 }
