@@ -321,6 +321,7 @@ struct ClosetView: View {
         var seenCatalogLinks = Set<UUID>()
         var seenIdentityKeys = Set<String>()
         var unique: [ClosetItem] = []
+        let spinSlugs = self.spinSlugs   // se calcula una vez, no por cada zapato
 
         for item in filteredActiveClosetItems {
             // Solo se enseñan los zapatos que tienen giro 360°: los que coinciden con el catálogo.

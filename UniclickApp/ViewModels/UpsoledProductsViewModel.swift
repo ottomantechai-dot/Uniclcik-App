@@ -52,7 +52,9 @@ final class UpsoledProductsViewModel: ObservableObject {
 
     /// Refresca la lista desde Supabase.
     func reload() async {
-        isLoading = true
+        // Lo último que se vio sale al instante desde el teléfono; la red solo lo pone al día.
+        if products.isEmpty, let saved = Self.readCache(key: cacheKey) { products = saved }
+        isLoading = products.isEmpty
         defer { isLoading = false }
         do {
             let rows = try await UpsoledProductsService.list(
@@ -61,13 +63,31 @@ final class UpsoledProductsViewModel: ObservableObject {
                 listingSection: listingSectionFilter,
                 limit: fetchLimit
             )
-            products = rows
+            let fresh = rows
                 .filter { !Self.removedCatalogSlugs.contains($0.slug) }
                 .map { $0.applyingStoredOverrides() }
+            if fresh != products { products = fresh }
+            Self.writeCache(fresh, key: cacheKey)
             errorMessage = nil
         } catch {
             errorMessage = "No se pudieron cargar los productos: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: Copia en el teléfono
+
+    private var cacheKey: String { "catalog-\(listingSectionFilter ?? "all")-\(selectedCategory ?? "all")-\(onlyInStock)-\(fetchLimit)" }
+
+    private static func cacheFile(_ key: String) -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent(key + ".json")
+    }
+    private static func readCache(key: String) -> [UpsoledProduct]? {
+        guard let data = try? Data(contentsOf: cacheFile(key)), let rows = try? JSONDecoder().decode([UpsoledProduct].self, from: data), !rows.isEmpty else { return nil }
+        return rows
+    }
+    private static func writeCache(_ rows: [UpsoledProduct], key: String) {
+        let file = cacheFile(key)
+        Task.detached(priority: .utility) { if let data = try? JSONEncoder().encode(rows) { try? data.write(to: file, options: .atomic) } }
     }
 
     /// Crea un producto nuevo a partir de un draft de UI.

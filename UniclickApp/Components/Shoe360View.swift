@@ -135,7 +135,18 @@ final class Shoe360Loader: ObservableObject {
 /// Recorte de una foto de producto con fondo blanco: el blanco unido a los bordes pasa a transparente.
 /// El blanco de dentro del zapato (suela, paneles) no se toca. Cada foto se recorta una sola vez.
 enum ShoeCutout {
-    private static let cache = NSCache<UIImage, UIImage>()
+    private nonisolated(unsafe) static let cache = NSCache<UIImage, UIImage>()
+
+    /// Recorta por adelantado, fuera del hilo de la pantalla, para que el giro no dé tirones.
+    static func prepare(_ sources: [UIImage]) {
+        let pending = sources.filter { cache.object(forKey: $0) == nil }
+        guard !pending.isEmpty else { return }
+        Task.detached(priority: .userInitiated) {
+            for source in pending where cache.object(forKey: source) == nil {
+                if let result = cut(source) { cache.setObject(result, forKey: source) }
+            }
+        }
+    }
 
     static func image(_ source: UIImage) -> UIImage {
         if let hit = cache.object(forKey: source) { return hit }
@@ -144,7 +155,7 @@ enum ShoeCutout {
         return result
     }
 
-    private static func cut(_ source: UIImage) -> UIImage? {
+    private nonisolated static func cut(_ source: UIImage) -> UIImage? {
         guard let cg = source.cgImage else { return nil }
         let w = cg.width, h = cg.height
         var px = [UInt8](repeating: 255, count: w * h * 4)
@@ -271,6 +282,7 @@ struct Shoe360View: View {
             .offset(y: -badgeLift)
             .allowsHitTesting(false)
         }
+        .onChange(of: ready) { _, _ in if cutout { ShoeCutout.prepare(loader.frames.compactMap { $0 }) } }
         .task(id: titles + queries + [fallbackURL?.absoluteString ?? ""]) {
             await loader.load(titles: titles, imageURLs: [fallbackURL].compactMap { $0 }, queries: queries)
         }
