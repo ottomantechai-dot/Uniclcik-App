@@ -23,6 +23,10 @@ final class MainTabRouter: ObservableObject {
     @Published var selected: UpsoledMainTab = .home
     /// La barra de abajo se esconde en pantallas de detalle (ficha de un zapato, añadir al stock).
     @Published var barHidden = false
+    /// Sube cada vez que se toca la lupa de Inicio: abre el buscador de zapatos.
+    @Published var homeSearchTick = 0
+    /// Abre el escáner de cajas al entrar en Sneakers.
+    @Published var scanRequested = false
     /// Presenta el flujo «Añadir al stock» desde Your stock (antes era una pestaña).
     @Published var showAddStockFlow = false
     /// Abre el pipeline de revisión al entrar en Añadir (p. ej. borradores desde stock).
@@ -126,7 +130,17 @@ struct MainTabView: View {
             Tab(value: UpsoledMainTab.home) {
                 NavigationStack {
                     DashboardView()
-                        .safeAreaInset(edge: .top, spacing: 0) { AppTopBar(title: "Uniclick") }
+                        .safeAreaInset(edge: .top, spacing: 0) {
+                            AppTopBar(title: "Uniclick") {
+                                Button { tabRouter.homeSearchTick += 1 } label: { TopBarGlassButton(systemImage: "magnifyingglass") }
+                                    .buttonStyle(.plain).accessibilityLabel("Search sneakers")
+                                Button {
+                                    tabRouter.scanRequested = true
+                                    tabRouter.selected = .closet
+                                } label: { TopBarGlassButton(systemImage: "barcode.viewfinder") }
+                                    .buttonStyle(.plain).accessibilityLabel("Scan a box barcode")
+                            }
+                        }
                 }
             } label: {
                 Image(tabRouter.selected == .home ? "TabInicio" : "TabInicioLinea").accessibilityLabel("Home")

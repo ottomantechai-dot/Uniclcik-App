@@ -263,6 +263,7 @@ struct DashboardHomeScreen: View {
     @State private var showMarketComparator = false
     @State private var showWatchlist = false
     @State private var showSearch = false
+    @EnvironmentObject private var tabRouter: MainTabRouter
     @State private var showOpportunities = false
     @ObservedObject private var watchlist = WatchlistStore.shared
 
@@ -277,27 +278,6 @@ struct DashboardHomeScreen: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Buscador de cualquier zapato: precio real por talla en todas las plataformas.
-            Button { showSearch = true } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(DashboardHomePalette.accentBlue)
-                    Text("Search any sneaker and its price")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(DashboardHomePalette.labelMuted)
-                    Spacer()
-                }
-                .padding(.horizontal, 14).padding(.vertical, 13)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.white)
-                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(DashboardHomePalette.cardBorder, lineWidth: 1))
-                        .shadow(color: DashboardHomePalette.cardShadow, radius: 8, x: 0, y: 3)
-                )
-            }
-            .buttonStyle(.plain)
 
             if !trending.isEmpty {
                 DashboardTrendingSneakersSection(
@@ -352,7 +332,8 @@ struct DashboardHomeScreen: View {
                 onViewStock: onViewStock
             )
         }
-        .sheet(isPresented: $showMarketComparator) {
+        .onChange(of: tabRouter.homeSearchTick) { _, _ in showSearch = true }
+        .fullScreenCover(isPresented: $showMarketComparator) {
             if let item = selectedTrendingItem {
                 ShoeMarketDetailView(item: item)
             } else {
@@ -362,7 +343,7 @@ struct DashboardHomeScreen: View {
         .sheet(isPresented: $showWatchlist) {
             WatchlistView()
         }
-        .sheet(isPresented: $showSearch) {
+        .fullScreenCover(isPresented: $showSearch) {
             MarketComparatorView()
         }
         .sheet(isPresented: $showOpportunities) {

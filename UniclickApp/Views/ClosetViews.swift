@@ -580,6 +580,11 @@ struct ClosetView: View {
             await catalogVM.reload()
         }
         .onChange(of: catalogVM.products.count, initial: true) { _, _ in CatalogShelf.products = catalogVM.products }
+        .onChange(of: tabRouter.scanRequested, initial: true) { _, wanted in
+            guard wanted else { return }
+            tabRouter.scanRequested = false
+            showStockBarcodeScanner = true
+        }
         .task(id: marketPrefetchKey) {
             await prefetchStockMarketPrices()
         }
