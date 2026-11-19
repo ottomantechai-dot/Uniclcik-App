@@ -72,7 +72,6 @@ struct CardDetailView: View {
                         (icon: "number", title: "Card number", value: number),
                         (icon: "sparkles", title: "Rarity", value: card.rarity.isEmpty ? "—" : card.rarity),
                         (icon: "checkmark.seal", title: "Grading", value: "Ungraded (raw)"),
-                        (icon: "shippingbox", title: "Condition", value: "Near mint"),
                     ])
                     .padding(.top, 18)
 
