@@ -2395,14 +2395,14 @@ struct BrandLogoLabel: View {
 
     private var asset: String? {
         let key = brand.lowercased().replacingOccurrences(of: " ", with: "")
-        for name in ["nike", "adidas", "jordan", "newbalance", "puma", "dior"] where key.contains(name) { return "BrandLogo-" + name }
+        for name in ["nike", "adidas", "jordan", "newbalance", "puma", "dior", "vans"] where key.contains(name) { return "BrandLogo-" + name }
         return nil
     }
 
     var body: some View {
         if let asset {
             Image(asset).resizable().scaledToFit()
-                .frame(width: 26, height: 18, alignment: .leading)
+                .frame(width: 34, height: 18, alignment: .leading)
                 .foregroundStyle(.black)
                 .accessibilityLabel(brand)
         } else {
