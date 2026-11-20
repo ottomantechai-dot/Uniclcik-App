@@ -3409,7 +3409,7 @@ struct ShoeVariantsStrip: View {
                 HStack(spacing: 8) {
                     ForEach(variants) { product in
                         Button { onSelect(product) } label: {
-                            StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 160, fillFrame: false)
+                            StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 160, fillFrame: false, trim: true)
                                 .frame(width: 64, height: 48).padding(6)
                                 .background(Color.white, in: .rect(cornerRadius: 14))
                                 .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(Color.black.opacity(0.08)) }
@@ -3437,7 +3437,7 @@ struct ShoeRelatedShelf: View {
                         ForEach(items) { product in
                             Button { onSelect(product) } label: {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 320, fillFrame: false)
+                                    StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 320, fillFrame: false, trim: true)
                                         .frame(width: 150, height: 110)
                                     Text(product.name.firstUppercased).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
                                         .lineLimit(2).multilineTextAlignment(.leading).frame(width: 150, alignment: .leading)
