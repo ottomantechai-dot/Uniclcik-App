@@ -50,3 +50,6 @@ fastlane/screenshots/**/*.png
 fastlane/test_output
 .derivedDataDevice
 build-archive/
+
+# Claves de marketplaces (KicksDB / eBay)
+supabase/.env.marketplace.local
