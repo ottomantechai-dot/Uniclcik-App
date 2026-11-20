@@ -356,7 +356,14 @@ struct ClosetGarmentDetailView: View {
 
             shoeSizeSelectorRow
 
-            shoeBuyMarketCard
+            Group {
+                if shoeBuyNowUSD == nil, let market = CatalogShelf.product(named: item.catalogDisplayName)?.marketPrices, !market.quotes.isEmpty {
+                    // Sin precio en vivo: el precio de mercado guardado en el catálogo.
+                    CatalogMarketPriceCard(market: market)
+                } else {
+                    shoeBuyMarketCard
+                }
+            }
                 .padding(.top, 4)
 
             shoeInlineMarketPrices
@@ -3361,6 +3368,12 @@ struct ShoeUsedListingsStrip: View {
 enum CatalogShelf {
     static var products: [UpsoledProduct] = []
 
+    /// El producto del catálogo con ese nombre (para enseñar su precio también en el stock propio).
+    static func product(named name: String) -> UpsoledProduct? {
+        let key = name.lowercased()
+        return products.first { $0.name.lowercased() == key }
+    }
+
     /// «Air Jordan 4 Retro Black Cat 2025» → modelo «air jordan 4».
     nonisolated static func model(of name: String) -> String {
         name.lowercased().split(separator: " ").prefix(3).joined(separator: " ")
@@ -3584,6 +3597,9 @@ struct CatalogShoeBody: View {
             }
 
             if let sample { ShoeSamplePriceCard(sample: sample, size: size).tourTarget("shoe.price").padding(.top, 12) }
+            else if let market = product.marketPrices, !market.quotes.isEmpty {
+                CatalogMarketPriceCard(market: market).tourTarget("shoe.price").padding(.top, 12)
+            }
             SellButton(item: .shoe(name: product.name, brand: product.brand ?? "", imageURL: product.primaryImageURL)).padding(.top, 14)
             ShoeUsedListingsStrip(listings: sample?.used ?? [], title: product.name.firstUppercased).padding(.top, 18)
             ShoeRelatedShelf(name: product.name, brand: product.brand ?? "", onSelect: onSelect).padding(.top, 22)

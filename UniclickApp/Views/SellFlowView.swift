@@ -881,6 +881,55 @@ struct ShoeSamplePriceCard: View {
     }
 }
 
+/// Precio de mercado de un producto del catálogo: el mejor precio y lo que pide cada plataforma.
+struct CatalogMarketPriceCard: View {
+    let market: UpsoledMarketPrices
+
+    var body: some View {
+        let best = market.best
+        let quotes = market.quotes
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Buy now from").font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                    Text(best.map { SaleReport.usd($0.price) } ?? "—").font(.system(size: 38, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                }
+                Spacer()
+                if let best { StylizedMarketplaceLogo(brand: best.platform).frame(width: 62, height: 18, alignment: .trailing) }
+            }
+            if let bid = market.stockx?.highestBid {
+                HStack(spacing: 8) {
+                    VStack(spacing: 2) {
+                        Text(SaleReport.usd(bid)).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                        Text("Highest bid · StockX").font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 54).background(Color.black.opacity(0.04), in: .rect(cornerRadius: 14))
+                }
+            }
+            VStack(spacing: 0) {
+                ForEach(Array(quotes.enumerated()), id: \.element.platform) { index, quote in
+                    HStack {
+                        StylizedMarketplaceLogo(brand: quote.platform).frame(width: 60, height: 17, alignment: .leading)
+                        if quote.platform == "eBay", let count = market.ebay?.listings {
+                            Text("\(count) listings").font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.4))
+                        }
+                        Spacer()
+                        Text((quote.platform == "eBay" ? "around " : "from ") + SaleReport.usd(quote.price))
+                            .font(.system(size: 15, weight: .heavy, design: .rounded))
+                            .foregroundStyle(best?.platform == quote.platform ? sellGreen : .black)
+                    }
+                    .padding(.vertical, 11)
+                    if index < quotes.count - 1 { Divider() }
+                }
+            }
+            Text("Prices read from each marketplace" + (market.asof.map { " · \($0)" } ?? ""))
+                .font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.4))
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white, in: .rect(cornerRadius: 22)).glassEffect(.regular, in: .rect(cornerRadius: 22))
+    }
+}
+
 /// Fotos de un anuncio usado, a pantalla completa.
 struct UsedListingView: View {
     let listing: UsedListing

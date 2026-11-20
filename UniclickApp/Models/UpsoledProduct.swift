@@ -34,6 +34,10 @@ struct UpsoledProduct: Codable, Identifiable, Hashable {
     var createdAt: Date?
     var updatedAt: Date?
 
+    /// Datos extra del catálogo; aquí llegan los precios de mercado por plataforma.
+    var metadata: UpsoledProductMetadata? = nil
+    var marketPrices: UpsoledMarketPrices? { metadata?.marketPrices }
+
     private enum CodingKeys: String, CodingKey {
         case id
         case slug
@@ -58,6 +62,7 @@ struct UpsoledProduct: Codable, Identifiable, Hashable {
         case organizationId = "organization_id"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case metadata
     }
 
     /// Imagen "segura" — devuelve la primera URL válida o nil si no hay ninguna.
@@ -197,5 +202,55 @@ extension UpsoledProduct {
             options: .regularExpression
         )
         return collapsed.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    }
+}
+
+
+/// `metadata` de un producto. Se lee con tolerancia: si algo no tiene la forma esperada, se ignora
+/// en lugar de tirar el producto entero.
+struct UpsoledProductMetadata: Codable, Hashable {
+    var marketPrices: UpsoledMarketPrices?
+
+    private enum CodingKeys: String, CodingKey { case marketPrices = "market_prices" }
+
+    init(from decoder: Decoder) throws {
+        let box = try? decoder.container(keyedBy: CodingKeys.self)
+        marketPrices = try? box?.decodeIfPresent(UpsoledMarketPrices.self, forKey: .marketPrices)
+    }
+}
+
+/// Precios de mercado consultados en cada plataforma (USD).
+struct UpsoledMarketPrices: Codable, Hashable {
+    struct StockX: Codable, Hashable {
+        var lowestAsk: Double?
+        var highestBid: Double?
+        private enum CodingKeys: String, CodingKey { case lowestAsk = "lowest_ask", highestBid = "highest_bid" }
+    }
+    struct Goat: Codable, Hashable { var lowest: Double? }
+    struct EBay: Codable, Hashable {
+        /// Mediana de los cinco anuncios más baratos.
+        var typicalLow: Double?
+        var listings: Int?
+        private enum CodingKeys: String, CodingKey { case typicalLow = "median_5_cheapest", listings }
+    }
+
+    var asof: String?
+    var stockx: StockX?
+    var goat: Goat?
+    var ebay: EBay?
+
+    /// Precio por plataforma, en el orden en que se enseñan.
+    var quotes: [(platform: String, price: Double)] {
+        var list: [(String, Double)] = []
+        if let value = stockx?.lowestAsk { list.append(("StockX", value)) }
+        if let value = goat?.lowest { list.append(("GOAT", value)) }
+        if let value = ebay?.typicalLow { list.append(("eBay", value)) }
+        return list.map { (platform: $0.0, price: $0.1) }
+    }
+
+    /// El más bajo entre StockX y GOAT; eBay solo si es la única fuente (misma regla que el catálogo).
+    var best: (platform: String, price: Double)? {
+        let main = quotes.filter { $0.platform != "eBay" }
+        return (main.isEmpty ? quotes : main).min { $0.price < $1.price }
     }
 }

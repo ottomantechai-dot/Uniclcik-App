@@ -1137,7 +1137,7 @@ struct ClosetView: View {
                                 .buttonStyle(.plain)
                             case .catalog(let product):
                                 Button { openCatalogDetail(product) } label: {
-                                    stockTile(name: product.name, brand: product.brand ?? "") {
+                                    stockTile(name: product.name, brand: product.brand ?? "", price: product.price > 0 ? product.price : nil) {
                                         StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 320, fillFrame: false)
                                     }
                                 }
@@ -1185,7 +1185,7 @@ struct ClosetView: View {
         return mixed
     }
 
-    private func stockTile<Photo: View>(name: String, brand: String, @ViewBuilder photo: () -> Photo) -> some View {
+    private func stockTile<Photo: View>(name: String, brand: String, price catalogPrice: Double? = nil, @ViewBuilder photo: () -> Photo) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             // Arriba: la marca a la izquierda y las plataformas a la derecha.
             HStack {
@@ -1208,7 +1208,7 @@ struct ClosetView: View {
             }
             // Precio confirmado (el más bajo entre plataformas), en una cápsula de cristal sobre la foto.
             .overlay(alignment: .bottomTrailing) {
-                if let price = ShoeSample.find(name)?.lowest(nil)?.price {
+                if let price = ShoeSample.find(name)?.lowest(nil)?.price ?? catalogPrice ?? CatalogShelf.product(named: name).flatMap({ $0.price > 0 ? $0.price : nil }) {
                     Text(SaleReport.usd(price)).font(.system(size: 15, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                         .padding(.horizontal, 13).frame(height: 32)
                         .glassEffect(.regular, in: .capsule)
