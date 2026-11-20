@@ -496,6 +496,7 @@ struct ClosetView: View {
                     Button { showStockFiltersSheet = true } label: { TopBarGlassButton(systemImage: "slider.horizontal.3") }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Filters and sort")
+                        .tourTarget("shop.filters")
                 }
             }
             if hasAnyStockContent, stockSearchOpen {
@@ -1249,6 +1250,7 @@ struct ClosetView: View {
             }
         }
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+        .tourTarget("shop.tile")
     }
 
     /// Zapatos destacados (los más conocidos del catálogo): su recorte y el color de su fondo.

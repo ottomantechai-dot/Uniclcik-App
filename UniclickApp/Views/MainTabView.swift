@@ -64,6 +64,8 @@ struct MainTabView: View {
     /// Cuerpo partido para el type-check del compilador (`TabView` + muchos modificadores).
     private var mainTabChrome: some View {
         bareTabView
+        // Recorrido guiado con Daniel: va por encima de todo, también de la barra de pestañas.
+        .overlay { AppTourOverlay(router: tabRouter) }
         .environmentObject(chatInbox)
         .environmentObject(tabRouter)
         .environmentObject(chatNav)
@@ -133,12 +135,12 @@ struct MainTabView: View {
                         .safeAreaInset(edge: .top, spacing: 0) {
                             AppTopBar(title: "Uniclick") {
                                 Button { tabRouter.homeSearchTick += 1 } label: { TopBarGlassButton(systemImage: "magnifyingglass") }
-                                    .buttonStyle(.plain).accessibilityLabel("Search sneakers")
+                                    .buttonStyle(.plain).accessibilityLabel("Search sneakers").tourTarget("home.search")
                                 Button {
                                     tabRouter.scanRequested = true
                                     tabRouter.selected = .closet
                                 } label: { TopBarGlassButton(systemImage: "barcode.viewfinder") }
-                                    .buttonStyle(.plain).accessibilityLabel("Scan a box barcode")
+                                    .buttonStyle(.plain).accessibilityLabel("Scan a box barcode").tourTarget("home.scan")
                             }
                         }
                 }

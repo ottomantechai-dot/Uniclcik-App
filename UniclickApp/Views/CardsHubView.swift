@@ -27,9 +27,9 @@ struct CardsHubView: View {
                     searchFocused = market.searchOpen
                     if !market.searchOpen, !market.query.isEmpty { market.query = ""; market.reloadToken += 1 }
                 } label: { TopBarGlassButton(systemImage: market.searchOpen ? "xmark" : "magnifyingglass") }
-                    .buttonStyle(.plain).accessibilityLabel("Search cards")
+                    .buttonStyle(.plain).accessibilityLabel("Search cards").tourTarget("cards.search")
                 Button { market.showFilter = true } label: { TopBarGlassButton(systemImage: "slider.horizontal.3") }
-                    .buttonStyle(.plain).accessibilityLabel("Filter by set")
+                    .buttonStyle(.plain).accessibilityLabel("Filter by set").tourTarget("cards.filter")
             }
             if market.searchOpen {
                 HStack(spacing: 8) {
