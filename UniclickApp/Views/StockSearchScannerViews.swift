@@ -135,13 +135,16 @@ struct StockCachedRemoteImage: View {
     let url: URL?
     var maxPixelSide: CGFloat = 176
     var fillFrame: Bool = false
+    /// Quita el margen blanco de la foto: todas las miniaturas quedan del mismo tamaño y alineadas.
+    var trim: Bool = false
 
     @State private var image: UIImage?
 
-    init(url: URL?, maxPixelSide: CGFloat = 176, fillFrame: Bool = false) {
+    init(url: URL?, maxPixelSide: CGFloat = 176, fillFrame: Bool = false, trim: Bool = false) {
         self.url = url
         self.maxPixelSide = maxPixelSide
         self.fillFrame = fillFrame
+        self.trim = trim
         if let url {
             _image = State(initialValue: StockImageLoader.memoryCachedURLImage(for: url))
         }
@@ -150,7 +153,7 @@ struct StockCachedRemoteImage: View {
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image)
+                Image(uiImage: trim ? ShoeCutout.trimmed(image) : image)
                     .resizable()
                     .aspectRatio(contentMode: fillFrame ? .fill : .fit)
             } else if url != nil {

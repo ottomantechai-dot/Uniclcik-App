@@ -136,17 +136,23 @@ final class Shoe360Loader: ObservableObject {
 /// El blanco de dentro del zapato (suela, paneles) no se toca. Cada foto se recorta una sola vez.
 enum ShoeCutout {
     private nonisolated(unsafe) static let cache = NSCache<UIImage, UIImage>()
+    private nonisolated(unsafe) static let trims = NSCache<UIImage, UIImage>()
 
     /// Recorta por adelantado, fuera del hilo de la pantalla, para que el giro no dé tirones.
-    static func prepare(_ sources: [UIImage]) {
+    /// `done` avisa (en el hilo principal) cada vez que hay recortes nuevos listos.
+    static func prepare(_ sources: [UIImage], done: (@MainActor () -> Void)? = nil) {
         let pending = sources.filter { cache.object(forKey: $0) == nil }
         guard !pending.isEmpty else { return }
         Task.detached(priority: .userInitiated) {
-            for source in pending where cache.object(forKey: source) == nil {
+            for (offset, source) in pending.enumerated() where cache.object(forKey: source) == nil {
                 if let result = cut(source) { cache.setObject(result, forKey: source) }
+                if offset == 0 || offset % 6 == 5 || offset == pending.count - 1, let done { await MainActor.run { done() } }
             }
         }
     }
+
+    /// El recorte ya hecho, si lo hay. No recorta: eso se hace con `prepare`, fuera de la pantalla.
+    static func cached(_ source: UIImage) -> UIImage? { cache.object(forKey: source) }
 
     static func image(_ source: UIImage) -> UIImage {
         if let hit = cache.object(forKey: source) { return hit }
@@ -155,38 +161,122 @@ enum ShoeCutout {
         return result
     }
 
+    /// Recorte de una foto suelta (la de respaldo, cuando no hay giro), fuera del hilo de la pantalla.
+    static func cutAsync(_ source: UIImage) async -> UIImage {
+        if let hit = cache.object(forKey: source) { return hit }
+        return await Task.detached(priority: .userInitiated) {
+            let result = cut(source) ?? source
+            cache.setObject(result, forKey: source)
+            return result
+        }.value
+    }
+
+    /// La foto ajustada al producto (sin el margen blanco de alrededor): así todas las miniaturas
+    /// quedan del mismo tamaño y a la misma altura, venga como venga encuadrada cada foto.
+    static func trimmed(_ source: UIImage) -> UIImage {
+        if let hit = trims.object(forKey: source) { return hit }
+        var result = source
+        if let cg = source.cgImage {
+            let w = cg.width, h = cg.height
+            var px = [UInt8](repeating: 255, count: w * h * 4)
+            if let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                   space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                ctx.setFillColor(UIColor.white.cgColor); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+                ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+                var minX = w, minY = h, maxX = -1, maxY = -1
+                for y in 0..<h {
+                    for x in 0..<w {
+                        let i = (y * w + x) * 4
+                        if min(px[i], px[i + 1], px[i + 2]) < 236 {
+                            if x < minX { minX = x }; if x > maxX { maxX = x }
+                            if y < minY { minY = y }; if y > maxY { maxY = y }
+                        }
+                    }
+                }
+                if maxX > minX, maxY > minY, let whole = ctx.makeImage() {
+                    let pad = max(2, w / 60)
+                    let box = CGRect(x: max(0, minX - pad), y: max(0, minY - pad),
+                                     width: min(w, maxX + pad + 1) - max(0, minX - pad), height: min(h, maxY + pad + 1) - max(0, minY - pad))
+                    if let cropped = whole.cropping(to: box) { result = UIImage(cgImage: cropped, scale: source.scale, orientation: .up) }
+                }
+            }
+        }
+        trims.setObject(result, forKey: source)
+        return result
+    }
+
+    /// Quita el fondo blanco de alrededor sin comerse las partes blancas del producto.
+    /// 1) Solo cuenta como fondo el blanco casi puro. 2) El fondo no puede colarse por huecos finos
+    /// (el filo claro entre una pieza blanca y el fondo). 3) Al final se limpia el halo claro del borde.
     private nonisolated static func cut(_ source: UIImage) -> UIImage? {
         guard let cg = source.cgImage else { return nil }
-        let w = cg.width, h = cg.height
-        var px = [UInt8](repeating: 255, count: w * h * 4)
+        let w = cg.width, h = cg.height, n = w * h
+        guard w > 8, h > 8 else { return nil }
+        var px = [UInt8](repeating: 255, count: n * 4)
         guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
                                   space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         ctx.setFillColor(UIColor.white.cgColor); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
         ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
-        var background = [Bool](repeating: false, count: w * h)
+
+        var light = [UInt8](repeating: 0, count: n)
+        for i in 0..<n { light[i] = min(px[i * 4], px[i * 4 + 1], px[i * 4 + 2]) }
+        let pure = light.map { $0 >= 247 }
+
+        // Blanco puro «con sitio»: se encoge unos píxeles, así los huecos finos quedan cerrados.
+        let radius = max(2, w / 300)
+        var open = pure
+        for _ in 0..<radius {
+            var next = open
+            for y in 0..<h {
+                for x in 0..<w {
+                    let i = y * w + x
+                    guard open[i] else { continue }
+                    if (x > 0 && !open[i - 1]) || (x < w - 1 && !open[i + 1]) || (y > 0 && !open[i - w]) || (y < h - 1 && !open[i + w]) { next[i] = false }
+                }
+            }
+            open = next
+        }
+
+        var background = [Bool](repeating: false, count: n)
         var stack: [Int] = []
-        stack.reserveCapacity(w * h / 4)
+        stack.reserveCapacity(n / 4)
         for x in 0..<w { stack.append(x); stack.append((h - 1) * w + x) }
         for y in 0..<h { stack.append(y * w); stack.append(y * w + w - 1) }
-        px.withUnsafeMutableBufferPointer { p in
-            while let i = stack.popLast() {
-                if background[i] || min(p[i * 4], p[i * 4 + 1], p[i * 4 + 2]) < 236 { continue }
-                background[i] = true
-                let x = i % w, y = i / w
-                if x > 0 { stack.append(i - 1) }; if x < w - 1 { stack.append(i + 1) }
-                if y > 0 { stack.append(i - w) }; if y < h - 1 { stack.append(i + w) }
-            }
-            for i in 0..<(w * h) {
-                if background[i] { p[i * 4] = 0; p[i * 4 + 1] = 0; p[i * 4 + 2] = 0; p[i * 4 + 3] = 0; continue }
-                // Borde junto al fondo: se suaviza según lo claro que sea, para que no quede un filo blanco.
-                let x = i % w, y = i / w
-                let edge = (x > 0 && background[i - 1]) || (x < w - 1 && background[i + 1]) || (y > 0 && background[i - w]) || (y < h - 1 && background[i + w])
-                if edge {
-                    let light = Int(min(p[i * 4], p[i * 4 + 1], p[i * 4 + 2]))
-                    let alpha = Double(max(50, min(255, (255 - light) * 4))) / 255
-                    for c in 0..<3 { p[i * 4 + c] = UInt8(Double(p[i * 4 + c]) * alpha) }
-                    p[i * 4 + 3] = UInt8(alpha * 255)
+        while let i = stack.popLast() {
+            if background[i] || !open[i] { continue }
+            background[i] = true
+            let x = i % w, y = i / w
+            if x > 0 { stack.append(i - 1) }; if x < w - 1 { stack.append(i + 1) }
+            if y > 0 { stack.append(i - w) }; if y < h - 1 { stack.append(i + w) }
+        }
+
+        // El fondo recupera lo que se encogió y, unos píxeles más, se lleva el halo claro del borde.
+        func grow(_ rounds: Int, _ allowed: (Int) -> Bool) {
+            for _ in 0..<rounds {
+                var added: [Int] = []
+                for y in 0..<h {
+                    for x in 0..<w {
+                        let i = y * w + x
+                        guard !background[i], allowed(i) else { continue }
+                        if (x > 0 && background[i - 1]) || (x < w - 1 && background[i + 1]) || (y > 0 && background[i - w]) || (y < h - 1 && background[i + w]) { added.append(i) }
+                    }
                 }
+                if added.isEmpty { break }
+                for i in added { background[i] = true }
+            }
+        }
+        grow(radius + 1) { pure[$0] }
+        grow(max(3, w / 160)) { light[$0] >= 234 }
+
+        for i in 0..<n {
+            if background[i] { px[i * 4] = 0; px[i * 4 + 1] = 0; px[i * 4 + 2] = 0; px[i * 4 + 3] = 0; continue }
+            // Borde junto al fondo: se suaviza según lo claro que sea, para que no quede un filo blanco.
+            let x = i % w, y = i / w
+            let edge = (x > 0 && background[i - 1]) || (x < w - 1 && background[i + 1]) || (y > 0 && background[i - w]) || (y < h - 1 && background[i + w])
+            if edge {
+                let alpha = Double(max(70, min(255, (255 - Int(light[i])) * 5))) / 255
+                for c in 0..<3 { px[i * 4 + c] = UInt8(Double(px[i * 4 + c]) * alpha) }
+                px[i * 4 + 3] = UInt8(alpha * 255)
             }
         }
         return ctx.makeImage().map { UIImage(cgImage: $0, scale: source.scale, orientation: .up) }
@@ -230,13 +320,32 @@ struct Shoe360View: View {
     @StateObject private var loader = Shoe360Loader()
     @State private var index = 0
     @State private var dragStart = 0
+    /// Sube cuando hay fotos recién recortadas, para volver a pintar.
+    @State private var cutTick = 0
+    @State private var fallbackCut: UIImage?
+
+    /// Silueta del producto mientras cargan sus fotos.
+    private var skeleton: some View {
+        ShoeSkeleton(silhouette: fallbackURL.flatMap { Shoe360Loader.slugs(fromImageURL: $0).first }.map { "Sil-" + $0.lowercased() })
+            .padding(.horizontal, 30).padding(.vertical, 20)
+    }
 
     private var ready: Int { loader.frames.compactMap { $0 }.count }
 
     var body: some View {
         ZStack(alignment: .bottom) {
             if loader.available, let image = loader.frames[index] ?? loader.frames[0] {
-                Image(uiImage: cutout ? ShoeCutout.image(image) : image).resizable().scaledToFit()
+                Group {
+                    if !cutout {
+                        Image(uiImage: image).resizable().scaledToFit()
+                    } else if let cut = ShoeCutout.cached(image) ?? loader.frames.lazy.compactMap({ $0 }).compactMap(ShoeCutout.cached).first {
+                        Image(uiImage: cut).resizable().scaledToFit()
+                    } else {
+                        // Aún no hay ninguna foto recortada: la silueta, nunca el recuadro blanco.
+                        skeleton
+                    }
+                }
+                    .id(cutTick)
                     .gesture(
                         DragGesture(minimumDistance: 2)
                             .onChanged { value in
@@ -248,6 +357,9 @@ struct Shoe360View: View {
                     )
             } else if let fallback {
                 fallback
+            } else if cutout {
+                // Con fondo de color: la foto de respaldo también va recortada, y mientras tanto la silueta.
+                if let fallbackCut { Image(uiImage: fallbackCut).resizable().scaledToFit() } else { skeleton }
             } else {
                 AsyncImage(url: fallbackURL) { phase in
                     if let image = phase.image { image.resizable().scaledToFit() } else {
@@ -282,7 +394,14 @@ struct Shoe360View: View {
             .offset(y: -badgeLift)
             .allowsHitTesting(false)
         }
-        .onChange(of: ready) { _, _ in if cutout { ShoeCutout.prepare(loader.frames.compactMap { $0 }) } }
+        .onChange(of: ready, initial: true) { _, _ in
+            if cutout { ShoeCutout.prepare(loader.frames.compactMap { $0 }) { cutTick += 1 } }
+        }
+        .task(id: (cutout ? "cut:" : "") + (fallbackURL?.absoluteString ?? "")) {
+            guard cutout, fallbackCut == nil, let fallbackURL else { return }
+            guard let (data, _) = try? await URLSession.shared.data(from: fallbackURL), let photo = UIImage(data: data) else { return }
+            fallbackCut = await ShoeCutout.cutAsync(photo)
+        }
         .task(id: titles + queries + [fallbackURL?.absoluteString ?? ""]) {
             await loader.load(titles: titles, imageURLs: [fallbackURL].compactMap { $0 }, queries: queries)
         }

@@ -356,7 +356,14 @@ struct ClosetGarmentDetailView: View {
 
             shoeSizeSelectorRow
 
-            shoeBuyMarketCard
+            Group {
+                if shoeBuyNowUSD == nil, let market = CatalogShelf.product(named: item.catalogDisplayName)?.marketPrices, !market.quotes.isEmpty {
+                    // Sin precio en vivo: el precio de mercado guardado en el catálogo.
+                    CatalogMarketPriceCard(market: market)
+                } else {
+                    shoeBuyMarketCard
+                }
+            }
                 .padding(.top, 4)
 
             shoeInlineMarketPrices
@@ -3361,6 +3368,12 @@ struct ShoeUsedListingsStrip: View {
 enum CatalogShelf {
     static var products: [UpsoledProduct] = []
 
+    /// El producto del catálogo con ese nombre (para enseñar su precio también en el stock propio).
+    static func product(named name: String) -> UpsoledProduct? {
+        let key = name.lowercased()
+        return products.first { $0.name.lowercased() == key }
+    }
+
     /// «Air Jordan 4 Retro Black Cat 2025» → modelo «air jordan 4».
     nonisolated static func model(of name: String) -> String {
         name.lowercased().split(separator: " ").prefix(3).joined(separator: " ")
@@ -3396,7 +3409,7 @@ struct ShoeVariantsStrip: View {
                 HStack(spacing: 8) {
                     ForEach(variants) { product in
                         Button { onSelect(product) } label: {
-                            StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 160, fillFrame: false)
+                            StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 160, fillFrame: false, trim: true)
                                 .frame(width: 64, height: 48).padding(6)
                                 .background(Color.white, in: .rect(cornerRadius: 14))
                                 .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(Color.black.opacity(0.08)) }
@@ -3424,7 +3437,7 @@ struct ShoeRelatedShelf: View {
                         ForEach(items) { product in
                             Button { onSelect(product) } label: {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 320, fillFrame: false)
+                                    StockCachedRemoteImage(url: product.primaryImageURL, maxPixelSide: 320, fillFrame: false, trim: true)
                                         .frame(width: 150, height: 110)
                                     Text(product.name.firstUppercased).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
                                         .lineLimit(2).multilineTextAlignment(.leading).frame(width: 150, alignment: .leading)
@@ -3558,6 +3571,7 @@ struct CatalogShoeBody: View {
                 }
                 .buttonStyle(.plain)
                 .zIndex(1)
+                .tourTarget("shoe.size")
                 if sizesOpen {
                     Divider().padding(.horizontal, 14)
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
@@ -3570,6 +3584,7 @@ struct CatalogShoeBody: View {
                                     .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Color.black.opacity(size == option ? 0 : 0.12)) }
                             }
                             .buttonStyle(.plain)
+                            .tourTarget(option == sizes.dropFirst(3).first ? "shoe.sizeOption" : "")
                         }
                     }
                     .padding(12)
@@ -3581,7 +3596,10 @@ struct CatalogShoeBody: View {
             .glassEffect(.regular, in: .rect(cornerRadius: 20))
             }
 
-            if let sample { ShoeSamplePriceCard(sample: sample, size: size).padding(.top, 12) }
+            if let sample { ShoeSamplePriceCard(sample: sample, size: size).tourTarget("shoe.price").padding(.top, 12) }
+            else if let market = product.marketPrices, !market.quotes.isEmpty {
+                CatalogMarketPriceCard(market: market).tourTarget("shoe.price").padding(.top, 12)
+            }
             SellButton(item: .shoe(name: product.name, brand: product.brand ?? "", imageURL: product.primaryImageURL)).padding(.top, 14)
             ShoeUsedListingsStrip(listings: sample?.used ?? [], title: product.name.firstUppercased).padding(.top, 18)
             ShoeRelatedShelf(name: product.name, brand: product.brand ?? "", onSelect: onSelect).padding(.top, 22)
@@ -3591,9 +3609,10 @@ struct CatalogShoeBody: View {
                 (icon: "shippingbox", title: "Condition", value: "New"),
             ] + (sample?.details ?? [])).padding(.top, 22)
             if isShoe || sample?.comparison != nil {
-                DashboardMarketPricesSection(comparison: sample?.comparison, maxVisibleRows: sample == nil ? 6 : nil).padding(.top, 18)
+                DashboardMarketPricesSection(comparison: sample?.comparison, maxVisibleRows: sample == nil ? 6 : nil).tourTarget("shoe.compare").padding(.top, 18)
             }
             ShoeMarketHistoryCard(sales: sample?.sales ?? [], summary: sample?.stats, source: sample?.asOf)
+                .tourTarget("shoe.history")
                 .padding(.top, 18).padding(.bottom, 24)
         }
     }

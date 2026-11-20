@@ -568,6 +568,29 @@ struct SettingsView: View {
         ChromeSettingsCard(cornerRadius: 22, padding: 4) {
             VStack(spacing: 0) {
                 Button {
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { AppTour.shared.start() }
+                } label: {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color.black.opacity(0.06))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color.black.opacity(0.8))
+                        }
+                        Text(Tx.s("Replay the app tour", "Repetir el recorrido de la app"))
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Color.black.opacity(0.85))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+                Divider().padding(.leading, 62)
+                Button {
                     Task { await auth.signOut() }
                 } label: {
                     HStack(spacing: 14) {

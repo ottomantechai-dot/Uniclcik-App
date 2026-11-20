@@ -25,6 +25,7 @@ struct AppTopBar<Extra: View>: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Profile and settings")
+                .tourTarget("top.profile")
             }
         }
         .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 8)

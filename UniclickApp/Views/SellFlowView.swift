@@ -95,6 +95,7 @@ struct SellButton: View {
                 .background(.black, in: .capsule)
             }
             .buttonStyle(.plain)
+            .tourTarget("sell.open")
 
             if item.snapshot != nil, item.kind == .shoe {
                 Button { showMarket = true } label: {
@@ -110,6 +111,7 @@ struct SellButton: View {
                     .glassEffect(.regular.interactive(), in: .capsule)
                 }
                 .buttonStyle(.plain)
+                .tourTarget("market.open")
             }
         }
         .fullScreenCover(isPresented: $open) { SellFlowView(item: item) }
@@ -249,6 +251,7 @@ struct SellFlowView: View {
                     .overlay { RoundedRectangle(cornerRadius: 20).strokeBorder(on ? Color.black : .clear, lineWidth: 1.5) }
                 }
                 .buttonStyle(.plain)
+                .tourTarget(option == .new ? "sell.condition" : "")
             }
         }
     }
@@ -293,6 +296,7 @@ struct SellFlowView: View {
                                 .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Color.black.opacity(on ? 0 : 0.12)) }
                             }
                             .buttonStyle(.plain)
+                            .tourTarget(option == sizes.dropFirst(3).first ? "sell.sizeOption" : "")
                         }
                     }
                     .padding(12)
@@ -320,6 +324,7 @@ struct SellFlowView: View {
                         if let v = lastSale { suggestion("Sell faster", v) }
                         if let v = earnMore { suggestion("Earn more", v) }
                     }
+                    .tourTarget("sell.suggest")
                     PriceScale(low: sellNow ?? (lastSale ?? 0) * 0.6, mid: lastSale, high: lowestAsk ?? (lastSale ?? 0) * 1.4, value: price)
                     VStack(spacing: 0) {
                         if let v = lowestAsk { fact("Lowest ask", SaleReport.usd(v)) }
@@ -410,6 +415,7 @@ struct SellFlowView: View {
             }
             .padding(16).frame(maxWidth: .infinity, alignment: .leading)
             .background(.white, in: .rect(cornerRadius: 22)).glassEffect(.regular, in: .rect(cornerRadius: 22))
+            .tourTarget("sell.platforms")
 
             VStack(spacing: 0) {
                 fact("Your sale price", SaleReport.usd(price), last: chosen.isEmpty)
@@ -427,6 +433,7 @@ struct SellFlowView: View {
                 }
             }
             .padding(16).background(.white, in: .rect(cornerRadius: 22)).glassEffect(.regular, in: .rect(cornerRadius: 22))
+            .tourTarget("sell.fees")
 
             VStack(alignment: .leading, spacing: 12) {
                 Text("Final checks").font(.system(size: 17, weight: .bold, design: .rounded)).foregroundStyle(.black)
@@ -513,6 +520,7 @@ struct SellFlowView: View {
             .background(canContinue ? Color.black : Color.black.opacity(0.28), in: .capsule)
         }
         .buttonStyle(.plain).disabled(!canContinue || working)
+        .tourTarget("sell.next")
         .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 8)
         .background { SellEdgeFade(edge: .bottom) }
     }
@@ -612,7 +620,7 @@ struct MarketDataView: View {
     private var top: some View {
         VStack(spacing: 10) {
             HStack {
-                Button { dismiss() } label: { TopBarGlassButton(systemImage: "xmark") }.buttonStyle(.plain)
+                Button { dismiss() } label: { TopBarGlassButton(systemImage: "xmark") }.buttonStyle(.plain).tourTarget("market.close")
                 Spacer()
                 Text("Market data").font(.system(size: 17, weight: .bold, design: .rounded)).foregroundStyle(.black)
                 Spacer()
@@ -633,6 +641,7 @@ struct MarketDataView: View {
                     }
                 }
             }
+            .tourTarget("market.tabs")
             .padding(.horizontal, 16)
 
             // Tallas: el icono deja claro qué se está filtrando.
@@ -656,6 +665,7 @@ struct MarketDataView: View {
                     }
                 }
             }
+            .tourTarget("market.sizes")
             .padding(.leading, 16)
         }
         .padding(.top, 4).padding(.bottom, 14)
@@ -868,6 +878,55 @@ struct ShoeSamplePriceCard: View {
             Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
         }
         .frame(maxWidth: .infinity, minHeight: 54).background(Color.black.opacity(0.04), in: .rect(cornerRadius: 14))
+    }
+}
+
+/// Precio de mercado de un producto del catálogo: el mejor precio y lo que pide cada plataforma.
+struct CatalogMarketPriceCard: View {
+    let market: UpsoledMarketPrices
+
+    var body: some View {
+        let best = market.best
+        let quotes = market.quotes
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Buy now from").font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                    Text(best.map { SaleReport.usd($0.price) } ?? "—").font(.system(size: 38, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                }
+                Spacer()
+                if let best { StylizedMarketplaceLogo(brand: best.platform).frame(width: 62, height: 18, alignment: .trailing) }
+            }
+            if let bid = market.stockx?.highestBid {
+                HStack(spacing: 8) {
+                    VStack(spacing: 2) {
+                        Text(SaleReport.usd(bid)).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                        Text("Highest bid · StockX").font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 54).background(Color.black.opacity(0.04), in: .rect(cornerRadius: 14))
+                }
+            }
+            VStack(spacing: 0) {
+                ForEach(Array(quotes.enumerated()), id: \.element.platform) { index, quote in
+                    HStack {
+                        StylizedMarketplaceLogo(brand: quote.platform).frame(width: 60, height: 17, alignment: .leading)
+                        if quote.platform == "eBay", let count = market.ebay?.listings {
+                            Text("\(count) listings").font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.4))
+                        }
+                        Spacer()
+                        Text((quote.platform == "eBay" ? "around " : "from ") + SaleReport.usd(quote.price))
+                            .font(.system(size: 15, weight: .heavy, design: .rounded))
+                            .foregroundStyle(best?.platform == quote.platform ? sellGreen : .black)
+                    }
+                    .padding(.vertical, 11)
+                    if index < quotes.count - 1 { Divider() }
+                }
+            }
+            Text("Prices read from each marketplace" + (market.asof.map { " · \($0)" } ?? ""))
+                .font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.4))
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white, in: .rect(cornerRadius: 22)).glassEffect(.regular, in: .rect(cornerRadius: 22))
     }
 }
 
