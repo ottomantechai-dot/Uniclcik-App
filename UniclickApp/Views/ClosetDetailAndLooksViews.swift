@@ -3558,6 +3558,7 @@ struct CatalogShoeBody: View {
                 }
                 .buttonStyle(.plain)
                 .zIndex(1)
+                .tourTarget("shoe.size")
                 if sizesOpen {
                     Divider().padding(.horizontal, 14)
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
@@ -3570,6 +3571,7 @@ struct CatalogShoeBody: View {
                                     .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Color.black.opacity(size == option ? 0 : 0.12)) }
                             }
                             .buttonStyle(.plain)
+                            .tourTarget(option == sizes.dropFirst(3).first ? "shoe.sizeOption" : "")
                         }
                     }
                     .padding(12)
@@ -3581,7 +3583,7 @@ struct CatalogShoeBody: View {
             .glassEffect(.regular, in: .rect(cornerRadius: 20))
             }
 
-            if let sample { ShoeSamplePriceCard(sample: sample, size: size).padding(.top, 12) }
+            if let sample { ShoeSamplePriceCard(sample: sample, size: size).tourTarget("shoe.price").padding(.top, 12) }
             SellButton(item: .shoe(name: product.name, brand: product.brand ?? "", imageURL: product.primaryImageURL)).padding(.top, 14)
             ShoeUsedListingsStrip(listings: sample?.used ?? [], title: product.name.firstUppercased).padding(.top, 18)
             ShoeRelatedShelf(name: product.name, brand: product.brand ?? "", onSelect: onSelect).padding(.top, 22)
@@ -3591,9 +3593,10 @@ struct CatalogShoeBody: View {
                 (icon: "shippingbox", title: "Condition", value: "New"),
             ] + (sample?.details ?? [])).padding(.top, 22)
             if isShoe || sample?.comparison != nil {
-                DashboardMarketPricesSection(comparison: sample?.comparison, maxVisibleRows: sample == nil ? 6 : nil).padding(.top, 18)
+                DashboardMarketPricesSection(comparison: sample?.comparison, maxVisibleRows: sample == nil ? 6 : nil).tourTarget("shoe.compare").padding(.top, 18)
             }
             ShoeMarketHistoryCard(sales: sample?.sales ?? [], summary: sample?.stats, source: sample?.asOf)
+                .tourTarget("shoe.history")
                 .padding(.top, 18).padding(.bottom, 24)
         }
     }

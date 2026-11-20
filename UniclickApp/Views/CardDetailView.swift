@@ -58,11 +58,11 @@ struct CardDetailView: View {
                         .padding(.top, 14)
                     }
 
-                    priceCard.padding(.top, 16)
+                    priceCard.tourTarget("card.price").padding(.top, 16)
 
                     SellButton(item: .card(card)).padding(.top, 12)
 
-                    gradeTable.padding(.top, 18)
+                    gradeTable.tourTarget("card.grades").padding(.top, 18)
 
                     if let sample {
                         ShoeMarketHistoryCard(sales: sample.history, summary: sample.stats, source: sample.asOf, sourceBrand: "TCGplayer")

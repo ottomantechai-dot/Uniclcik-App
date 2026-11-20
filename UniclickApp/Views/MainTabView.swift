@@ -64,8 +64,8 @@ struct MainTabView: View {
     /// Cuerpo partido para el type-check del compilador (`TabView` + muchos modificadores).
     private var mainTabChrome: some View {
         bareTabView
-        // Recorrido guiado con Daniel: va por encima de todo, también de la barra de pestañas.
-        .overlay { AppTourOverlay(router: tabRouter) }
+        // Recorrido guiado con Daniel: vive en su propia ventana, por encima de todo.
+        .onAppear { AppTour.shared.attach(tabRouter) }
         .environmentObject(chatInbox)
         .environmentObject(tabRouter)
         .environmentObject(chatNav)
