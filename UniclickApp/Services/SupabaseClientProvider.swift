@@ -1,11 +1,12 @@
 import Foundation
 import Supabase
 
-/// Credenciales del proyecto (misma base que `Upsoled` / `app.env`).
+/// Proyecto de Supabase propio de Uniclick («uniclik»), separado del de CarHub.
+/// La clave es la pública (anon): puede ir en la app.
 enum SupabaseClientProvider {
-    static let supabaseURL = URL(string: "https://fwdfhbgcurimqufbwkux.supabase.co")!
+    static let supabaseURL = URL(string: "https://jfgppqpmojewdthstjxh.supabase.co")!
     static let anonKey =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3ZGZoYmdjdXJpbXF1ZmJ3a3V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2MzkzNzUsImV4cCI6MjA4ODIxNTM3NX0.paCpihrCLZGO2cZ8QwG81SPJeo6wsRmMyUhfoguk4IA"
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpmZ3BwcXBtb2pld2R0aHN0anhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxNzc4MzgsImV4cCI6MjExMDc1MzgzOH0.Dlhg7W07mkjE_2UUDSrfvgA05URutHeEeOzd3wTPmxg"
 
     static let shared: SupabaseClient = {
         SupabaseClient(
