@@ -167,3 +167,44 @@ returning p.name;
 with v(name,e,el) as (values ('Air Jordan 3 Retro Wolf Grey',125,56),('Air Jordan 4 Retro Black Cat 2025',180,86),('Air Jordan 4 Retro Bred Reimagined',118.34,58),('Air Jordan 4 Retro Canyon Purple (Women''s)',99.99,116),('Air Jordan 4 Retro Fear 2024',180,103),('Air Jordan 4 Retro Fire Red 2020',179,90),('Air Jordan 4 Retro Lightning 2021',75,81),('Air Jordan 4 Retro Military Black',84.99,36),('Air Jordan 4 Retro Military Blue 2024',125,86),('Air Jordan 4 Retro Oxidized Green',120,109),('Air Jordan 4 Retro Red Cement',99.99,66),('Air Jordan 4 Retro Red Thunder',150,90),('Air Jordan 4 Retro SB Pine Green',245,111),('Air Jordan 4 Retro Thunder 2023',164.63,66),('Air Jordan 4 Retro University Blue',122.25,42),('Air Jordan 4 Retro White Cement 2025',189,83),('Air Jordan 4 Retro White Oreo 2021',249,104),('Air Jordan 5 Retro Aqua',157.5,77),('Air Jordan 5 Retro Fire Red Silver Tongue 2020',185,55),('Air Jordan 5 Retro Olive 2024',150,62),('Air Jordan 5 Retro Racer Blue',175,112),('ASICS Gel 1130 White Clay Canyon',75,73),('ASICS Gel Kayano 14 JJJJound Silver Black',399,13),('Chrome Hearts Cemetery Cross Hollywood Trucker Hat Red White Blue',749.99,6),('Chrome Hearts CH Hollywood Trucker Hat Black',723.2,11),('Chrome Hearts CH Hollywood Trucker Hat Black White',988,6),('Chrome Hearts CH Logo Beanie Red White',492.75,6),('Chrome Hearts Logo Beanie Black',275,20),('Chrome Hearts Scroll Logo T-Shirt Black',950,8),('Crocs Pollex Clog by Salehe Bembury Sasquatch',152.93,21),('Denim Tears Cotton Wreath Zip Hoodie Grey',275,5),('Denim Tears The Cotton Wreath Sweatshirt Black',102,37),('Dior B23 High Top Logo Oblique',1596,6),('Eric Emanuel EE Basic Short Black',59.33,83),('Eric Emanuel EE Basic Short Black Skyline',75,19),('Fear of God Essentials Classic Short Sleeve Tee Jet Black',73.78,7),('Fear of God Essentials Fleece Hoodie Light Heather Gray',80,16),('MSCHF Big Red Boot',190,113),('New Balance 1906R Silver Metallic Nightwatch Green',113,5),('New Balance 1906R White Gold',94,5),('New Balance 327 Sea Salt',59.99,111),('New Balance 530 White Silver Navy',89.99,21))
 update public.upsoled_products p set metadata = jsonb_set(p.metadata,'{market_prices,ebay}',jsonb_build_object('median_5_cheapest',v.e,'listings',v.el)), updated_at=now()
 from v where p.name=v.name and p.metadata ? 'market_prices' returning p.name;
+
+-- eBay, segunda tanda (2026-11-20): 33 productos más. Se descartaron los precios menores al 40 % del de StockX.
+with v(name,med,n) as (values
+('Chrome Hearts Multi Color Cross T-Shirt Black',699.95,10),
+('New Balance 550 Aime Leon Dore White Green',120,23),
+('New Balance 550 White Green',54.99,72),
+('New Balance 550 White Grey',65,17),
+('New Balance 860v2 Aime Leon Dore Green',239.99,11),
+('New Balance 9060 Black Castlerock',99,71),
+('New Balance 9060 Mushroom',126.2,58),
+('New Balance 9060 Sea Salt White',115,33),
+('Nike Air Foamposite One Galaxy 2025',135.99,114),
+('Nike Air Force 1 Low Off White Black White',490,25),
+('Nike Air Force 1 Low Off White Volt',495,49),
+('Nike Air Force 1 Low SP Tiffany And Co',599.99,31),
+('Nike Air Force 1 Low Supreme Box Logo White',139.95,110),
+('Nike Air Force 1 Low Travis Scott Cactus Jack',116.99,98),
+('Nike Air Max 1 Travis Scott Wheat',220,39),
+('Nike Air Max 90 Off White Desert Ore',380,50),
+('Nike Dunk Low Georgetown',75,75),
+('Nike Dunk Low Grey Fog',75.99,70),
+('Nike Dunk Low Industrial Blue Sashiko',100,77),
+('Nike Dunk Low Next Nature White Mint (Women''s)',65.92,51),
+('Nike Dunk Low Off White Lot 1',265,81),
+('Nike Dunk Low Photon Dust (Women''s)',49.95,107),
+('Nike Dunk Low Retro White Black 2021',57.08,39),
+('Nike Dunk Low Rose Whisper (Women''s)',47.97,111),
+('Nike Kobe 5 Protro Bruce Lee',425,54),
+('Nike Kobe 6 Protro Reverse Grinch',260,94),
+('Nike LD Waffle Sacai Black Nylon',163.6,28),
+('Nike P 6000 Metallic Silver',73.22,108),
+('Nike SB Dunk Low Concepts Orange Lobster',279,102),
+('Nike SB Dunk Low Jarritos',199,111),
+('Nike SB Dunk Low Yuto Horigome',150,118),
+('Nike Sportswear Tech Fleece Windrunner Full-Zip Hoodie Black',49.99,66),
+('On Running Cloud 5 All White',117.78,11)
+)
+update public.upsoled_products p
+set metadata = jsonb_set(p.metadata, '{market_prices,ebay}', jsonb_build_object('median_5_cheapest', v.med, 'listings', v.n)),
+    updated_at = now()
+from v where p.name = v.name;
