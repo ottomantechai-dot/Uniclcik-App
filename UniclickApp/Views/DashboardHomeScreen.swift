@@ -1858,10 +1858,14 @@ struct DashboardMarketPricesSection: View {
         return comparison
     }
 
+    /// Siempre StockX, GOAT, eBay y Flight Club; con precios de páginas públicas, se añade la tienda
+    /// que más tallas tiene como quinta columna.
     private var platforms: [String] {
-        guard let publicComparison else { return HomeMarketTableBuilder.homePlatforms }
-        var seen = Set<String>()
-        return publicComparison.platforms.map(\.platform).filter { seen.insert($0).inserted }
+        let home = HomeMarketTableBuilder.homePlatforms
+        guard let publicComparison else { return home }
+        let counts = Dictionary(grouping: publicComparison.rows.flatMap { $0.asks.keys }, by: { $0 }).mapValues(\.count)
+        guard let extra = counts.filter({ !home.contains($0.key) }).max(by: { $0.value < $1.value })?.key else { return home }
+        return home + [extra]
     }
 
     private var tableRows: [MarketSizeRow] {
@@ -1912,43 +1916,15 @@ struct DashboardMarketPricesSection: View {
 
             if tableRows.isEmpty {
                 // Sin precios todavía: la tabla sale montada, con cada plataforma y cada talla en su casilla.
-                VStack(spacing: 8) {
-                    HStack(spacing: 8) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "ruler").font(.system(size: 11, weight: .bold))
-                            Text("US").font(.system(size: 11, weight: .heavy))
-                        }
-                        .foregroundStyle(Color.black.opacity(0.55))
-                        .frame(width: 52, height: 38)
-                        .background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
-                        ForEach(["StockX", "GOAT", "eBay", "Flight Club"], id: \.self) { brand in
-                            StylizedMarketplaceLogo(brand: brand).frame(height: 13).padding(.horizontal, 6)
-                                .frame(maxWidth: .infinity, minHeight: 38)
-                                .background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
-                        }
-                    }
-                    ForEach(featured == nil ? ["8", "9", "10", "11"] : ["7", "8", "9", "10", "11", "12"], id: \.self) { size in
-                        HStack(spacing: 8) {
-                            DotMatrixText(text: size)
-                                .frame(width: 52, height: 40)
-                                .background(Color.black, in: .rect(cornerRadius: 11))
-                            ForEach(0..<4, id: \.self) { _ in
-                                Text("—").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.black.opacity(0.25))
-                                    .frame(maxWidth: .infinity, minHeight: 40)
-                                    .background { RoundedRectangle(cornerRadius: 11).strokeBorder(Color.black.opacity(0.08)) }
-                            }
-                        }
-                    }
-                    Text("Prices appear here as soon as the market responds")
-                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.black.opacity(0.45))
-                        .frame(maxWidth: .infinity).padding(.top, 4)
-                }
+                dotMatrixTable(columns: HomeMarketTableBuilder.homePlatforms,
+                               rows: (featured == nil ? ["8", "9", "10", "11"] : ["7", "8", "9", "10", "11", "12"])
+                                   .map { MarketSizeRow(size: $0, asks: [:]) })
+                Text("Prices appear here as soon as the market responds")
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.black.opacity(0.45))
+                    .frame(maxWidth: .infinity).padding(.top, -8)
             } else {
-                HomeMarketPriceGridTable(
-                    platforms: platforms,
-                    rows: tableRows,
-                    rowHeight: rowHeight
-                )
+                // Con precios: el mismo diseño, con el precio de cada plataforma en su casilla.
+                dotMatrixTable(columns: platforms, rows: tableRows)
             }
         }
         .padding(.horizontal, 18)
@@ -1957,6 +1933,56 @@ struct DashboardMarketPricesSection: View {
         .background(.white, in: .rect(cornerRadius: 26))
         .glassEffect(.regular, in: .rect(cornerRadius: 26))
         .task(id: comparison?.matchedSKU ?? comparison?.query ?? "") { await loadLastSale() }
+    }
+
+    /// Tabla de tallas: la talla en negro con números de puntos, los logos arriba y el precio en cada casilla.
+    /// El precio más bajo de cada talla sale en verde.
+    private func dotMatrixTable(columns: [String], rows: [MarketSizeRow]) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    Image(systemName: "ruler").font(.system(size: 11, weight: .bold))
+                    Text("US").font(.system(size: 11, weight: .heavy))
+                }
+                .foregroundStyle(Color.black.opacity(0.55))
+                .frame(width: 52, height: 38)
+                .background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
+                ForEach(columns, id: \.self) { brand in
+                    Group {
+                        if HomeMarketTableBuilder.homePlatforms.contains(brand) {
+                            StylizedMarketplaceLogo(brand: brand).frame(height: 13)
+                        } else {
+                            // Tiendas sin logo propio: su nombre, en pequeño.
+                            Text(brand.uppercased()).font(.system(size: 8, weight: .heavy)).foregroundStyle(.black)
+                                .lineLimit(1).minimumScaleFactor(0.6)
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                    .frame(maxWidth: .infinity, minHeight: 38)
+                    .background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
+                }
+            }
+            ForEach(rows, id: \.size) { row in
+                let cheapest = columns.compactMap { row.asks[$0] }.filter { $0 > 0 }.min()
+                HStack(spacing: 8) {
+                    DotMatrixText(text: row.size)
+                        .frame(width: 52, height: 40)
+                        .background(Color.black, in: .rect(cornerRadius: 11))
+                    ForEach(columns, id: \.self) { brand in
+                        let price = row.asks[brand].flatMap { $0 > 0 ? $0 : nil }
+                        let best = price != nil && price == cheapest && columns.count > 1
+                        Text(price.map { PieceMarketPrice.formatUSD(Int($0.rounded())) } ?? "—")
+                            .font(.system(size: price == nil ? 14 : 13, weight: price == nil ? .semibold : .heavy, design: .rounded))
+                            .monospacedDigit().lineLimit(1).minimumScaleFactor(0.6)
+                            .foregroundStyle(price == nil ? Color.black.opacity(0.25) : (best ? DashboardHomePalette.accentGreen : Color.black))
+                            .padding(.horizontal, 4)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background { RoundedRectangle(cornerRadius: 11).strokeBorder(Color.black.opacity(best ? 0 : 0.08)) }
+                            .background(best ? DashboardHomePalette.accentGreen.opacity(0.10) : .clear, in: .rect(cornerRadius: 11))
+                    }
+                }
+            }
+        }
     }
 
     /// Los dos precios reales que importan, lado a lado (sin promedios que confunden).
