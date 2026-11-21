@@ -97,20 +97,18 @@ struct SaleReport: Identifiable, Codable, Equatable {
     // MARK: Constructores
 
     /// Informe a partir del escaneo de una caja (código de barras).
-    static func from(payload: StockScanLookupPayload, costUSD: Double? = nil, size: String? = nil) -> SaleReport {
-        // Solo precios confirmados por cada plataforma: sin ellos, el informe no inventa cifras.
-        let estimate = false
-        let lines = (payload.marketEstimate?.platforms ?? []).filter { $0.avg > 0 }.map { line($0.name, price: Double($0.avg)) }
-        return SaleReport(title: payload.productTitle, sku: payload.sku, scannedCode: payload.scannedCode,
-                          imageURL: payload.imageURL, size: size, costUSD: costUSD ?? payload.buyPriceUSD.map(Double.init),
-                          lines: lines, priceIsEstimate: estimate)
+    static func from(payload: StockScanLookupPayload, comparison: MarketComparison, size: String?) -> SaleReport {
+        let report = from(comparison: comparison, size: size)
+        return SaleReport(title: payload.productTitle ?? report.title, sku: payload.sku ?? report.sku,
+                          scannedCode: payload.scannedCode, imageURL: payload.imageURL ?? report.imageURL,
+                          size: size, costUSD: nil, lines: report.lines, priceIsEstimate: false)
     }
 
     /// Informe a partir del comparador (foto de la caja o búsqueda), para una talla concreta si se da.
     static func from(comparison: MarketComparison, size: String? = nil, costUSD: Double? = nil) -> SaleReport {
-        let wanted = size.flatMap(MarketComparison.normalizeSize)
+        let wanted = size.map(PublicPriceService.normalizeSize)
         let lines: [Line] = comparison.platforms.compactMap { quote in
-            let price = wanted.flatMap { quote.asksBySize[$0] } ?? quote.lowestAsk ?? quote.avg
+            let price = wanted == nil ? (quote.lowestAsk ?? quote.avg) : wanted.flatMap { quote.asksBySize[$0] }
             guard let price, price > 0 else { return nil }
             return line(quote.platform, price: price)
         }

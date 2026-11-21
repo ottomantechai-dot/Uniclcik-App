@@ -67,6 +67,7 @@ private enum GarmentDetailSection: String, CaseIterable, Identifiable {
 
 /// Ficha tras tocar una prenda en la rejilla.
 struct ClosetGarmentDetailView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -87,15 +88,13 @@ struct ClosetGarmentDetailView: View {
     @State private var showShoe360ProCapture = false
     @State private var showLookbookCapture = false
     @State private var toast: String?
-    @State private var marketPriceBusy = false
     @State private var shoeMarketComparison: MarketComparison?
     @State private var shoeMarketLoading = false
     @State private var showRemoveItemDialog = false
     @State private var detailSection: GarmentDetailSection
     @State private var savingChanges = false
-    @State private var shoeLastSale: Double?
-    @State private var shoeSales: [DailySalePoint] = []
     @State private var shoeSizesOpen = false
+    @State private var shoeSizeScale: ShoeSizeChart.Scale = .us
     /// Otro zapato del catálogo elegido desde esta ficha: se enseña aquí mismo, sin abrir otra pantalla.
     @State private var swappedProduct: UpsoledProduct?
     @State private var showShoeMarketData = false
@@ -182,12 +181,11 @@ struct ClosetGarmentDetailView: View {
             nameDraft = item.catalogDisplayName
             skuDraft = item.resolvedSKU ?? ""
             ensureLocalPalette()
-            if isShoeProduct {
-                detailSection = .marketPrice
-                Task { await loadShoeMarketData(force: true) }
-            } else if item.marketPriceNeedsRefresh, item.hasStyleForMarketLookup, !marketPriceBusy {
-                Task { await refreshMarketPrice() }
-            }
+            if isShoeProduct { detailSection = .marketPrice }
+        }
+        .task(id: scenePhase == .active && swappedProduct == nil ? item.marketLookupQueries : nil) {
+            guard scenePhase == .active, swappedProduct == nil else { return }
+            await PublicPriceService.poll { await loadShoeMarketData() }
         }
         .onChange(of: priceFocused) { _, focused in
             if !focused {
@@ -285,7 +283,7 @@ struct ClosetGarmentDetailView: View {
             NavigationStack {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("\(activeStockItems.count) artículos en tu stock")
+                        Text("\(activeStockItems.count) items in your stock")
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(Color.black.opacity(0.45))
 
@@ -356,15 +354,7 @@ struct ClosetGarmentDetailView: View {
 
             shoeSizeSelectorRow
 
-            Group {
-                if shoeBuyNowUSD == nil, let market = CatalogShelf.product(named: item.catalogDisplayName)?.marketPrices, !market.quotes.isEmpty {
-                    // Sin precio en vivo: el precio de mercado guardado en el catálogo.
-                    CatalogMarketPriceCard(market: market)
-                } else {
-                    shoeBuyMarketCard
-                }
-            }
-                .padding(.top, 4)
+            shoeBuyMarketCard.padding(.top, 4)
 
             shoeInlineMarketPrices
                 .padding(.top, 12)
@@ -385,22 +375,19 @@ struct ClosetGarmentDetailView: View {
                 .padding(.top, 22)
 
             // Comparativa por talla y plataforma, y debajo el historial de precios.
-            DashboardMarketPricesSection(comparison: shoeMarketComparison, maxVisibleRows: 6)
+            DashboardMarketPricesSection(comparison: shoeMarketComparison, maxVisibleRows: 6, selectedSize: shoeSelectedMarketSize)
                 .padding(.top, 18)
 
-            ShoeMarketHistoryCard(sales: shoeSales)
+            ShoeMarketHistoryCard(sales: [])
                 .padding(.top, 18)
                 .padding(.bottom, 24)
         }
         .padding(.horizontal, 16)
-        .task(id: shoeMarketComparison?.matchedSKU ?? shoeMarketComparison?.query ?? item.marketPriceJSON) {
-            await loadShoeLastSale()
-        }
     }
 
     @ViewBuilder
     private var shoeInlineMarketPrices: some View {
-        if shoeMarketLoading || marketPriceBusy {
+        if shoeMarketLoading {
             // Mientras llegan los precios: tres líneas en esqueleto, en vez de la rueda de carga.
             VStack(alignment: .leading, spacing: 8) {
                 Skeleton(corner: 6).frame(width: 190, height: 12)
@@ -421,7 +408,7 @@ struct ClosetGarmentDetailView: View {
         } else if let estimate = item.marketPrice, estimate.avg > 0 {
             shoeStoredMarketPricesCard(estimate)
         } else if !item.hasStyleForMarketLookup {
-            Text("Añade un SKU o nombre de modelo para ver precios de mercado.")
+            Text("Add a SKU or model name to see market prices.")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Color.black.opacity(0.45))
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -571,47 +558,46 @@ struct ClosetGarmentDetailView: View {
         .frame(height: 230)
     }
 
+    private var shoeSizeChart: ShoeSizeChart? {
+        guard let system = shoeMarketComparison?.sizeSystem else { return nil }
+        return ShoeSizeChart(brand: item.brand ?? "", system: system)
+    }
+
     private var shoeDisplaySizeLabel: String {
-        if let core = StockSizeDisplay.normalizedStorage(from: sizeDraft), !core.isEmpty {
-            return "US \(core)"
+        guard !sizeDraft.isEmpty else { return "Select" }
+        guard let size = shoeSelectedMarketSize else { return sizeDraft }
+        return shoeSizeChart?.label(for: size, scale: shoeSizeScale) ?? "US \(size)"
+    }
+
+    private var shoeSelectedMarketSize: String? {
+        let raw = sizeDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return nil }
+        if let chart = shoeSizeChart {
+            return chart.marketSize(from: raw, among: shoeMarketComparison?.sizes ?? [])
+                ?? PublicPriceService.normalizeSize(raw)
         }
-        return "Select"
+        return PublicPriceService.normalizeSize(raw)
     }
 
     private var shoeAvailableSizes: [String] {
-        if let sizes = shoeMarketComparison?.sizes.filter({ !$0.isEmpty }), !sizes.isEmpty {
-            return sizes
+        let exact = [shoeSelectedMarketSize].compactMap { $0 }.filter {
+            $0.range(of: #"^[0-9]{1,2}(?:\.5)?Y?$"#, options: .regularExpression) != nil
         }
-        if let core = StockSizeDisplay.normalizedStorage(from: sizeDraft) {
-            return [core]
-        }
-        return ["7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"]
+        return Set(exact + (shoeMarketComparison?.sizes ?? [])).sorted(by: PublicPriceService.sizeOrder)
     }
 
     private var shoeBuyNowUSD: Int? {
-        if let row = shoePriceRowForSelectedSize, let ask = row.cheapest?.price, ask > 0 {
-            return Int(ask.rounded())
-        }
-        if let ask = shoeLowestAskUSD { return ask }
-        if let min = item.marketPrice?.min, min > 0 { return min }
-        return nil
+        if shoeSelectedMarketSize == nil { return shoeLowestAskUSD }
+        return shoePriceRowForSelectedSize?.cheapest.map { Int($0.price.rounded()) }
     }
 
     private var shoeLowestAskUSD: Int? {
-        if let ask = shoeMarketComparison?.bestBuyOverall?.price, ask > 0 {
-            return Int(ask.rounded())
-        }
-        if let min = item.marketPrice?.min, min > 0 { return min }
-        return nil
+        shoeMarketComparison?.bestBuyOverall.map { Int($0.price.rounded()) }
     }
 
     private var shoePriceRowForSelectedSize: MarketSizeRow? {
-        guard let comparison = shoeMarketComparison else { return nil }
-        let selected = StockSizeDisplay.normalizedStorage(from: sizeDraft)
-        if let selected, let row = comparison.rows.first(where: { $0.size == selected }) {
-            return row
-        }
-        return comparison.rows.first
+        guard let size = shoeSelectedMarketSize else { return nil }
+        return shoeMarketComparison?.rows.first { $0.size == size }
     }
 
     /// Selector de talla: al tocarlo se despliega hacia abajo, dentro de la ficha, con todas las tallas.
@@ -643,25 +629,17 @@ struct ClosetGarmentDetailView: View {
 
             if shoeSizesOpen {
                 Divider().padding(.horizontal, 14)
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                    ForEach(shoeAvailableSizes, id: \.self) { size in
-                        let on = StockSizeDisplay.normalizedStorage(from: sizeDraft) == size
-                        Button {
-                            sizeDraft = size
-                            item.sizeText = size
-                            saveSilently()
-                            withAnimation(.snappy(duration: 0.3)) { shoeSizesOpen = false }
-                            Task { await loadShoeMarketData(force: true) }
-                        } label: {
-                            Text("US \(size)")
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
-                                .foregroundStyle(on ? .white : .black)
-                                .frame(maxWidth: .infinity, minHeight: 42)
-                                .background(on ? Color.black : Color.white, in: .rect(cornerRadius: 12))
-                                .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Color.black.opacity(on ? 0 : 0.12)) }
-                        }
-                        .buttonStyle(.plain)
-                    }
+                ShoeMarketSizeGrid(
+                    sizes: shoeAvailableSizes, comparison: shoeMarketComparison, chart: shoeSizeChart,
+                    selection: Binding(get: { shoeSelectedMarketSize }, set: { selected in
+                        guard let selected else { return }
+                        sizeDraft = selected
+                        item.sizeText = selected
+                        saveSilently()
+                    }),
+                    scale: $shoeSizeScale, allowsAll: false
+                ) {
+                    withAnimation(.snappy(duration: 0.3)) { shoeSizesOpen = false }
                 }
                 .padding(12)
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -684,7 +662,7 @@ struct ClosetGarmentDetailView: View {
                         .foregroundStyle(Color.black.opacity(0.92))
                         .minimumScaleFactor(0.7)
                         .lineLimit(1)
-                } else if shoeMarketLoading || marketPriceBusy {
+                } else if shoeMarketLoading {
                     Skeleton(corner: 8).frame(width: 130, height: 34)
                         .padding(.vertical, 4)
                 } else {
@@ -699,11 +677,7 @@ struct ClosetGarmentDetailView: View {
                     Text("Last sale")
                         .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(Color.black.opacity(0.55))
-                    if let last = shoeLastSale {
-                        Text("\(Int(last.rounded())) US$")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(Color.black.opacity(0.88))
-                    } else if shoeMarketLoading {
+                    if shoeMarketLoading {
                         Skeleton(corner: 5).frame(width: 60, height: 14)
                     } else {
                         Text("—")
@@ -979,21 +953,6 @@ struct ClosetGarmentDetailView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-    }
-
-    @MainActor
-    private func loadShoeLastSale() async {
-        guard let comp = shoeMarketComparison,
-              let q = comp.platforms.first(where: { $0.platformKey == "stockx" && $0.productID != nil })
-                ?? comp.platforms.first(where: { $0.productID != nil }),
-              let pid = q.productID else {
-            shoeLastSale = nil
-            shoeSales = []
-            return
-        }
-        let sales = await KicksDBClient.dailySales(platformKey: q.platformKey, productID: pid)
-        shoeLastSale = sales.last?.avg
-        shoeSales = sales
     }
 
     private var studioHero: some View {
@@ -1537,49 +1496,7 @@ struct ClosetGarmentDetailView: View {
     private var nonShoeMarketPriceSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             marketCharacteristicsSummary
-
-            if marketPriceBusy {
-                HStack(spacing: 8) {
-                    Skeleton(corner: 5).frame(width: 60, height: 14)
-                    Text("Fetching live prices from StockX & GOAT…")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14)
-                .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
-            } else if let est = item.marketPrice {
-                ShoeMarketPriceCardView(
-                    estimate: est,
-                    sizeText: $sizeDraft,
-                    isBusy: marketPriceBusy,
-                    lastUpdated: item.marketPriceFetchedAt,
-                    onRefresh: { Task { await refreshMarketPrice(force: true) } },
-                    onApplySize: {
-                        let t = StockSizeDisplay.normalizedStorage(from: sizeDraft) ?? ""
-                        item.sizeText = t.isEmpty ? nil : t
-                        sizeDraft = t
-                        saveSilently()
-                        Task { await refreshMarketPrice(force: true) }
-                    },
-                    onApplyMarketPrice: {
-                        applyMarketPriceToAsking(from: est)
-                    }
-                )
-            } else {
-                Button {
-                    Task { await refreshMarketPrice(force: true) }
-                } label: {
-                    Label("Look up market price", systemImage: "chart.line.uptrend.xyaxis")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.white)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(RoundedRectangle(cornerRadius: 14).fill(Color.black))
-                }
-                .buttonStyle(.plain)
-                .disabled(!item.hasStyleForMarketLookup)
-                .opacity(item.hasStyleForMarketLookup ? 1 : 0.45)
-            }
+            DashboardMarketPricesSection(comparison: shoeMarketComparison, maxVisibleRows: nil)
         }
     }
 
@@ -1664,83 +1581,16 @@ struct ClosetGarmentDetailView: View {
 
     @MainActor
     private func loadShoeMarketData(force: Bool = false) async {
-        guard isShoeProduct else { return }
-        async let table: Void = loadShoeMarketTable(force: force)
-        async let price: Void = refreshMarketPrice(
-            force: force || item.marketPrice == nil || item.marketPriceNeedsRefresh
-        )
-        _ = await (table, price)
-        await loadShoeLastSale()
-    }
-
-    @MainActor
-    private func loadShoeMarketTable(force: Bool = false) async {
-        guard isShoeProduct else { return }
-        if shoeMarketLoading, !force { return }
-
-        shoeMarketLoading = true
-        defer { shoeMarketLoading = false }
-
-        guard item.hasStyleForMarketLookup else { return }
-
         let queries = item.marketLookupQueries
-        guard let query = queries.first else { return }
-        let fallback = queries.count > 1 ? queries[1] : nil
-
-        guard KicksDBClient.isConfigured else { return }
-
-        do {
-            if let comparison = try await KicksDBClient.fetchComparison(
-                query: query,
-                fallbackQuery: fallback
-            ) {
-                shoeMarketComparison = await HomeMarketTableBuilder.prepareDetailComparison(
-                    from: comparison,
-                    query: query
-                )
-                if force {
-                    let count = shoeMarketComparison?.rows.count ?? 0
-                    toast = count > 0 ? "Live prices · \(count) sizes" : "Live prices updated"
-                }
-            }
-        } catch {
-            let message = (error as NSError).localizedDescription
-            if force || shoeMarketComparison == nil {
-                toast = message
-            }
-        }
-    }
-
-    @MainActor
-    private func refreshMarketPrice(force: Bool = false) async {
-        guard item.hasStyleForMarketLookup else {
-            toast = "Add a Style / SKU code first (e.g. DD1391-101)."
-            return
-        }
-        if !force, !item.marketPriceNeedsRefresh { return }
-
-        marketPriceBusy = true
-        defer { marketPriceBusy = false }
-
-        let preferKicksDB = KicksDBClient.isConfigured
-        do {
-            let est = try await PieceMarketPrice.lookupForItem(
-                item,
-                useWebSearch: !preferKicksDB
-            )
-            item.applyMarketPrice(est)
-            saveSilently()
-            if force {
-                toast = "Market price: \(PieceMarketPrice.formatUSD(est.avg))"
-            }
-            // Refresh cards/totals; asking price updates only when user taps Market / Use market price.
-        } catch {
-            let message = (error as NSError).localizedDescription
-            if message.contains("429") || message.localizedCaseInsensitiveContains("quota") {
-                toast = "Límite temporal del proveedor. Inténtalo de nuevo en un minuto."
-            } else if item.marketPrice == nil {
-                toast = message
-            }
+        let model = queries.first ?? item.catalogDisplayName
+        let fallback = queries.dropFirst().first
+        shoeMarketLoading = shoeMarketComparison == nil || force
+        defer { shoeMarketLoading = false }
+        let comparison = await PublicMarketComparison.load(query: model, fallback: fallback)
+        guard !Task.isCancelled, item.marketLookupQueries == queries else { return }
+        shoeMarketComparison = comparison
+        if force {
+            toast = comparison.rows.isEmpty ? "No public offers available" : "Public offers checked · \(comparison.sizes.count) sizes"
         }
     }
 
@@ -3130,7 +2980,7 @@ struct GarmentLookbookCaptureView: View {
         let got = studioResults.count + lifestyleResults.count
         if got < totalTasks {
             errorMessage =
-                "Se generaron \(got) de \(totalTasks) imágenes. Puedes guardar las que funcionaron."
+                "Generated \(got) of \(totalTasks) images. You can save the ones that finished."
         }
         ClosetAnalytics.named("closet_lookbook_generate", params: "ok:\(got)")
     }
@@ -3186,7 +3036,9 @@ struct ShoeMarketHistoryCard: View {
                     // Origen de los datos: logo de la plataforma y fecha, en una cápsula de cristal.
                     HStack(spacing: 7) {
                         Circle().fill(Color.green).frame(width: 7, height: 7)
-                        if sourceBrand == "StockX" { StylizedMarketplaceLogo(brand: "StockX").frame(width: 50, height: 14) }
+                        if sourceBrand == "StockX" || sourceBrand == "eBay" {
+                            StylizedMarketplaceLogo(brand: sourceBrand).frame(width: 50, height: 14)
+                        }
                         else {
                             Image("Logo" + sourceBrand).resizable().scaledToFit().frame(width: 16, height: 16).clipShape(.rect(cornerRadius: 4))
                             Text(sourceBrand).font(.system(size: 11, weight: .heavy)).foregroundStyle(.black).lineLimit(1).fixedSize()
@@ -3521,19 +3373,23 @@ struct CatalogShoePreview: View {
 
 /// Contenido de la ficha de un zapato del catálogo.
 struct CatalogShoeBody: View {
+    @Environment(\.scenePhase) private var scenePhase
     let product: UpsoledProduct
     var onSelect: (UpsoledProduct) -> Void
     @State private var sizesOpen = false
     @State private var size: String?
+    @State private var marketComparison: MarketComparison?
+    @State private var catalogModel: ShoeCatalogModel?
+    @State private var sizeScale: ShoeSizeChart.Scale = .us
     private var sample: ShoeSample? { ShoeSample.find(product.name) }
     private var isShoe: Bool { (product.category ?? "shoes") == "shoes" }
+    private var chart: ShoeSizeChart? {
+        guard isShoe, let system = catalogModel?.sizeSystem ?? marketComparison?.sizeSystem else { return nil }
+        return ShoeSizeChart(brand: catalogModel?.brand ?? product.brand ?? "", system: system)
+    }
     private var sizes: [String] {
-        if let sample { return sample.sizes }
-        switch product.category ?? "shoes" {
-        case "clothing": return ["XS", "S", "M", "L", "XL", "XXL"]
-        case "accessories": return []
-        default: return ["7", "7.5", "8", "8.5", "9", "9.5", "10", "10.5", "11", "11.5", "12", "13"]
-        }
+        if let marketComparison, !marketComparison.sizes.isEmpty { return marketComparison.sizes }
+        return product.sizes.map(PublicPriceService.normalizeSize).filter { !$0.isEmpty }
     }
 
     var body: some View {
@@ -3557,13 +3413,13 @@ struct CatalogShoeBody: View {
             Text(product.name.firstUppercased).font(.system(size: 18, weight: .bold)).foregroundStyle(.black).padding(.top, 8).padding(.bottom, 12)
             ShoeVariantsStrip(name: product.name, onSelect: onSelect).padding(.bottom, 12)
 
-            if !sizes.isEmpty {
+            if isShoe || !sizes.isEmpty {
             VStack(spacing: 0) {
                 Button { withAnimation(.snappy(duration: 0.3)) { sizesOpen.toggle() } } label: {
                     HStack {
                         Text("Size").font(.system(size: 15)).foregroundStyle(.black.opacity(0.55))
                         Spacer()
-                        Text(size.map { isShoe ? "US \($0)" : $0 } ?? "Select").font(.system(size: 15, weight: .semibold)).foregroundStyle(.black)
+                        Text(size.map { chart?.label(for: $0, scale: sizeScale) ?? (isShoe ? "US \($0)" : $0) } ?? "Select").font(.system(size: 15, weight: .semibold)).foregroundStyle(.black)
                         Image(systemName: "chevron.down").font(.system(size: 12, weight: .semibold)).foregroundStyle(.black.opacity(0.45))
                             .rotationEffect(.degrees(sizesOpen ? 180 : 0))
                     }
@@ -3574,18 +3430,9 @@ struct CatalogShoeBody: View {
                 .tourTarget("shoe.size")
                 if sizesOpen {
                     Divider().padding(.horizontal, 14)
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                        ForEach(sizes, id: \.self) { option in
-                            Button { size = option; withAnimation(.snappy(duration: 0.3)) { sizesOpen = false } } label: {
-                                Text(isShoe ? "US \(option)" : option).font(.system(size: 13, weight: .bold, design: .rounded))
-                                    .foregroundStyle(size == option ? .white : .black)
-                                    .frame(maxWidth: .infinity, minHeight: 42)
-                                    .background(size == option ? Color.black : Color.white, in: .rect(cornerRadius: 12))
-                                    .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Color.black.opacity(size == option ? 0 : 0.12)) }
-                            }
-                            .buttonStyle(.plain)
-                            .tourTarget(option == sizes.dropFirst(3).first ? "shoe.sizeOption" : "")
-                        }
+                    ShoeMarketSizeGrid(sizes: sizes, comparison: marketComparison, chart: chart,
+                                       selection: $size, scale: $sizeScale, usesUSLabel: isShoe) {
+                        withAnimation(.snappy(duration: 0.3)) { sizesOpen = false }
                     }
                     .padding(12)
                     .transition(.opacity.combined(with: .move(edge: .top)))
@@ -3596,24 +3443,35 @@ struct CatalogShoeBody: View {
             .glassEffect(.regular, in: .rect(cornerRadius: 20))
             }
 
-            if let sample { ShoeSamplePriceCard(sample: sample, size: size).tourTarget("shoe.price").padding(.top, 12) }
-            else if let market = product.marketPrices, !market.quotes.isEmpty {
-                CatalogMarketPriceCard(market: market).tourTarget("shoe.price").padding(.top, 12)
-            }
+            CatalogMarketPriceCard(comparison: marketComparison, size: size, isShoe: isShoe)
+                .tourTarget("shoe.price").padding(.top, 12)
             SellButton(item: .shoe(name: product.name, brand: product.brand ?? "", imageURL: product.primaryImageURL)).padding(.top, 14)
-            ShoeUsedListingsStrip(listings: sample?.used ?? [], title: product.name.firstUppercased).padding(.top, 18)
+            ShoeUsedListingsStrip(listings: [], title: product.name.firstUppercased).padding(.top, 18)
             ShoeRelatedShelf(name: product.name, brand: product.brand ?? "", onSelect: onSelect).padding(.top, 22)
             ShoeProductDetailsCard(rows: [
                 (icon: "tag", title: "Brand", value: product.brand ?? "—"),
                 (icon: "paintpalette", title: "Colorway", value: sample?.colorway ?? CatalogShelf.colorway(of: product.name)),
                 (icon: "shippingbox", title: "Condition", value: "New"),
             ] + (sample?.details ?? [])).padding(.top, 22)
-            if isShoe || sample?.comparison != nil {
-                DashboardMarketPricesSection(comparison: sample?.comparison, maxVisibleRows: sample == nil ? 6 : nil).tourTarget("shoe.compare").padding(.top, 18)
-            }
-            ShoeMarketHistoryCard(sales: sample?.sales ?? [], summary: sample?.stats, source: sample?.asOf)
+            DashboardMarketPricesSection(comparison: marketComparison, maxVisibleRows: nil, selectedSize: size)
+                .tourTarget("shoe.compare").padding(.top, 18)
+            ShoeMarketHistoryCard(sales: [])
                 .tourTarget("shoe.history")
                 .padding(.top, 18).padding(.bottom, 24)
+        }
+        .task(id: scenePhase == .active ? product.id : nil) {
+            guard scenePhase == .active else { return }
+            let model = isShoe ? await ShoeCatalogService.model(slug: product.slug) : nil
+            guard !Task.isCancelled else { return }
+            catalogModel = model
+            let sku = model?.styleCode ?? product.sku?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let hasManufacturerCode = HomeSneakerHighlight.isRealStyleCode(sku) && !ShoeGTIN.isNumeric(sku)
+            let query = hasManufacturerCode ? sku : product.name
+            await PublicPriceService.poll {
+                let result = await PublicMarketComparison.load(query: query, fallback: hasManufacturerCode ? product.name : nil)
+                guard !Task.isCancelled else { return }
+                marketComparison = result
+            }
         }
     }
 }

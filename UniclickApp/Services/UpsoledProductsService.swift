@@ -126,3 +126,31 @@ enum UpsoledProductsService {
         return "\(base)-\(suffix)"
     }
 }
+
+enum ShoeCatalogService {
+    private static let projection = "slug,title,brand,style_code,image_url,size_system"
+
+    static func variant(gtin: String) async throws -> ShoeCatalogVariant? {
+        let rows: [ShoeCatalogVariant] = try await SupabaseClientProvider.shared
+            .from("shoe_catalog_variants")
+            .select("us_size,model:shoe_catalog_models(\(projection))")
+            .eq("gtin", value: gtin)
+            .limit(1)
+            .execute()
+            .value
+        return rows.first
+    }
+
+    static func model(slug: String) async -> ShoeCatalogModel? {
+        let rows: [ShoeCatalogModel]? = try? await SupabaseClientProvider.shared
+            .from("shoe_catalog_models")
+            .select(projection)
+            .eq("slug", value: slug)
+            .limit(1)
+            .execute()
+            .value
+        if let model = rows?.first, model.styleCode != nil { return model }
+        let reference = ShoeCatalogVariant.lostAndFound.model
+        return slug == reference.slug ? reference : rows?.first
+    }
+}

@@ -1850,82 +1850,79 @@ private enum StockActivityFilter: String, CaseIterable, Identifiable {
 struct StockScanLookupPayload: Identifiable {
     let id = UUID()
     let scannedCode: String
-    let productTitle: String
+    let productTitle: String?
     let brand: String
-    let sku: String
+    let sku: String?
     let imageURL: String?
-    let buyPriceUSD: Int?
-    let sellPriceUSD: Int?
-    let marketEstimate: PieceMarketPrice?
+    let size: String?
+    let sizeSystem: ShoeSizeSystem?
     let matchingStockItemID: UUID?
+    var initialComparison: MarketComparison? = nil
+    var catalogUnavailable = false
 }
 
 enum StockScanLookupService {
     @MainActor
-    static func lookup(
-        code rawCode: String,
-        stock: [ClosetItem]
-    ) async -> StockScanLookupPayload {
+    static func lookup(code rawCode: String, stock: [ClosetItem]) async -> StockScanLookupPayload {
         let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalized = code.uppercased()
+        let gtin = ShoeGTIN.normalize(code)
         let local = stock.first { item in
-            let sku = (item.resolvedSKU ?? "").uppercased()
-            if !sku.isEmpty, sku == normalized { return true }
-            if let stored = item.skuText?.uppercased(), stored == normalized { return true }
-            return item.name.uppercased().contains(normalized)
+            [item.resolvedSKU, item.skuText].compactMap { $0 }.contains { stored in
+                if let gtin { return ShoeGTIN.normalize(stored) == gtin }
+                return stored.caseInsensitiveCompare(code) == .orderedSame
+            }
+        }
+        if ShoeGTIN.isNumeric(code) {
+            guard let gtin else { return unidentified(code) }
+            do {
+                if let match = try await ShoeCatalogService.variant(gtin: gtin) {
+                    return resolved(match, code: code, local: local)
+                }
+            } catch {
+                if gtin != ShoeCatalogVariant.lostAndFoundGTIN && local == nil {
+                    return unidentified(code, unavailable: true)
+                }
+            }
+            if gtin == ShoeCatalogVariant.lostAndFoundGTIN {
+                return resolved(ShoeCatalogVariant.lostAndFound, code: code, local: local)
+            }
+            if let local {
+                return localMatch(local, code: code)
+            }
+            return unidentified(code)
         }
 
-        let style = SneakerSKU.extract(from: code) ?? normalized
-        if let estimate = try? await KicksDBClient.fetchAggregated(
-            query: style,
-            fallbackQuery: local?.catalogDisplayName,
-            sizeQuery: local?.sizeText
-        ) {
-            return StockScanLookupPayload(
-                scannedCode: code,
-                productTitle: estimate.matchedTitle ?? local?.catalogDisplayName ?? "Style \(style)",
-                brand: local?.brand ?? "",
-                sku: estimate.matchedSKU ?? style,
-                imageURL: nil,
-                buyPriceUSD: estimate.min,
-                sellPriceUSD: estimate.max,
-                marketEstimate: estimate,
-                matchingStockItemID: local?.id
-            )
-        }
+        if let local { return localMatch(local, code: code) }
 
-        do {
-            let est = try await PieceMarketPrice.fetchStyleFromInternet(
-                styleCode: style,
-                brand: local?.brand,
-                category: local?.category.displayName ?? "Shoes",
-                sizeText: local?.sizeText,
-                useWebSearch: true
-            )
-            return StockScanLookupPayload(
-                scannedCode: code,
-                productTitle: local?.catalogDisplayName ?? "Style \(normalized)",
-                brand: local?.brand ?? "",
-                sku: SneakerSKU.extract(from: code) ?? normalized,
-                imageURL: nil,
-                buyPriceUSD: est.avg,
-                sellPriceUSD: est.max,
-                marketEstimate: est,
-                matchingStockItemID: local?.id
-            )
-        } catch {
-            return StockScanLookupPayload(
-                scannedCode: code,
-                productTitle: local?.catalogDisplayName ?? "Style \(style)",
-                brand: local?.brand ?? "",
-                sku: style,
-                imageURL: nil,
-                buyPriceUSD: nil,
-                sellPriceUSD: nil,
-                marketEstimate: nil,
-                matchingStockItemID: local?.id
-            )
+        // A QR containing unrelated text or a URL is not a manufacturer style code.
+        guard let style = SneakerSKU.extract(from: code), style.contains(where: \.isNumber),
+              style.caseInsensitiveCompare(code) == .orderedSame else { return unidentified(code) }
+        let comparison = await PublicMarketComparison.load(query: style)
+        guard let title = comparison.matchedTitle else { return unidentified(code) }
+        return StockScanLookupPayload(scannedCode: code, productTitle: title, brand: "",
+                                      sku: comparison.matchedSKU ?? style, imageURL: comparison.imageURL?.absoluteString,
+                                      size: nil, sizeSystem: nil, matchingStockItemID: nil, initialComparison: comparison)
+    }
+
+    private static func resolved(_ variant: ShoeCatalogVariant, code: String, local: ClosetItem?) -> StockScanLookupPayload {
+        let model = variant.model
+        return StockScanLookupPayload(scannedCode: code, productTitle: model.title, brand: model.brand ?? "",
+                                      sku: model.styleCode, imageURL: model.imageURL, size: variant.usSize,
+                                      sizeSystem: model.sizeSystem, matchingStockItemID: local?.id)
+    }
+
+    private static func localMatch(_ item: ClosetItem, code: String) -> StockScanLookupPayload {
+        let sku = item.resolvedSKU.flatMap { value in
+            value.contains(where: \.isNumber) && !ShoeGTIN.isNumeric(value) ? value : nil
         }
+        let size = item.sizeText.map(PublicPriceService.normalizeSize)
+        return StockScanLookupPayload(scannedCode: code, productTitle: item.catalogDisplayName, brand: item.brand ?? "",
+                                      sku: sku, imageURL: nil, size: size, sizeSystem: nil, matchingStockItemID: item.id)
+    }
+
+    private static func unidentified(_ code: String, unavailable: Bool = false) -> StockScanLookupPayload {
+        StockScanLookupPayload(scannedCode: code, productTitle: nil, brand: "", sku: nil, imageURL: nil, size: nil,
+                               sizeSystem: nil, matchingStockItemID: nil, catalogUnavailable: unavailable)
     }
 }
 
@@ -1938,13 +1935,13 @@ struct StockBarcodeScannerScreen: View {
     @Environment(\.dismiss) private var dismiss
     @State private var torchOn = false
     @State private var didScan = false
+    @State private var showManualEntry = false
+    @State private var manualCode = ""
 
     var body: some View {
         ZStack {
             StockBarcodeCameraView(isTorchOn: torchOn) { code in
-                guard !didScan else { return }
-                didScan = true
-                onCode(code)
+                submitCode(code)
             }
             .ignoresSafeArea()
             .allowsHitTesting(false)
@@ -2016,12 +2013,28 @@ struct StockBarcodeScannerScreen: View {
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 28)
-                    .padding(.bottom, 40)
                     .allowsHitTesting(false)
+                Button("Enter code manually") { showManualEntry = true }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.top, 10).padding(.bottom, 26)
             }
             .zIndex(1)
         }
         .background(Color.black.ignoresSafeArea())
+        .alert("Enter a barcode or style code", isPresented: $showManualEntry) {
+            TextField("Code", text: $manualCode)
+                .keyboardType(.asciiCapable).autocorrectionDisabled()
+            Button("Look up") { submitCode(manualCode) }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private func submitCode(_ value: String) {
+        let code = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !didScan, !code.isEmpty else { return }
+        didScan = true
+        onCode(code)
     }
 
     private func closeScanner() {
@@ -2153,100 +2166,193 @@ final class StockBarcodeScannerViewController: UIViewController, AVCaptureMetada
 
 // MARK: - Scan result sheet
 
+struct ShoeMarketSizeGrid: View {
+    let sizes: [String]
+    let comparison: MarketComparison?
+    let chart: ShoeSizeChart?
+    @Binding var selection: String?
+    @Binding var scale: ShoeSizeChart.Scale
+    var allowsAll = true
+    var usesUSLabel = true
+    var onSelect: () -> Void
+
+    private var effectiveScale: ShoeSizeChart.Scale {
+        chart?.scales.contains(scale) == true ? scale : .us
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if let chart, chart.scales.count > 1 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(chart.scales, id: \.self) { option in
+                            Button { scale = option } label: {
+                                Text(chart.header(option))
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(option == effectiveScale ? .white : .black)
+                                    .padding(.horizontal, 12).padding(.vertical, 8)
+                                    .background(option == effectiveScale ? Color.black : Color(.secondarySystemBackground), in: .capsule)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(option == effectiveScale ? .isSelected : [])
+                        }
+                    }
+                }
+            }
+            if allowsAll { tile("All sizes", size: nil, price: comparison?.bestBuyOverall?.price) }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                ForEach(sizes, id: \.self) { size in
+                    let label = chart?.label(for: size, scale: effectiveScale) ?? chart?.label(for: size, scale: .us) ?? (usesUSLabel ? "US \(size)" : size)
+                    let price = comparison?.rows.first { $0.size == size }?.cheapest?.price
+                    tile(label, size: size, price: price)
+                        .tourTarget(size == sizes.dropFirst(3).first ? "shoe.sizeOption" : "")
+                }
+            }
+        }
+    }
+
+    private func tile(_ label: String, size: String?, price: Double?) -> some View {
+        let active = selection == size
+        return Button {
+            selection = size
+            onSelect()
+        } label: {
+            VStack(spacing: 4) {
+                Text(label)
+                    .font(.system(size: 12, weight: .semibold))
+                    .minimumScaleFactor(0.75).lineLimit(1)
+                Text(price.map(SaleReport.usd) ?? "—")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(active ? Color.white : (price == nil ? Color.secondary : Color(red: 0.12, green: 0.48, blue: 0.27)))
+                    .minimumScaleFactor(0.75).lineLimit(1)
+            }
+            .foregroundStyle(active ? Color.white : Color.black)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .background(active ? Color.black : .white, in: .rect(cornerRadius: 10))
+            .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(Color.black.opacity(active ? 0 : 0.12)) }
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
+    }
+}
+
 struct StockScanResultSheet: View {
     let payload: StockScanLookupPayload
     var onViewStockItem: (UUID) -> Void
     var onDismiss: () -> Void
+    @Environment(\.scenePhase) private var scenePhase
     @State private var saleReport: SaleReport?
+    @State private var comparison: MarketComparison?
+    @State private var selectedSize: String?
+    @State private var preferredScale: ShoeSizeChart.Scale = .us
+
+    init(payload: StockScanLookupPayload, onViewStockItem: @escaping (UUID) -> Void, onDismiss: @escaping () -> Void) {
+        self.payload = payload
+        self.onViewStockItem = onViewStockItem
+        self.onDismiss = onDismiss
+        _selectedSize = State(initialValue: payload.size)
+        _comparison = State(initialValue: payload.initialComparison)
+    }
+
+    private var chart: ShoeSizeChart? {
+        (payload.sizeSystem ?? comparison?.sizeSystem).map { ShoeSizeChart(brand: payload.brand, system: $0) }
+    }
+
+    private var sizes: [String] {
+        let known = [payload.size].compactMap { $0 }
+        return Set(known + (comparison?.sizes ?? [])).sorted(by: PublicPriceService.sizeOrder)
+    }
+
+    private var buyPrice: Double? {
+        if let selectedSize { return comparison?.rows.first { $0.size == selectedSize }?.cheapest?.price }
+        return comparison?.bestBuyOverall?.price
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(L10n.tr("closet.scanSuccess"))
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Color.black)
+                Text(payload.productTitle == nil ? "Barcode lookup" : L10n.tr("closet.scanSuccess"))
+                    .font(.system(size: 16, weight: .bold)).foregroundStyle(.black)
                 Spacer()
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(Color.black.opacity(0.55))
+                        .font(.system(size: 14, weight: .bold)).foregroundStyle(.secondary)
                         .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close")
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
+            .padding(.horizontal, 18).padding(.vertical, 14)
 
             Divider()
 
-            HStack(alignment: .top, spacing: 14) {
-                productThumb
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(payload.productTitle)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(Color.black)
-                        .lineLimit(3)
-                    if !payload.sku.isEmpty {
-                        Text("SKU \(payload.sku)")
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(Color.black.opacity(0.55))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let title = payload.productTitle {
+                        HStack(alignment: .top, spacing: 14) {
+                            productThumb
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(title).font(.system(size: 16, weight: .bold)).foregroundStyle(.black)
+                                if let sku = payload.sku {
+                                    Text("SKU \(sku)").font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                }
+                                if let selectedSize {
+                                    Text(chart?.label(for: selectedSize, scale: preferredScale) ?? "US \(selectedSize)")
+                                        .font(.system(size: 13, weight: .semibold))
+                                }
+                            }
+                            .foregroundStyle(.secondary)
+                            Spacer(minLength: 0)
+                        }
+
+                        if !sizes.isEmpty {
+                            ShoeMarketSizeGrid(sizes: sizes, comparison: comparison, chart: chart,
+                                               selection: $selectedSize, scale: $preferredScale) { }
+                        }
+
+                        priceActionCard(title: "Lowest available ask · USD", value: buyPrice,
+                                        background: Color(red: 0.20, green: 0.70, blue: 0.45))
+                        DashboardMarketPricesSection(comparison: comparison, maxVisibleRows: selectedSize == nil ? 5 : nil,
+                                                     selectedSize: selectedSize)
+
+                        if let comparison, buyPrice != nil {
+                            Button {
+                                saleReport = SaleReport.from(payload: payload, comparison: comparison, size: selectedSize)
+                            } label: {
+                                Label("View sale report", systemImage: "doc.text.magnifyingglass")
+                                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity, minHeight: 52)
+                                    .background(.black, in: .rect(cornerRadius: 14))
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        if let itemID = payload.matchingStockItemID {
+                            Button(L10n.tr("closet.scanViewInStock")) { onViewStockItem(itemID) }
+                                .buttonStyle(.bordered)
+                        }
+                    } else {
+                        Label(payload.catalogUnavailable ? "Catalog temporarily unavailable" : "Product not found in the catalog",
+                              systemImage: "barcode.viewfinder")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text(payload.scannedCode)
+                            .font(.system(size: 13, design: .monospaced)).foregroundStyle(.secondary)
                     }
                 }
-                Spacer(minLength: 0)
+                .padding(18)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 16)
-
-            HStack(spacing: 10) {
-                priceActionCard(
-                    title: L10n.tr("closet.scanBuyLabel"),
-                    value: payload.buyPriceUSD,
-                    background: Color(red: 0.20, green: 0.70, blue: 0.45)
-                )
-                priceActionCard(
-                    title: L10n.tr("closet.scanSellLabel"),
-                    value: payload.sellPriceUSD,
-                    background: Color.black
-                )
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-
-            Button {
-                saleReport = SaleReport.from(payload: payload)
-            } label: {
-                Label("View sale report", systemImage: "doc.text.magnifyingglass")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.white)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(Color.black, in: RoundedRectangle(cornerRadius: 14))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 18)
-            .padding(.top, 16)
-            .fullScreenCover(item: $saleReport) { SaleReportView(report: $0) }
-
-            if let itemID = payload.matchingStockItemID {
-                Button {
-                    onViewStockItem(itemID)
-                } label: {
-                    Text(L10n.tr("closet.scanViewInStock"))
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color.black)
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .background {
-                            RoundedRectangle(cornerRadius: 14)
-                                .stroke(Color.black.opacity(0.12), lineWidth: 1)
-                        }
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 18)
-                .padding(.top, 16)
-            }
-
-            Spacer(minLength: 12)
         }
-        .background(Color.white)
+        .background(.white)
+        .fullScreenCover(item: $saleReport) { SaleReportView(report: $0) }
+        .task(id: scenePhase) {
+            guard scenePhase == .active, let title = payload.productTitle else { return }
+            await PublicPriceService.poll {
+                let result = await PublicMarketComparison.load(query: payload.sku ?? title,
+                                                              fallback: payload.sku == nil ? nil : title)
+                guard !Task.isCancelled else { return }
+                comparison = result
+            }
+        }
     }
 
     @ViewBuilder
@@ -2255,7 +2361,7 @@ struct StockScanResultSheet: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
                 .frame(width: 72, height: 72)
-            if let urlStr = payload.imageURL, let url = URL(string: urlStr) {
+            if let url = payload.imageURL.flatMap(URL.init(string:)) ?? comparison?.imageURL {
                 AsyncImage(url: url) { phase in
                     if case .success(let image) = phase {
                         image.resizable().scaledToFit()
@@ -2273,12 +2379,12 @@ struct StockScanResultSheet: View {
         }
     }
 
-    private func priceActionCard(title: String, value: Int?, background: Color) -> some View {
+    private func priceActionCard(title: String, value: Double?, background: Color) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Color.white.opacity(0.88))
-            Text(value.map { PieceMarketPrice.formatUSD($0) } ?? "—")
+            Text(value.map(SaleReport.usd) ?? "—")
                 .font(.system(size: 22, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
                 .minimumScaleFactor(0.7)

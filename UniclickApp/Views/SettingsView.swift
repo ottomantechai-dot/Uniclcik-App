@@ -49,10 +49,10 @@ enum L10n {
         "settings.logout": "Log out",
         "settings.version": "Version",
         "settings.connected": "Connected",
-        "settings.approved": "Aprobado",
+        "settings.approved": "Approved",
         "settings.connect": "Connect",
-        "settings.approveConnection": "Aprobar",
-        "settings.approveConnectionSubtitle": "Aprueba la conexión para sincronizar precios e inventario.",
+        "settings.approveConnection": "Approve",
+        "settings.approveConnectionSubtitle": "Approve the connection to sync prices and inventory.",
         "settings.noSession": "No session",
         "settings.profilePhoto": "Profile photo",
         "settings.profilePhotoPrompt": "Update your profile picture",
@@ -580,7 +580,7 @@ struct SettingsView: View {
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(Color.black.opacity(0.8))
                         }
-                        Text(Tx.s("Replay the app tour", "Repetir el recorrido de la app"))
+                        Text("Replay the app tour")
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(Color.black.opacity(0.85))
                         Spacer()

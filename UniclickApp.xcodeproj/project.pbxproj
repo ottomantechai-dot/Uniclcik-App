@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F7C2AB611000000000000005 /* PackOpening in Resources */ = {isa = PBXBuildFile; fileRef = F7C2AB611000000000000006 /* PackOpening */; };
+		F7C2AB611000000000000003 /* BoosterOpeningView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7C2AB611000000000000004 /* BoosterOpeningView.swift */; };
+		F7C2AB611000000000000001 /* BoosterScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7C2AB611000000000000002 /* BoosterScene.swift */; };
 		A1B2C3D401234567 /* ImageCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D401234568 /* ImageCacheService.swift */; };
 		AA000001 /* UniclickAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000001 /* UniclickAppApp.swift */; };
 		AA000002 /* Car.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000002 /* Car.swift */; };
@@ -42,6 +45,8 @@
 		AA000032 /* ChatAvatarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000032 /* ChatAvatarViews.swift */; };
 		AA000033 /* ChatInboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000033 /* ChatInboxStore.swift */; };
 		AA000034 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = AG000002 /* Supabase */; };
+		AA000236 /* PhoneNumberKit in Frameworks */ = {isa = PBXBuildFile; productRef = AG000004 /* PhoneNumberKit */; };
+		AA000237 /* AuthAccountViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000237 /* AuthAccountViews.swift */; };
 		AA000035 /* SupabaseClientProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000034 /* SupabaseClientProvider.swift */; };
 		AA000036 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000035 /* AuthViewModel.swift */; };
 		AA000037 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000036 /* LoginView.swift */; };
@@ -115,6 +120,7 @@
 		AA000122 /* Shoe360ProViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000122 /* Shoe360ProViews.swift */; };
 		AA000123 /* video-portada.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = AB000123 /* video-portada.mp4 */; };
 		AA000124 /* ClosetProductMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000124 /* ClosetProductMetadata.swift */; };
+		AA000235 /* ShoeCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000235 /* ShoeCatalog.swift */; };
 		AA000129 /* Vidos-zapatos.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = AB000129 /* Vidos-zapatos.mp4 */; };
 		AA000130 /* ClosetInventoryRepair.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000130 /* ClosetInventoryRepair.swift */; };
 		AA000131 /* StockSearchScannerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000131 /* StockSearchScannerViews.swift */; };
@@ -126,6 +132,7 @@
 		AA000211 /* 3d-pokemon-card-oddish.gif in Resources */ = {isa = PBXBuildFile; fileRef = AB000211 /* 3d-pokemon-card-oddish.gif */; };
 		AA000212 /* StockCategoryMarketplaceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000212 /* StockCategoryMarketplaceCatalog.swift */; };
 		AA000213 /* StockMarketplaceConnectionsDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000213 /* StockMarketplaceConnectionsDemoView.swift */; };
+		AA000234 /* PublicPriceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000234 /* PublicPriceService.swift */; };
 		AA000214 /* MarketplaceGatewayService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000214 /* MarketplaceGatewayService.swift */; };
 		AA000215 /* SaleReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000215 /* SaleReport.swift */; };
 		AA000216 /* MarketplaceListing.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000216 /* MarketplaceListing.swift */; };
@@ -139,6 +146,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		F7C2AB611000000000000006 /* PackOpening */ = {isa = PBXFileReference; lastKnownFileType = folder; path = PackOpening; sourceTree = "<group>"; };
+		F7C2AB611000000000000004 /* BoosterOpeningView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoosterOpeningView.swift; sourceTree = "<group>"; };
+		F7C2AB611000000000000002 /* BoosterScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoosterScene.swift; sourceTree = "<group>"; };
 		A1B2C3D401234568 /* ImageCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheService.swift; sourceTree = "<group>"; };
 		AB000000 /* UniclickApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UniclickApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB000001 /* UniclickAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UniclickAppApp.swift; sourceTree = "<group>"; };
@@ -177,6 +187,7 @@
 		AB000034 /* SupabaseClientProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseClientProvider.swift; sourceTree = "<group>"; };
 		AB000035 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		AB000036 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		AB000237 /* AuthAccountViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthAccountViews.swift; sourceTree = "<group>"; };
 		AB000037 /* AuthRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthRootView.swift; sourceTree = "<group>"; };
 		AB000038 /* VehicleRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleRow.swift; sourceTree = "<group>"; };
 		AB000039 /* VehiclesService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehiclesService.swift; sourceTree = "<group>"; };
@@ -252,6 +263,7 @@
 		AB000122 /* Shoe360ProViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shoe360ProViews.swift; sourceTree = "<group>"; };
 		AB000123 /* video-portada.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = "video-portada.mp4"; sourceTree = "<group>"; };
 		AB000124 /* ClosetProductMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetProductMetadata.swift; sourceTree = "<group>"; };
+		AB000235 /* ShoeCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoeCatalog.swift; sourceTree = "<group>"; };
 		AB000129 /* Vidos-zapatos.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Vidos-zapatos.mp4"; sourceTree = "<group>"; };
 		AB000130 /* ClosetInventoryRepair.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClosetInventoryRepair.swift; sourceTree = "<group>"; };
 		AB000131 /* StockSearchScannerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockSearchScannerViews.swift; sourceTree = "<group>"; };
@@ -262,6 +274,7 @@
 		AB000210 /* DashboardHomeScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardHomeScreen.swift; sourceTree = "<group>"; };
 		AB000212 /* StockCategoryMarketplaceCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockCategoryMarketplaceCatalog.swift; sourceTree = "<group>"; };
 		AB000213 /* StockMarketplaceConnectionsDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StockMarketplaceConnectionsDemoView.swift; sourceTree = "<group>"; };
+		AB000234 /* PublicPriceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicPriceService.swift; sourceTree = "<group>"; };
 		AB000214 /* MarketplaceGatewayService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketplaceGatewayService.swift; sourceTree = "<group>"; };
 		AB000215 /* SaleReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaleReport.swift; sourceTree = "<group>"; };
 		AB000216 /* MarketplaceListing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketplaceListing.swift; sourceTree = "<group>"; };
@@ -280,6 +293,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA000034 /* Supabase in Frameworks */,
+				AA000236 /* PhoneNumberKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -336,6 +350,7 @@
 				AB000108 /* ClosetModels.swift */,
 				AB000114 /* ClosetItemModel.swift */,
 				AB000124 /* ClosetProductMetadata.swift */,
+				AB000235 /* ShoeCatalog.swift */,
 				AB000099 /* LookModel.swift */,
 				AB000117 /* ColorPaletteExtractor.swift */,
 				AB000113 /* ImageStore.swift */,
@@ -393,6 +408,7 @@
 				AB000118 /* ClosetPhotoExports.swift */,
 				AB000130 /* ClosetInventoryRepair.swift */,
 				AB000201 /* UpsoledProductsService.swift */,
+				AB000234 /* PublicPriceService.swift */,
 				AB000214 /* MarketplaceGatewayService.swift */,
 			);
 			path = Services;
@@ -404,9 +420,12 @@
 				AB000224 /* SellFlowView.swift */,
 				AB000223 /* CardDetailView.swift */,
 				AB000219 /* CardsHubView.swift */,
+				F7C2AB611000000000000004 /* BoosterOpeningView.swift */,
+				F7C2AB611000000000000002 /* BoosterScene.swift */,
 				AB000218 /* SaleReportView.swift */,
 				AB000037 /* AuthRootView.swift */,
 				AB000036 /* LoginView.swift */,
+				AB000237 /* AuthAccountViews.swift */,
 				AB000010 /* MainTabView.swift */,
 				AB000011 /* DashboardView.swift */,
 				AB000079 /* DashboardHubScreens.swift */,
@@ -473,6 +492,7 @@
 				AB000129 /* Vidos-zapatos.mp4 */,
 				AB000089 /* AIAssistantOrb.gif */,
 				AB000211 /* 3d-pokemon-card-oddish.gif */,
+				F7C2AB611000000000000006 /* PackOpening */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -523,6 +543,7 @@
 			name = UniclickApp;
 			packageProductDependencies = (
 				AG000002 /* Supabase */,
+				AG000004 /* PhoneNumberKit */,
 			);
 			productName = UniclickApp;
 			productReference = AB000000 /* UniclickApp.app */;
@@ -545,15 +566,16 @@
 			};
 			buildConfigurationList = AF000001 /* Build configuration list for PBXProject "UniclickApp" */;
 			compatibilityVersion = "Xcode 14.0";
-			developmentRegion = es;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				es,
+				en,
 				Base,
 			);
 			mainGroup = AD000001;
 			packageReferences = (
 				AG000001 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				AG000003 /* XCRemoteSwiftPackageReference "PhoneNumberKit" */,
 			);
 			productRefGroup = AD000009 /* Products */;
 			projectDirPath = "";
@@ -579,6 +601,7 @@
 				AA000129 /* Vidos-zapatos.mp4 in Resources */,
 				AA000089 /* AIAssistantOrb.gif in Resources */,
 				AA000211 /* Assets.xcassets/AccarLogo.imageset/3d-pokemon-card-oddish.gif in Resources */,
+				F7C2AB611000000000000005 /* PackOpening in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -632,6 +655,7 @@
 				AA000056 /* UserProfileService.swift in Sources */,
 				AA000036 /* AuthViewModel.swift in Sources */,
 				AA000037 /* LoginView.swift in Sources */,
+				AA000237 /* AuthAccountViews.swift in Sources */,
 				AA000038 /* AuthRootView.swift in Sources */,
 				AA000039 /* VehicleRow.swift in Sources */,
 				AA000040 /* VehiclesService.swift in Sources */,
@@ -680,6 +704,7 @@
 				AA000113 /* ImageStore.swift in Sources */,
 				AA000114 /* ClosetItemModel.swift in Sources */,
 				AA000124 /* ClosetProductMetadata.swift in Sources */,
+				AA000235 /* ShoeCatalog.swift in Sources */,
 				AA000099 /* LookModel.swift in Sources */,
 				AA000117 /* ColorPaletteExtractor.swift in Sources */,
 				AA000100 /* ClosetDetailAndLooksViews.swift in Sources */,
@@ -688,6 +713,7 @@
 				AA000131 /* StockSearchScannerViews.swift in Sources */,
 				AA000212 /* StockCategoryMarketplaceCatalog.swift in Sources */,
 				AA000213 /* StockMarketplaceConnectionsDemoView.swift in Sources */,
+				AA000234 /* PublicPriceService.swift in Sources */,
 				AA000214 /* MarketplaceGatewayService.swift in Sources */,
 				AA000224 /* SellFlowView.swift in Sources */,
 				AA000223 /* CardDetailView.swift in Sources */,
@@ -695,6 +721,8 @@
 				AA000221 /* AppTopBar.swift in Sources */,
 				AA000220 /* Shoe360View.swift in Sources */,
 				AA000219 /* CardsHubView.swift in Sources */,
+				F7C2AB611000000000000003 /* BoosterOpeningView.swift in Sources */,
+				F7C2AB611000000000000001 /* BoosterScene.swift in Sources */,
 				AA000218 /* SaleReportView.swift in Sources */,
 				AA000216 /* MarketplaceListing.swift in Sources */,
 				AA000215 /* SaleReport.swift in Sources */,
@@ -849,14 +877,14 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = UniclickApp/ExtraInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Uniclick;
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Para crear en tu calendario el evento del plazo de la tarea cuando pulses «Aceptar» en la notificación.";
-				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Para añadir el plazo de la tarea a tu calendario (solo crear eventos, sin leer tus citas).";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Para hacer fotos de outfits y prendas que quieras añadir a tu clóset.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Usamos tu ubicación para mostrarte en el mapa del equipo y compartirla con otros usuarios de la plataforma.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Used to visualize your voice in real time, dictation, and team voice features. Usamos el micrófono para mostrar tu voz en tiempo real, dictado y mensajes de voz.";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Para guardar en tu carrete los avatares y lookbooks generados con IA.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Para elegir fotos del vehículo y subirlas a tu inventario en Supabase Storage.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Transcribimos lo que dices para escribir tareas y mensajes al equipo sin teclear.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Adds a task deadline to your calendar when you accept the task.";
+				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Adds task deadlines to your calendar.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scans product barcodes and takes photos of outfits and items for your closet.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Shows your location on the team map and lets you share it with other users.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Uses the microphone for dictation, voice visualization, and team voice messages.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Saves generated avatars and lookbooks to your photo library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Lets you choose photos to upload to your inventory.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Transcribes speech so you can dictate tasks and team messages.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -889,14 +917,14 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = UniclickApp/ExtraInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Uniclick;
-				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Para crear en tu calendario el evento del plazo de la tarea cuando pulses «Aceptar» en la notificación.";
-				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Para añadir el plazo de la tarea a tu calendario (solo crear eventos, sin leer tus citas).";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Para hacer fotos de outfits y prendas que quieras añadir a tu clóset.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Usamos tu ubicación para mostrarte en el mapa del equipo y compartirla con otros usuarios de la plataforma.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Used to visualize your voice in real time, dictation, and team voice features. Usamos el micrófono para mostrar tu voz en tiempo real, dictado y mensajes de voz.";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Para guardar en tu carrete los avatares y lookbooks generados con IA.";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Para elegir fotos del vehículo y subirlas a tu inventario en Supabase Storage.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Transcribimos lo que dices para escribir tareas y mensajes al equipo sin teclear.";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Adds a task deadline to your calendar when you accept the task.";
+				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Adds task deadlines to your calendar.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scans product barcodes and takes photos of outfits and items for your closet.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Shows your location on the team map and lets you share it with other users.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Uses the microphone for dictation, voice visualization, and team voice messages.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Saves generated avatars and lookbooks to your photo library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Lets you choose photos to upload to your inventory.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Transcribes speech so you can dictate tasks and team messages.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -939,6 +967,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		AG000003 /* XCRemoteSwiftPackageReference "PhoneNumberKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/PhoneNumberKit/PhoneNumberKit.git";
+			requirement = {
+				kind = exactVersion;
+				version = 5.0.9;
+			};
+		};
 		AG000001 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/supabase/supabase-swift.git";
@@ -950,6 +986,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		AG000004 /* PhoneNumberKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AG000003 /* XCRemoteSwiftPackageReference "PhoneNumberKit" */;
+			productName = PhoneNumberKit;
+		};
 		AG000002 /* Supabase */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = AG000001 /* XCRemoteSwiftPackageReference "supabase-swift" */;

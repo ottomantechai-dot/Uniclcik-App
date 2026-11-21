@@ -115,7 +115,7 @@ struct CarsFilterSheet: View {
                             yearSection
                         }
 
-                        FilterAccordionRow(title: "Talla EU (campo numérico)", systemImage: "ruler") {
+                        FilterAccordionRow(title: "EU size", systemImage: "ruler") {
                             kmSection
                         }
 

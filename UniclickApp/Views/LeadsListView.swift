@@ -28,7 +28,7 @@ struct LeadsListView: View {
                         .tint(PremiumAccent.tabActive)
                     } else if !vm.isLoading, vm.leads.isEmpty {
                         Text(
-                            "No hay filas en leads_crm o RLS no devuelve datos para tu sesión. Inicia sesión y revisa políticas en Supabase."
+                            "No leads are available. Sign in and check access to the leads_crm table."
                         )
                         .font(.body)
                         .foregroundStyle(.secondary)

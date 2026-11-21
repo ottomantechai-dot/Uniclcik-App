@@ -5,10 +5,13 @@ struct AuthRootView: View {
     @ObservedObject var auth: AuthViewModel
     @EnvironmentObject var carsVM: CarsViewModel
     @EnvironmentObject var settingsVM: SettingsViewModel
+    @State private var previewsBooster = Self.previewsBoosterPack
 
     var body: some View {
         Group {
-            if Self.previewsShoeReport {
+            if let barcode = Self.previewBarcode {
+                StockBarcodeLookupPreview(barcode: barcode)
+            } else if Self.previewsShoeReport {
                 // Solo desarrollo (-uniclickPreviewReport): informe de un zapato sin precios, para ver el giro 360°.
                 SaleReportView(report: SaleReport(title: "adidas Yeezy Boost 350 V2 Steel Grey", sku: "IF3219", scannedCode: "",
                                                   imageURL: nil, size: "9.5", costUSD: nil, lines: [], priceIsEstimate: false))
@@ -16,6 +19,7 @@ struct AuthRootView: View {
                 // Solo en compilaciones de desarrollo y con el argumento -uniclickPreview: enseña las
                 // secciones nuevas sin iniciar sesión, para poder probarlas en el simulador.
                 MainTabView()
+                    .fullScreenCover(isPresented: $previewsBooster) { BoosterOpeningView() }
             } else if auth.isRestoringSession {
                 ZStack {
                     Color(.systemGroupedBackground)
@@ -25,6 +29,12 @@ struct AuthRootView: View {
             } else if Self.previewsOnboarding {
                 // Solo desarrollo (-uniclickOnboarding): el onboarding y el recorrido sin iniciar sesión.
                 OnboardedRoot(uid: "preview", force: true)
+            } else if auth.isAuthenticated && auth.isVerifyingRecovery {
+                ProgressView("Verifying recovery…")
+            } else if auth.needsNewPassword {
+                RecoveredPasswordView(auth: auth)
+            } else if auth.needsRegistrationPhone {
+                RegistrationPhoneView(auth: auth)
             } else if auth.isAuthenticated {
                 // La primera vez que una cuenta entra en este teléfono pasa por el onboarding.
                 let uid = auth.session?.user.id.uuidString ?? "guest"
@@ -34,13 +44,43 @@ struct AuthRootView: View {
             }
         }
         .environmentObject(auth)
+        .task { await auth.refreshMethods() }
         .onOpenURL { url in
-            SupabaseClientProvider.shared.auth.handle(url)
+            Task { await auth.handleCallback(url) }
+        }
+        .alert(
+            "Account access",
+            isPresented: Binding(
+                get: { auth.callbackNotice != nil },
+                set: { if !$0 { auth.callbackNotice = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(auth.callbackNotice ?? "")
         }
     }
 }
 
 extension AuthRootView {
+    private static var previewsBoosterPack: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-uniclickPreviewBooster")
+        #else
+        false
+        #endif
+    }
+
+    private static var previewBarcode: String? {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "-uniclickPreviewBarcode"), arguments.indices.contains(index + 1) {
+            return arguments[index + 1]
+        }
+        #endif
+        return nil
+    }
+
     static var previewsShoeReport: Bool {
         #if DEBUG
         return ProcessInfo.processInfo.arguments.contains("-uniclickPreviewReport")
@@ -66,18 +106,26 @@ extension AuthRootView {
     }
 }
 
+private struct StockBarcodeLookupPreview: View {
+    let barcode: String
+    @State private var result: StockScanLookupPayload?
+
+    var body: some View {
+        Group {
+            if let result {
+                StockScanResultSheet(payload: result, onViewStockItem: { _ in }, onDismiss: { })
+            } else {
+                ProgressView("Looking up barcode…")
+            }
+        }
+        .task { result = await StockScanLookupService.lookup(code: barcode, stock: []) }
+    }
+}
+
 #Preview {
     AuthRootView(auth: AuthViewModel())
         .environmentObject(CarsViewModel())
         .environmentObject(SettingsViewModel())
-}
-
-// MARK: - Textos en dos idiomas
-
-/// La app está en inglés; si el teléfono está en español, el onboarding y el recorrido salen en español.
-enum Tx {
-    static let spanish = Locale.preferredLanguages.first?.hasPrefix("es") ?? false
-    static func s(_ en: String, _ es: String) -> String { spanish ? es : en }
 }
 
 // MARK: - Daniel, el personaje guía
@@ -244,7 +292,7 @@ struct OnboardingView: View {
         HStack {
             Button { go(to: step - 1) } label: { TopBarGlassButton(systemImage: "chevron.left") }
                 .buttonStyle(.plain).opacity(step > 0 ? 1 : 0).disabled(step == 0)
-                .accessibilityLabel(Tx.s("Back", "Atrás"))
+                .accessibilityLabel("Back")
             Spacer()
             if step > 0 {
                 HStack(spacing: 6) {
@@ -259,7 +307,7 @@ struct OnboardingView: View {
             }
             Spacer()
             Button { finish(.none) } label: {
-                Text(Tx.s("Skip", "Omitir")).font(.system(size: 14, weight: .semibold)).foregroundStyle(.black.opacity(0.6))
+                Text("Skip").font(.system(size: 14, weight: .semibold)).foregroundStyle(.black.opacity(0.6))
                     .frame(width: 60, height: 44)
             }
             .buttonStyle(.plain)
@@ -276,35 +324,34 @@ struct OnboardingView: View {
         case 0: welcome
         case 1:
             question(pose: "productos",
-                     title: Tx.s("What do you sell or collect?", "¿Qué vendes o coleccionas?"),
-                     subtitle: Tx.s("We shape the app around it.", "Así adaptamos la app a ti.")) {
+                     title: "What do you sell or collect?",
+                     subtitle: "We shape the app around it.") {
                 ForEach(sellingOptions) { option in row(option, selected: selling == option.id) { selling = option.id } }
             }
         case 2:
             question(pose: "precios",
-                     title: Tx.s("What's your main goal?", "¿Cuál es tu objetivo principal?"),
-                     subtitle: Tx.s("Pick as many as you like.", "Puedes elegir varios.")) {
+                     title: "What's your main goal?",
+                     subtitle: "Pick as many as you like.") {
                 ForEach(goalOptions) { option in row(option, selected: goals.contains(option.id), multiple: true) { toggle(&goals, option.id) } }
             }
         case 3:
             question(pose: "pensando",
-                     title: Tx.s("What kind of user are you?", "¿Qué tipo de usuario eres?"),
-                     subtitle: Tx.s("So we show you what matters most.", "Para enseñarte lo que más te sirve.")) {
+                     title: "What kind of user are you?",
+                     subtitle: "So we show you what matters most.") {
                 ForEach(profileOptions) { option in row(option, selected: profile == option.id) { profile = option.id } }
             }
         case 4:
             question(pose: "ok",
-                     title: Tx.s("Which platforms do you use?", "¿Qué plataformas usas?"),
-                     subtitle: Tx.s("Connecting your accounts is optional. You can do it later from your profile.",
-                                    "Conectar tus cuentas es opcional. Puedes hacerlo luego desde tu perfil.")) {
+                     title: "Which platforms do you use?",
+                     subtitle: "Connecting your accounts is optional. You can do it later from your profile.") {
                 grid(platformOptions, columns: 2) { option in
                     tile(option, selected: platforms.contains(option.id)) { toggle(&platforms, option.id) }
                 }
             }
         case 5:
             question(pose: "hola",
-                     title: Tx.s("How did you hear about us?", "¿Cómo nos conociste?"),
-                     subtitle: Tx.s("It helps us reach more people like you.", "Nos ayuda a llegar a más gente como tú.")) {
+                     title: "How did you hear about us?",
+                     subtitle: "It helps us reach more people like you.") {
                 grid(sourceOptions, columns: 3) { option in
                     tile(option, selected: heardFrom == option.id) { heardFrom = heardFrom == option.id ? nil : option.id }
                 }
@@ -316,11 +363,10 @@ struct OnboardingView: View {
     private var welcome: some View {
         VStack(spacing: 16) {
             DanielAvatar(pose: "hola", size: 230).padding(.top, 18)
-            Text(Tx.s("All your market.\nOne app.", "Todo tu mercado.\nUna sola aplicación."))
+            Text("All your market.\nOne app.")
                 .font(.system(size: 34, weight: .heavy, design: .rounded)).multilineTextAlignment(.center)
                 .foregroundStyle(.black).padding(.top, 8)
-            Text(Tx.s("See what your sneakers and Pokémon cards are worth, compare prices and sell on several platforms from one place.",
-                      "Descubre cuánto valen tus sneakers y cartas Pokémon, compara precios y vende en varias plataformas desde un solo lugar."))
+            Text("See what your sneakers and Pokémon cards are worth, compare prices and sell on several platforms from one place.")
                 .font(.system(size: 16, weight: .medium)).multilineTextAlignment(.center).foregroundStyle(.black.opacity(0.55))
                 .padding(.horizontal, 10)
             HStack(spacing: 10) {
@@ -336,17 +382,17 @@ struct OnboardingView: View {
     private var firstProduct: some View {
         VStack(spacing: 12) {
             DanielAvatar(pose: "celebra", size: 150).padding(.top, 4)
-            Text(Tx.s("See what your first product is worth", "Descubre el valor de tu primer producto"))
+            Text("See what your first product is worth")
                 .font(.system(size: 26, weight: .heavy, design: .rounded)).multilineTextAlignment(.center).foregroundStyle(.black)
-            Text(Tx.s("Scan it or search it, compare the prices and start selling.", "Escanéalo o búscalo, compara los precios y empieza a vender."))
+            Text("Scan it or search it, compare the prices and start selling.")
                 .font(.system(size: 15, weight: .medium)).multilineTextAlignment(.center).foregroundStyle(.black.opacity(0.55))
                 .padding(.bottom, 6)
-            startButton(icon: "barcode.viewfinder", title: Tx.s("Scan a box", "Escanear una caja"),
-                        detail: Tx.s("Point at the barcode.", "Apunta al código de barras.")) { finish(.scan) }
-            startButton(icon: "magnifyingglass", title: Tx.s("Search a sneaker", "Buscar un sneaker"),
-                        detail: Tx.s("By name or SKU.", "Por nombre o SKU.")) { finish(.search) }
-            startButton(icon: "rectangle.portrait.on.rectangle.portrait", title: Tx.s("Browse cards", "Ver cartas"),
-                        detail: Tx.s("Market price by grade.", "Precio de mercado por grado.")) { finish(.cards) }
+            startButton(icon: "barcode.viewfinder", title: "Scan a box",
+                        detail: "Point at the barcode.") { finish(.scan) }
+            startButton(icon: "magnifyingglass", title: "Search a sneaker",
+                        detail: "By name or SKU.") { finish(.search) }
+            startButton(icon: "rectangle.portrait.on.rectangle.portrait", title: "Browse cards",
+                        detail: "Market price by grade.") { finish(.cards) }
         }
     }
 
@@ -459,7 +505,7 @@ struct OnboardingView: View {
         Button {
             if step == lastStep { finish(.none) } else { go(to: step + 1) }
         } label: {
-            Text(step == 0 ? Tx.s("Get started", "Empezar") : step == lastStep ? Tx.s("Explore the app", "Explorar la app") : Tx.s("Next", "Siguiente"))
+            Text(step == 0 ? "Get started" : step == lastStep ? "Explore the app" : "Next")
                 .font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
                 .frame(maxWidth: .infinity, minHeight: 56)
                 .background(canContinue ? Color.black : Color.black.opacity(0.28), in: .capsule)
@@ -500,24 +546,24 @@ struct OnboardingView: View {
     // MARK: Opciones
 
     private var sellingOptions: [OnboardingOption] {
-        [.init(id: "sneakers", icon: "shoe", title: "Sneakers", detail: Tx.s("Plus apparel, bags and caps.", "Y también ropa, bolsos y gorras.")),
-         .init(id: "cards", icon: "rectangle.portrait.on.rectangle.portrait", title: Tx.s("Pokémon cards", "Cartas Pokémon"), detail: Tx.s("Raw and graded.", "Sueltas y gradeadas.")),
-         .init(id: "both", icon: "square.grid.2x2", title: Tx.s("Both", "Ambos"), detail: Tx.s("Everything in one place.", "Todo en un solo lugar."))]
+        [.init(id: "sneakers", icon: "shoe", title: "Sneakers", detail: "Plus apparel, bags and caps."),
+         .init(id: "cards", icon: "rectangle.portrait.on.rectangle.portrait", title: "Pokémon cards", detail: "Raw and graded."),
+         .init(id: "both", icon: "square.grid.2x2", title: "Both", detail: "Everything in one place.")]
     }
 
     private var goalOptions: [OnboardingOption] {
-        [.init(id: "prices", icon: "tag", title: Tx.s("Check prices", "Consultar precios")),
-         .init(id: "compare", icon: "arrow.left.arrow.right", title: Tx.s("Compare marketplaces", "Comparar marketplaces")),
-         .init(id: "sell", icon: "paperplane", title: Tx.s("Sell on several platforms", "Vender en varias plataformas")),
-         .init(id: "inventory", icon: "shippingbox", title: Tx.s("Manage my inventory", "Administrar mi inventario")),
-         .init(id: "deals", icon: "chart.line.uptrend.xyaxis", title: Tx.s("Find resale opportunities", "Encontrar oportunidades de reventa"))]
+        [.init(id: "prices", icon: "tag", title: "Check prices"),
+         .init(id: "compare", icon: "arrow.left.arrow.right", title: "Compare marketplaces"),
+         .init(id: "sell", icon: "paperplane", title: "Sell on several platforms"),
+         .init(id: "inventory", icon: "shippingbox", title: "Manage my inventory"),
+         .init(id: "deals", icon: "chart.line.uptrend.xyaxis", title: "Find resale opportunities")]
     }
 
     private var profileOptions: [OnboardingOption] {
-        [.init(id: "collector", icon: "heart", title: Tx.s("Collector", "Coleccionista"), detail: Tx.s("I buy to keep.", "Compro para guardar.")),
-         .init(id: "casual", icon: "person", title: Tx.s("Occasional seller", "Vendedor ocasional"), detail: Tx.s("I sell from time to time.", "Vendo de vez en cuando.")),
-         .init(id: "reseller", icon: "bolt", title: Tx.s("Pro reseller", "Revendedor profesional"), detail: Tx.s("Buying and selling is my business.", "Comprar y vender es mi negocio.")),
-         .init(id: "store", icon: "storefront", title: Tx.s("Store", "Tienda"), detail: Tx.s("I have a shop or a team.", "Tengo tienda o equipo."))]
+        [.init(id: "collector", icon: "heart", title: "Collector", detail: "I buy to keep."),
+         .init(id: "casual", icon: "person", title: "Occasional seller", detail: "I sell from time to time."),
+         .init(id: "reseller", icon: "bolt", title: "Pro reseller", detail: "Buying and selling is my business."),
+         .init(id: "store", icon: "storefront", title: "Store", detail: "I have a shop or a team.")]
     }
 
     private var platformOptions: [OnboardingOption] {
@@ -525,8 +571,8 @@ struct OnboardingView: View {
          .init(id: "goat", title: "GOAT", marketplace: "GOAT"),
          .init(id: "ebay", title: "eBay", marketplace: "eBay"),
          .init(id: "flightclub", title: "Flight Club", marketplace: "Flight Club"),
-         .init(id: "other", icon: "ellipsis", title: Tx.s("Other", "Otra")),
-         .init(id: "none", icon: "minus", title: Tx.s("None yet", "Ninguna aún"))]
+         .init(id: "other", icon: "ellipsis", title: "Other"),
+         .init(id: "none", icon: "minus", title: "None yet")]
     }
 
     private var sourceOptions: [OnboardingOption] {
@@ -534,8 +580,8 @@ struct OnboardingView: View {
          .init(id: "tiktok", title: "TikTok", asset: "Social-tiktok"),
          .init(id: "youtube", title: "YouTube", asset: "Social-youtube"),
          .init(id: "google", title: "Google", asset: "Social-google"),
-         .init(id: "friends", icon: "person.2", title: Tx.s("Friends", "Amigos")),
-         .init(id: "other", icon: "ellipsis", title: Tx.s("Other", "Otro"))]
+         .init(id: "friends", icon: "person.2", title: "Friends"),
+         .init(id: "other", icon: "ellipsis", title: "Other")]
     }
 }
 
@@ -810,147 +856,113 @@ final class AppTour: ObservableObject {
 
     private let steps: [Step] = [
         Step(kind: .button, pose: "hola",
-             title: Tx.s("Hi, I'm Daniel", "Hola, soy Daniel"),
-             text: Tx.s("I'll walk you through the whole app: prices, sizes, market data and how to sell. I highlight each option and you tap it.",
-                        "Te enseño toda la app: precios, tallas, datos de mercado y cómo vender. Yo remarco cada opción y tú la tocas.")),
+             title: "Hi, I'm Daniel",
+             text: "I'll walk you through the whole app: prices, sizes, market data and how to sell. I highlight each option and you tap it."),
         // Inicio
         Step(tab: 0, kind: .tap, pose: "abajo",
-             title: Tx.s("Home", "Inicio"),
-             text: Tx.s("Your stock value and what's moving in the market, at a glance.",
-                        "El valor de tu stock y lo que se mueve en el mercado, de un vistazo.")),
+             title: "Home",
+             text: "Your stock value and what's moving in the market, at a glance."),
         Step(target: "home.search", needs: .home, pose: "arriba",
-             title: Tx.s("Search", "Buscar"),
-             text: Tx.s("Type any sneaker by name or SKU and see its market price.",
-                        "Escribe cualquier sneaker por nombre o SKU y mira su precio de mercado.")),
+             title: "Search",
+             text: "Type any sneaker by name or SKU and see its market price."),
         Step(target: "home.scan", needs: .home, pose: "arriba",
-             title: Tx.s("Scan a box", "Escanear una caja"),
-             text: Tx.s("Point the camera at the barcode and you get the product with its price.",
-                        "Apunta la cámara al código de barras y te sale el producto con su precio.")),
+             title: "Scan a box",
+             text: "Point the camera at the barcode and you get the product with its price."),
         // Tienda
         Step(tab: 1, kind: .tap, pose: "abajo",
-             title: Tx.s("Shop", "Tienda"),
-             text: Tx.s("Sneakers, apparel, bags and caps, all in the same place.",
-                        "Sneakers, ropa, bolsos y gorras, todo en el mismo sitio.")),
+             title: "Shop",
+             text: "Sneakers, apparel, bags and caps, all in the same place."),
         Step(target: "shop.filters", needs: .closet, pose: "arriba",
-             title: Tx.s("Filters", "Filtros"),
-             text: Tx.s("Filter by product type, brand and platform, and change the order.",
-                        "Filtra por tipo de producto, marca y plataforma, y cambia el orden.")),
+             title: "Filters",
+             text: "Filter by product type, brand and platform, and change the order."),
         Step(target: "shop.tile", kind: .tap, needs: .closet, pose: "productos",
-             title: Tx.s("Open a product", "Abre un producto"),
-             text: Tx.s("The tag on each photo is its lowest price right now. Tap this sneaker to go inside.",
-                        "La etiqueta de cada foto es su precio más bajo ahora mismo. Toca este sneaker para entrar.")),
+             title: "Open a product",
+             text: "The tag on each photo is its lowest price right now. Tap this sneaker to go inside."),
         // Ficha del zapato
         Step(target: "shoe.size", kind: .tap, scroll: true, pose: "arriba",
-             title: Tx.s("Sizes", "Tallas"),
-             text: Tx.s("The price is not the same in every size. Tap here to open the sizes.",
-                        "El precio no es el mismo en todas las tallas. Toca aquí para abrir las tallas.")),
+             title: "Sizes",
+             text: "The price is not the same in every size. Tap here to open the sizes."),
         Step(target: "shoe.sizeOption", kind: .tap, pose: "abajo",
-             title: Tx.s("Pick a size", "Elige una talla"),
-             text: Tx.s("Tap this size and watch the price change.",
-                        "Toca esta talla y mira cómo cambia el precio.")),
+             title: "Pick a size",
+             text: "Tap this size and watch the price change."),
         Step(target: "shoe.price", scroll: true, pose: "precios",
-             title: Tx.s("The price for your size", "El precio de tu talla"),
-             text: Tx.s("Buy now is the cheapest listing in that size and where it is. Below: the last sale, the highest offer and the retail price.",
-                        "«Buy now» es el anuncio más barato en esa talla y dónde está. Debajo: la última venta, la oferta más alta y el precio de tienda.")),
+             title: "The price for your size",
+             text: "Buy now is the cheapest listing in that size and where it is. Below: the last sale, the highest offer and the retail price."),
         Step(target: "market.open", kind: .tap, scroll: true, pose: "abajo",
-             title: Tx.s("Market data", "Datos de mercado"),
-             text: Tx.s("Here is everything that's happening with this sneaker. Tap to open it.",
-                        "Aquí está todo lo que pasa con este sneaker. Toca para abrirlo.")),
+             title: "Market data",
+             text: "Here is everything that's happening with this sneaker. Tap to open it."),
         Step(target: "market.tabs", pose: "arriba",
-             title: Tx.s("Asks, bids and sales", "Asks, bids y ventas"),
-             text: Tx.s("Asks: what sellers are asking. Bids: what buyers are offering. Sales: what it actually sold for.",
-                        "Asks: lo que piden los vendedores. Bids: lo que ofrecen los compradores. Sales: a cuánto se vendió de verdad.")),
+             title: "Asks, bids and sales",
+             text: "Asks: what sellers are asking. Bids: what buyers are offering. Sales: what it actually sold for."),
         Step(target: "market.sizes", pose: "arriba",
-             title: Tx.s("Filter by size", "Filtra por talla"),
-             text: Tx.s("Pick a size to see only its asks, bids and sales.",
-                        "Elige una talla para ver solo sus asks, bids y ventas.")),
+             title: "Filter by size",
+             text: "Pick a size to see only its asks, bids and sales."),
         Step(target: "market.close", kind: .tap, pose: "arriba",
-             title: Tx.s("Close", "Cerrar"),
-             text: Tx.s("Tap the X to go back to the sneaker.",
-                        "Toca la X para volver al sneaker.")),
+             title: "Close",
+             text: "Tap the X to go back to the sneaker."),
         Step(target: "shoe.compare", scroll: true, pose: "precios",
-             title: Tx.s("Price comparison", "Comparativa de precios"),
-             text: Tx.s("The same sneaker on StockX, GOAT, eBay and Flight Club, size by size. The best price is highlighted.",
-                        "El mismo sneaker en StockX, GOAT, eBay y Flight Club, talla por talla. El mejor precio sale destacado.")),
+             title: "Price comparison",
+             text: "The same sneaker on StockX, GOAT, eBay and Flight Club, size by size. The best price is highlighted."),
         Step(target: "shoe.history", scroll: true, pose: "precios",
-             title: Tx.s("Price history", "Historial de precios"),
-             text: Tx.s("How its price has moved over time, so you know when to buy or sell.",
-                        "Cómo se ha movido su precio en el tiempo, para saber cuándo comprar o vender.")),
+             title: "Price history",
+             text: "How its price has moved over time, so you know when to buy or sell."),
         // Vender
         Step(target: "sell.open", kind: .tap, scroll: true, pose: "abajo",
-             title: Tx.s("Sell this item", "Vender este producto"),
-             text: Tx.s("Now let's sell it. Tap here.",
-                        "Ahora vamos a venderlo. Toca aquí.")),
+             title: "Sell this item",
+             text: "Now let's sell it. Tap here."),
         Step(target: "sell.condition", kind: .tap, pose: "arriba",
-             title: Tx.s("Condition", "Estado"),
-             text: Tx.s("First, say how it is: new with box, new without box or used. Tap this one.",
-                        "Primero, di cómo está: nuevo con caja, nuevo sin caja o usado. Toca este.")),
+             title: "Condition",
+             text: "First, say how it is: new with box, new without box or used. Tap this one."),
         Step(target: "sell.next", kind: .tap, pose: "abajo",
-             title: Tx.s("Next", "Siguiente"),
-             text: Tx.s("Tap Next to choose the size and the price.",
-                        "Toca Next para elegir la talla y el precio.")),
+             title: "Next",
+             text: "Tap Next to choose the size and the price."),
         Step(target: "sell.sizeOption", kind: .tap, pose: "abajo",
-             title: Tx.s("Size", "Talla"),
-             text: Tx.s("Each size shows in green the best offer a buyer is making for it. Tap this one.",
-                        "Cada talla enseña en verde la mejor oferta que hace un comprador por ella. Toca esta.")),
+             title: "Size",
+             text: "Each size shows in green the best offer a buyer is making for it. Tap this one."),
         Step(target: "sell.suggest", kind: .tap, scroll: true, pose: "precios",
-             title: Tx.s("Set your price", "Pon tu precio"),
-             text: Tx.s("Sell now, sell faster or earn more: three prices taken from the market. Tap one, or type your own.",
-                        "Vender ya, vender más rápido o ganar más: tres precios sacados del mercado. Toca uno, o escribe el tuyo.")),
+             title: "Set your price",
+             text: "Sell now, sell faster or earn more: three prices taken from the market. Tap one, or type your own."),
         Step(target: "sell.next", kind: .tap, pose: "abajo",
-             title: Tx.s("Review", "Revisar"),
-             text: Tx.s("Tap to review the listing.",
-                        "Toca para revisar el anuncio.")),
+             title: "Review",
+             text: "Tap to review the listing."),
         Step(target: "sell.platforms", scroll: true, pose: "ok",
-             title: Tx.s("Where to sell", "Dónde vender"),
-             text: Tx.s("Choose one platform or several at once. Under each logo you see what you keep after its fee.",
-                        "Elige una plataforma o varias a la vez. Debajo de cada logo ves lo que te queda después de su comisión.")),
+             title: "Where to sell",
+             text: "Choose one platform or several at once. Under each logo you see what you keep after its fee."),
         Step(target: "sell.fees", scroll: true, pose: "precios",
-             title: Tx.s("Fees, clear", "Comisiones, claras"),
-             text: Tx.s("Your price, each platform's fee and what you actually receive.",
-                        "Tu precio, la comisión de cada plataforma y lo que recibes de verdad.")),
+             title: "Fees, clear",
+             text: "Your price, each platform's fee and what you actually receive."),
         Step(target: "sell.next", closes: true, pose: "abajo",
-             title: Tx.s("Submit", "Publicar"),
-             text: Tx.s("After the final checks, this button publishes it on every platform you chose. We won't publish anything now: tap it and we move on.",
-                        "Tras las comprobaciones finales, este botón lo publica en todas las plataformas elegidas. Ahora no publicamos nada: tócalo y seguimos.")),
+             title: "Submit",
+             text: "After the final checks, this button publishes it on every platform you chose. We won't publish anything now: tap it and we move on."),
         // Cartas
         Step(tab: 2, kind: .tap, pose: "abajo",
-             title: Tx.s("Cards", "Cartas"),
-             text: Tx.s("Now the cards. Tap here.",
-                        "Ahora las cartas. Toca aquí.")),
+             title: "Cards",
+             text: "Now the cards. Tap here."),
         Step(target: "cards.search", needs: .cards, pose: "arriba",
-             title: Tx.s("Find a card", "Buscar una carta"),
-             text: Tx.s("Search by name, or use the filter next to it to browse a whole set.",
-                        "Busca por nombre, o usa el filtro de al lado para ver un set entero.")),
+             title: "Find a card",
+             text: "Search by name, or use the filter next to it to browse a whole set."),
         Step(target: "cards.tile", kind: .tap, needs: .cards, pose: "productos",
-             title: Tx.s("Open a card", "Abre una carta"),
-             text: Tx.s("Tap this card to see its market.",
-                        "Toca esta carta para ver su mercado.")),
+             title: "Open a card",
+             text: "Tap this card to see its market."),
         Step(target: "card.price", scroll: true, pose: "precios",
-             title: Tx.s("Market price", "Precio de mercado"),
-             text: Tx.s("Its market price, the last sale and how much it has moved.",
-                        "Su precio de mercado, la última venta y cuánto se ha movido.")),
+             title: "Market price",
+             text: "Its market price, the last sale and how much it has moved."),
         Step(target: "card.grades", scroll: true, pose: "precios",
-             title: Tx.s("Price by grade", "Precio por grado"),
-             text: Tx.s("Raw, PSA 8, 9 and 10, compared between Collectr, TCGplayer and eBay.",
-                        "Suelta, PSA 8, 9 y 10, comparadas entre Collectr, TCGplayer y eBay.")),
+             title: "Price by grade",
+             text: "Raw, PSA 8, 9 and 10, compared between Collectr, TCGplayer and eBay."),
         Step(target: "sell.open", kind: .tap, scroll: true, pose: "abajo",
-             title: Tx.s("Sell the card", "Vender la carta"),
-             text: Tx.s("Selling a card works the same way. Tap here.",
-                        "Vender una carta funciona igual. Toca aquí.")),
+             title: "Sell the card",
+             text: "Selling a card works the same way. Tap here."),
         Step(target: "sell.condition", closes: true, pose: "ok",
-             title: Tx.s("Same three steps", "Los mismos tres pasos"),
-             text: Tx.s("Condition, grade and price, and where to publish it (eBay and StockX). Tap to continue.",
-                        "Estado, grado y precio, y dónde publicarla (eBay y StockX). Toca para seguir.")),
+             title: "Same three steps",
+             text: "Condition, grade and price, and where to publish it (eBay and StockX). Tap to continue."),
         // Perfil y cierre
         Step(target: "top.profile", pose: "arriba",
-             title: Tx.s("Your profile", "Tu perfil"),
-             text: Tx.s("Your account, your settings and your marketplace connections. You can replay this tour from here.",
-                        "Tu cuenta, tus ajustes y tus conexiones con los marketplaces. Desde aquí puedes repetir este recorrido.")),
+             title: "Your profile",
+             text: "Your account, your settings and your marketplace connections. You can replay this tour from here."),
         Step(kind: .button, pose: "celebra",
-             title: Tx.s("You're all set", "Ya lo tienes"),
-             text: Tx.s("Scan or search your first product and see what it's worth.",
-                        "Escanea o busca tu primer producto y mira cuánto vale.")),
+             title: "You're all set",
+             text: "Scan or search your first product and see what it's worth."),
     ]
 }
 
@@ -1060,7 +1072,7 @@ struct AppTourOverlay: View {
                     .foregroundStyle(.black.opacity(0.4))
                 if index + 1 < tour.count {
                     Button { tour.finish() } label: {
-                        Text(Tx.s("Skip", "Omitir")).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black.opacity(0.75))
+                        Text("Skip").font(.system(size: 13, weight: .semibold)).foregroundStyle(.black.opacity(0.75))
                             .padding(.horizontal, 12).frame(height: 32).background(Color.black.opacity(0.07), in: .capsule)
                     }
                     .buttonStyle(.plain)
@@ -1070,7 +1082,7 @@ struct AppTourOverlay: View {
             Text(step.text).font(.system(size: 15, weight: .medium)).foregroundStyle(.black.opacity(0.62)).fixedSize(horizontal: false, vertical: true)
             if step.kind == .button {
                 Button { tour.next() } label: {
-                    Text(index == 0 ? Tx.s("Let's go", "Vamos") : Tx.s("Start", "Empezar"))
+                    Text(index == 0 ? "Let's go" : "Start")
                         .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity).frame(height: 50).background(Color.black, in: .capsule)
                 }
@@ -1078,7 +1090,7 @@ struct AppTourOverlay: View {
             } else {
                 HStack(spacing: 6) {
                     Image(systemName: "hand.tap.fill")
-                    Text(Tx.s("Tap the highlighted option", "Toca la opción remarcada"))
+                    Text("Tap the highlighted option")
                 }
                 .font(.system(size: 13, weight: .bold)).foregroundStyle(.black)
                 .padding(.horizontal, 12).frame(height: 32).background(Color.black.opacity(0.06), in: .capsule)

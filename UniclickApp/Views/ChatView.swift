@@ -10,8 +10,8 @@ private enum ChatInboxListSegment: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .team: return "Equipo"
-        case .general: return "Generales"
+        case .team: return "Team"
+        case .general: return "General"
         }
     }
 }
@@ -68,28 +68,28 @@ struct ChatView: View {
     private var searchPrompt: Text {
         switch listSegment {
         case .team:
-            return Text("Buscar en equipo…").foregroundStyle(.white)
+            return Text("Search team conversations…").foregroundStyle(.white)
         case .general:
-            return Text("Buscar en plataformas…").foregroundStyle(.white)
+            return Text("Search marketplace conversations…").foregroundStyle(.white)
         }
     }
 
     private var teamEmptyFootnote: String {
         if !searchQuery.isEmpty {
-            return "No hay coincidencias. Prueba otro término o cambia a Generales."
+            return "No matches. Try a different search or switch to General."
         }
         let others = communityVM.directory.filter { $0.userId != auth.session?.user.id }
         if others.isEmpty {
-            return "Cuando haya más personas en el directorio, verás aquí el grupo y los chats privados del equipo (tú no apareces en la lista)."
+            return "Team and direct conversations appear here when coworkers join the directory."
         }
-        return "Abre un chat desde Dashboard o espera a que el directorio se actualice."
+        return "Open a chat from Home or wait for the directory to refresh."
     }
 
     private var generalEmptyFootnote: String {
         if !searchQuery.isEmpty {
-            return "No hay coincidencias. Prueba otro término o cambia a Equipo."
+            return "No matches. Try a different search or switch to Team."
         }
-        return "Los leads de Instagram, WhatsApp y otras plataformas aparecen aquí."
+        return "Leads from Instagram, WhatsApp, and other platforms appear here."
     }
 
     var body: some View {
@@ -115,7 +115,7 @@ struct ChatView: View {
                             if filteredTeamSectionThreads.isEmpty {
                                 Section {
                                     chatEmptyPlaceholder(
-                                        title: "Equipo",
+                                        title: "Team",
                                         systemImage: "person.3.fill",
                                         footnote: teamEmptyFootnote
                                     )
@@ -131,7 +131,7 @@ struct ChatView: View {
                             if filteredThreads.isEmpty {
                                 Section {
                                     chatEmptyPlaceholder(
-                                        title: "Generales",
+                                        title: "General",
                                         systemImage: "bubble.left.and.bubble.right.fill",
                                         footnote: generalEmptyFootnote
                                     )
@@ -361,7 +361,7 @@ struct ChatView: View {
             Button {
                 markUnread(thread)
             } label: {
-                Label("No leído", systemImage: "bubble.left.and.bubble.right.fill")
+                Label("Unread", systemImage: "bubble.left.and.bubble.right.fill")
             }
             .tint(.white)
 

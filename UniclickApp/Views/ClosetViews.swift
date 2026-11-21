@@ -1395,7 +1395,7 @@ struct ClosetView: View {
     @MainActor
     private func handleScannedCode(_ code: String) async {
         let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty, !scanLookupBusy else { return }
         scanLookupBusy = true
         defer { scanLookupBusy = false }
         scanLookupPayload = await StockScanLookupService.lookup(
@@ -3533,7 +3533,7 @@ extension PieceMarketPrice {
     static func identifySneaker(in image: UIImage, corrections: String = "") async throws -> (model: String, sku: String) {
         guard let key = resolvedAPIKey, key.hasPrefix("sk-") else {
             throw NSError(domain: "OpenAI", code: 401, userInfo: [
-                NSLocalizedDescriptionKey: "Falta la API key de OpenAI. Añádela en Ajustes (API key) o en DeveloperSettings.local.xcconfig."
+                NSLocalizedDescriptionKey: "Add your OpenAI API key in Settings or DeveloperSettings.local.xcconfig."
             ])
         }
         // Reducimos la imagen para no enviar payloads enormes.
@@ -3589,7 +3589,7 @@ extension PieceMarketPrice {
               let content = msg["content"] as? String,
               let cdata = content.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: cdata) as? [String: Any]
-        else { throw NSError(domain: "OpenAI", code: 502, userInfo: [NSLocalizedDescriptionKey: "Respuesta no válida de OpenAI"]) }
+        else { throw NSError(domain: "OpenAI", code: 502, userInfo: [NSLocalizedDescriptionKey: "Invalid response from OpenAI"]) }
         let model = (obj["model"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let sku = (obj["sku"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         return (model, sku)
@@ -4309,7 +4309,7 @@ enum KicksDBClient {
     static func fetchAggregated(query: String, fallbackQuery: String? = nil, sizeQuery: String? = nil) async throws -> PieceMarketPrice? {
         guard isConfigured else {
             throw NSError(domain: "KicksDB", code: 401, userInfo: [
-                NSLocalizedDescriptionKey: "El gateway de marketplaces no está disponible."
+                NSLocalizedDescriptionKey: "The marketplace gateway is unavailable."
             ])
         }
 
@@ -4603,6 +4603,8 @@ struct MarketComparison {
     let fetchedAt: Date
     /// `true` si todas las plataformas con SKU apuntan al MISMO producto (SKU normalizado igual).
     let skuAligned: Bool
+    var usesPublicPages = false
+    var sizeSystem: ShoeSizeSystem?
 
     var matchedTitle: String? { platforms.compactMap(\.matchedTitle).first }
     /// Nombres para buscar el giro 360°: primero el de StockX, que es quien publica esas fotos.
@@ -4709,6 +4711,41 @@ struct MarketComparison {
     }
 }
 
+enum PublicMarketComparison {
+    @MainActor
+    static func load(query: String, fallback: String? = nil) async -> MarketComparison {
+        let result = await PublicPriceService.product(.init(query: query, fallback: fallback))
+        let platforms = result.offers.map { offer in
+            let prices = offer.pricesBySize.values
+            return MarketPlatformQuote(
+                platform: offer.source,
+                color: offer.source == "SNKRDUNK" ? .indigo : .primary,
+                matchedTitle: offer.title,
+                matchedSKU: offer.sku,
+                productURL: offer.url,
+                asksBySize: offer.pricesBySize,
+                avg: nil,
+                lowestAsk: prices.min(),
+                highestAsk: prices.max(),
+                imageURL: offer.imageURL
+            )
+        }
+        let sizes = Set(platforms.flatMap { $0.asksBySize.keys }).sorted(by: PublicPriceService.sizeOrder)
+        let rows = sizes.map { size in
+            MarketSizeRow(size: size, asks: Dictionary(uniqueKeysWithValues: platforms.compactMap { quote in
+                quote.asksBySize[size].map { (quote.platform, $0) }
+            }))
+        }
+        let verifiedSKUs = platforms.compactMap(\.matchedSKU)
+        return MarketComparison(
+            query: query, platforms: platforms, sizes: sizes, rows: rows, fetchedAt: result.checkedAt,
+            skuAligned: verifiedSKUs.count > 1 && Set(verifiedSKUs.map(MarketComparison.normalizeSKU)).count == 1,
+            usesPublicPages: true,
+            sizeSystem: result.offers.compactMap(\.sizeSystem).first
+        )
+    }
+}
+
 extension KicksDBClient {
     /// Comparador StockX + GOAT por talla. Reutiliza `search`/`detail` y la heurística de
     /// nombres existentes. Lanza solo si falta la API key; si una plataforma falla, la otra
@@ -4716,7 +4753,7 @@ extension KicksDBClient {
     static func fetchComparison(query: String, fallbackQuery: String? = nil) async throws -> MarketComparison? {
         guard isConfigured else {
             throw NSError(domain: "KicksDB", code: 401, userInfo: [
-                NSLocalizedDescriptionKey: "El gateway de marketplaces no está disponible."
+                NSLocalizedDescriptionKey: "The marketplace gateway is unavailable."
             ])
         }
 
@@ -4974,19 +5011,19 @@ struct OpportunitiesView: View {
                 if loading {
                     VStack(spacing: 12) {
                         ProgressView()
-                        Text("Analizando \(watchlist.items.count) modelos de tu watchlist…")
+                        Text("Checking \(watchlist.items.count) models on your watchlist…")
                             .font(.system(size: 13)).foregroundStyle(.secondary)
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if watchlist.items.isEmpty {
-                    ContentUnavailableView("Añade favoritos primero", systemImage: "star",
-                        description: Text("Guarda modelos con la estrella ★ en la ficha de precios y aquí verás dónde hay ganancia entre plataformas."))
+                    ContentUnavailableView("Add favorites first", systemImage: "star",
+                        description: Text("Star models on their price page to find resale opportunities across marketplaces here."))
                 } else if results.isEmpty {
-                    ContentUnavailableView("Sin oportunidades ahora", systemImage: "chart.line.flattrend.xyaxis",
-                        description: Text("Ninguno de tus favoritos tiene un spread interesante entre plataformas en este momento. Vuelve más tarde."))
+                    ContentUnavailableView("No opportunities right now", systemImage: "chart.line.flattrend.xyaxis",
+                        description: Text("There are currently no resale opportunities for your favorites. Check back later."))
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 12) {
-                            Text("Comprar barato en una plataforma y vender caro en otra. Bruto, sin comisiones ni envío.")
+                            Text("Buy for less on one marketplace and sell for more on another. Margins exclude fees and shipping.")
                                 .font(.system(size: 11)).foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             ForEach(results) { oppCard($0) }
@@ -5015,8 +5052,9 @@ struct OpportunitiesView: View {
         defer { loading = false; scanned = true }
         var found: [Opportunity] = []
         for item in watchlist.items {
-            guard let comp = (try? await KicksDBClient.fetchComparison(query: item.query)) ?? nil,
-                  let arb = comp.bestArbitrage, arb.roi >= 8, arb.margin >= 15 else { continue }
+            let comp = await PublicMarketComparison.load(query: item.query)
+            guard !Task.isCancelled else { return }
+            guard let arb = comp.bestArbitrage, arb.roi >= 8, arb.margin >= 15 else { continue }
             found.append(Opportunity(
                 name: comp.matchedTitle ?? item.displayName, size: arb.size,
                 buyPlatform: arb.buyPlatform, sellPlatform: arb.sellPlatform,
@@ -5035,7 +5073,7 @@ struct OpportunitiesView: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.black.opacity(0.05), lineWidth: 1))
             VStack(alignment: .leading, spacing: 3) {
                 Text(o.name).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                Text("talla \(o.size)").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
+                Text("size \(o.size)").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
                 Text("\(usd(o.buy)) \(o.buyPlatform) → \(usd(o.sell)) \(o.sellPlatform)")
                     .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
@@ -5081,29 +5119,24 @@ private struct PressableRowStyle: ButtonStyle {
 
 struct MarketComparatorView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     let initialFallback: String?
     let initialSizes: [String]
+    private let initialQuery: String
 
     @State private var queryText: String
     @State private var comparison: MarketComparison?
     @State private var selectedSize: String?
     @State private var isLoading = false
-    @State private var errorText: String?
     @State private var didAutoRun = false
-    // eBay (Browse API) — opcional; solo activo si hay credenciales configuradas.
-    @State private var ebayListing: EbayListing?
-    @State private var ebayLoading = false
+    @State private var request: PublicPriceService.ProductQuery?
+    @State private var searchRevision = 0
     @State private var showCreateAlert = false
     @ObservedObject private var alertStore = PriceAlertStore.shared
-    // Sell / historial (KicksDB sales · Premium)
-    @State private var sellPoints: [DailySalePoint] = []
-    @State private var sellLoading = false
     // Autocompletado mientras se escribe
     @State private var suggestions: [ComparatorSuggestion] = []
-    @State private var suggestTask: Task<Void, Never>?
     @State private var suppressSuggest = false
-    @State private var suggestLoading = false
     @FocusState private var searchFocused: Bool
     // Escáner de zapato por foto (Gemini Vision)
     @State private var showScanner = false
@@ -5117,6 +5150,7 @@ struct MarketComparatorView: View {
     @State private var showCorrections = false
 
     init(initialQuery: String = "", initialFallback: String? = nil, initialSizes: [String] = []) {
+        self.initialQuery = initialQuery
         self.initialFallback = initialFallback
         self.initialSizes = initialSizes
         _queryText = State(initialValue: initialQuery)
@@ -5128,29 +5162,23 @@ struct MarketComparatorView: View {
                 VStack(spacing: 18) {
                     VStack(spacing: 8) {
                         searchBar
-                        if suggestLoading && suggestions.isEmpty {
-                            suggestionsSkeleton
-                                .transition(.opacity)
-                        } else if !suggestions.isEmpty {
+                        if !suggestions.isEmpty {
                             suggestionsList
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
                     .animation(.easeOut(duration: 0.22), value: suggestions.count)
-                    .animation(.easeOut(duration: 0.2), value: suggestLoading)
                     .onChange(of: queryText) { _, newValue in scheduleSuggest(newValue) }
 
                     Group {
                         if isLoading {
-                            ProgressView("Consultando StockX y GOAT…")
+                            ProgressView("Checking public listings…")
                                 .padding(.top, 36)
-                        } else if let error = errorText {
-                            infoCard(error, system: "exclamationmark.triangle.fill", tint: .orange)
                         } else if let comp = comparison {
                             resultsSection(comp)
                                 .transition(.opacity.combined(with: .move(edge: .bottom)))
                         } else {
-                            infoCard("Escribe un SKU (ej. DZ5485-100) o el nombre del modelo y pulsa Comparar.",
+                            infoCard("Search by SKU, exact name, or a Stadium Goods or SNKRDUNK link.",
                                      system: "magnifyingglass", tint: .secondary)
                         }
                     }
@@ -5164,7 +5192,7 @@ struct MarketComparatorView: View {
                         } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: "xmark.circle")
-                                Text("No es este — corregir y enseñar a la IA")
+                                Text("Incorrect match? Fix it")
                             }
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.secondary)
@@ -5179,7 +5207,7 @@ struct MarketComparatorView: View {
                 .padding(16)
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("Comparador")
+            .navigationTitle("Price comparison")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if comparison != nil {
@@ -5189,14 +5217,14 @@ struct MarketComparatorView: View {
                         } label: {
                             Image(systemName: "bell.badge")
                         }
-                        .accessibilityLabel("Crear alerta de precio")
+                        .accessibilityLabel("Create a price alert")
                     }
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showCorrections = true } label: {
                         Image(systemName: "brain.head.profile")
                     }
-                    .accessibilityLabel("Lo que aprendió la IA")
+                    .accessibilityLabel("Scanner corrections")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Close") { dismiss() }
@@ -5220,6 +5248,10 @@ struct MarketComparatorView: View {
                     await runSearch()
                 }
             }
+            .task(id: scenePhase == .active ? searchRevision : nil) {
+                guard scenePhase == .active, let request else { return }
+                await PublicPriceService.poll { await loadComparison(request) }
+            }
             .sheet(isPresented: $showScanner) {
                 SneakerCameraPicker(image: $scanImage).ignoresSafeArea()
             }
@@ -5228,13 +5260,13 @@ struct MarketComparatorView: View {
                 Task { await scanAndIdentify() }
             }
             .overlay { if scanning { scanOverlay } }
-            .alert("¿Cuál es el modelo correcto?", isPresented: $showCorrection) {
-                TextField("Ej. Nike Dunk Low Viotech", text: $correctionText)
+            .alert("What is the correct model?", isPresented: $showCorrection) {
+                TextField("e.g. Nike Dunk Low Viotech", text: $correctionText)
                     .textInputAutocapitalization(.words)
-                Button("Buscar y enseñar") { applyCorrection() }
-                Button("Cancelar", role: .cancel) {}
+                Button("Search and save correction") { applyCorrection() }
+                Button("Cancel", role: .cancel) {}
             } message: {
-                Text("La IA guardará tu corrección y aprenderá para no repetir el error.")
+                Text("The scanner saves your correction for future scans.")
             }
         }
         .preferredColorScheme(.light)
@@ -5299,13 +5331,13 @@ struct MarketComparatorView: View {
         guard let img = scanImage else { return }
         scanning = true
         scanLineDown = false
-        scanStatus = "Leyendo código de la caja…"
+        scanStatus = "Reading the box barcode…"
         defer { scanning = false; scanImage = nil }
 
         // 1) Si hay un STYLE CODE legible en la etiqueta (DZ5485-612), lo usamos: exacto, sin errores.
         if let code = await recognizeStyleCode(in: img), KicksDBClient.looksLikeSKU(code) {
             lastScanGuess = ""   // fue lectura exacta, no una suposición de IA
-            scanStatus = "Código leído: \(code)"
+            scanStatus = "Barcode: \(code)"
             scanFeedback(success: true)
             try? await Task.sleep(nanoseconds: 450_000_000)
             suppressSuggest = true
@@ -5315,7 +5347,7 @@ struct MarketComparatorView: View {
         }
 
         // 2) Si no hay código legible, identificamos por imagen con la IA.
-        scanStatus = "Identificando con IA…"
+        scanStatus = "Identifying with AI…"
         do {
             let result = try await PieceMarketPrice.identifySneaker(in: img, corrections: ScanCorrectionStore.shared.promptHint)
             let q = !result.sku.isEmpty && KicksDBClient.looksLikeSKU(result.sku) ? result.sku : result.model
@@ -5385,7 +5417,7 @@ struct MarketComparatorView: View {
                     } else {
                         ProgressView().tint(.white)
                     }
-                    Text(scanStatus.isEmpty ? "Identificando con IA…" : scanStatus)
+                    Text(scanStatus.isEmpty ? "Identifying with AI…" : scanStatus)
                         .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                         .multilineTextAlignment(.center).lineLimit(2)
                 }
@@ -5405,7 +5437,7 @@ struct MarketComparatorView: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(searchFocused ? Color.accentColor : .secondary)
-            TextField("SKU o nombre del modelo", text: $queryText)
+            TextField("SKU or model name", text: $queryText)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
@@ -5415,8 +5447,7 @@ struct MarketComparatorView: View {
                 Button {
                     queryText = ""
                     suggestions = []
-                    suggestLoading = false
-                } label: {
+                    } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -5491,50 +5522,25 @@ struct MarketComparatorView: View {
         )
     }
 
-    /// Pide sugerencias con un pequeño retardo (debounce) para no llamar a la API en cada letra.
     private func scheduleSuggest(_ text: String) {
-        suggestTask?.cancel()
-        if suppressSuggest { suppressSuggest = false; suggestions = []; suggestLoading = false; return }
-        let q = text.trimmingCharacters(in: .whitespaces)
-        guard q.count >= 2 else { suggestions = []; suggestLoading = false; return }
-        suggestLoading = true
-        suggestTask = Task {
-            try? await Task.sleep(nanoseconds: 320_000_000)
-            guard !Task.isCancelled else { return }
-            let result = await KicksDBClient.suggest(q)
-            guard !Task.isCancelled else { return }
-            await MainActor.run { suggestions = result; suggestLoading = false }
+        if suppressSuggest {
+            suppressSuggest = false
+            suggestions = []
+            return
+        }
+        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.count >= 2 else { suggestions = []; return }
+        suggestions = WatchlistStore.shared.items.filter {
+            $0.displayName.localizedCaseInsensitiveContains(query) || $0.query.localizedCaseInsensitiveContains(query)
+        }.prefix(6).map {
+            ComparatorSuggestion(id: $0.query, title: $0.displayName, sku: $0.query, imageURL: nil, query: $0.query)
         }
     }
 
-    /// Al tocar una sugerencia: rellena el campo y compara ese modelo exacto.
-    private func pickSuggestion(_ s: ComparatorSuggestion) {
-        suggestTask?.cancel()
-        searchFocused = false
-        suggestions = []
-        suggestLoading = false
+    private func pickSuggestion(_ suggestion: ComparatorSuggestion) {
         suppressSuggest = true
-        queryText = s.query
+        queryText = suggestion.query
         Task { await runSearch() }
-    }
-
-    /// Skeleton mientras llegan las sugerencias.
-    private var suggestionsSkeleton: some View {
-        VStack(spacing: 0) {
-            ForEach(0..<3, id: \.self) { i in
-                HStack(spacing: 10) {
-                    RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.06)).frame(width: 40, height: 40)
-                    VStack(alignment: .leading, spacing: 5) {
-                        RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.06)).frame(width: 160, height: 11)
-                        RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.04)).frame(width: 80, height: 9)
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 12).padding(.vertical, 9)
-                if i < 2 { Divider().padding(.leading, 62) }
-            }
-        }
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.secondarySystemBackground)))
     }
 
     @ViewBuilder
@@ -5565,7 +5571,7 @@ struct MarketComparatorView: View {
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
-                Text("\(comp.platforms.count) plataforma(s) · \(comp.sizes.count) tallas con stock · \(Self.freshness(comp.fetchedAt))")
+                Text("\(comp.platforms.count) marketplaces · \(comp.sizes.count) sizes in stock · checked at \(comp.fetchedAt.formatted(date: .omitted, time: .shortened))")
                     .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -5573,185 +5579,28 @@ struct MarketComparatorView: View {
         }
         .frame(maxWidth: .infinity)
 
-        skuStatusBanner(comp)
-
         if let best = comp.bestBuyOverall {
             bestBuyBanner(best)
-        }
-
-        metricsCard(comp)
-
-        if comp.sizes.isEmpty {
-            infoCard("Se encontró el producto pero ninguna plataforma devolvió precios por talla ahora mismo.",
-                     system: "questionmark.circle", tint: .secondary)
-        } else {
             sizeSelector(comp.sizes)
             if let size = currentSize(comp), let row = comp.rows.first(where: { $0.size == size }) {
-                // Incluye eBay en la rejilla solo si el listado encontrado es de ESA talla.
-                let ebayForSize: Double? = (ebayListing?.sizeAspect == size) ? ebayListing?.price : nil
-                sizeComparisonCard(row, platforms: comp.platforms, ebayPrice: ebayForSize)
-                payoutCard(row, platforms: comp.platforms, ebayPrice: ebayForSize)
+                sizeComparisonCard(row, platforms: comp.platforms)
+            }
+        } else {
+            infoCard("No public listings for this product. Try the exact SKU or product page.",
+                     system: "questionmark.circle", tint: .secondary)
+        }
+
+        if !comp.rows.isEmpty { ComparisonSaleReportButton(comparison: comp) }
+        ForEach(comp.platforms) { quote in
+            if let url = quote.productURL {
+                Link(destination: url) {
+                    Label("View on \(quote.platform)", systemImage: "arrow.up.right")
+                }
+                .font(.system(size: 13, weight: .semibold))
             }
         }
-
-        if EbayPriceService.isConfigured {
-            ebayCard(comp)
-        }
-
-        salesCard(comp)
-
-        infoCard("Compra = lowest ask real de StockX/GOAT. Bid (mejor oferta) y última venta no los expone KicksDB; eBay aporta listados verificados (Authenticity Guaranteed) cuando hay credenciales.",
+        infoCard("Listings for new items in USD, before shipping and taxes. StockX, GOAT, eBay, and Flight Club require authorized access.",
                  system: "info.circle", tint: .secondary)
-    }
-
-    @ViewBuilder
-    private func ebayCard(_ comp: MarketComparison) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "checkmark.shield.fill").foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-                Text("eBay · Authenticity Guaranteed")
-                    .font(.system(size: 14, weight: .bold))
-                Spacer()
-                if ebayLoading { ProgressView() }
-            }
-            if let listing = ebayListing {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(listing.title).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
-                        if let s = listing.sizeAspect {
-                            Text("Talla \(s)").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer(minLength: 8)
-                    Text(Self.usd(listing.price))
-                        .font(.system(size: 18, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.primary)
-                }
-                if let url = listing.url {
-                    Link(destination: url) {
-                        Text("Ver listado en eBay")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color(red: 0.20, green: 0.45, blue: 0.85))
-                    }
-                }
-            } else if !ebayLoading {
-                Text("Sin listados nuevos verificados para esta talla ahora mismo.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.secondarySystemBackground)))
-        .task(id: "\(comp.query)|\(currentSize(comp) ?? "-")") {
-            await loadEbayIfNeeded(comp)
-        }
-    }
-
-    @MainActor
-    private func loadEbayIfNeeded(_ comp: MarketComparison) async {
-        guard EbayPriceService.isConfigured else { return }
-        ebayLoading = true
-        ebayListing = nil
-        defer { ebayLoading = false }
-        let q = comp.matchedSKU ?? comp.matchedTitle ?? comp.query
-        do {
-            ebayListing = try await EbayPriceService.lowestListing(query: q, size: currentSize(comp))
-        } catch {
-            ebayListing = nil
-        }
-    }
-
-    @ViewBuilder
-    private func skuStatusBanner(_ comp: MarketComparison) -> some View {
-        if comp.platforms.count >= 2 {
-            if comp.skuAligned, let sku = comp.matchedSKU {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .foregroundStyle(Color(red: 0.13, green: 0.55, blue: 0.30))
-                    Text("Mismo producto en ambas plataformas · SKU \(sku)")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
-                }
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color(red: 0.13, green: 0.55, blue: 0.30).opacity(0.10)))
-            } else if comp.distinctSKUs.count > 1 {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Posible mismatch: las plataformas devolvieron SKUs distintos. Verifica que sea el mismo modelo.")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.primary)
-                        ForEach(comp.platforms) { p in
-                            if let sku = p.matchedSKU {
-                                Text("\(p.platform): \(sku)")
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.orange.opacity(0.12)))
-            }
-        }
-    }
-
-    private static func freshness(_ date: Date) -> String {
-        let secs = Int(Date().timeIntervalSince(date))
-        if secs < 5 { return "ahora" }
-        if secs < 60 { return "hace \(secs)s" }
-        return "hace \(secs / 60) min"
-    }
-
-    @ViewBuilder
-    private func metricsCard(_ comp: MarketComparison) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("MÉTRICAS")
-                .font(.system(size: 10, weight: .heavy)).tracking(0.8)
-                .foregroundStyle(.secondary)
-
-            // Ofertas por plataforma
-            HStack(spacing: 16) {
-                ForEach(comp.offersByPlatform, id: \.platform) { item in
-                    VStack(spacing: 2) {
-                        Text("\(item.count)").font(.system(size: 18, weight: .heavy, design: .rounded))
-                        Text(item.platform).font(.system(size: 10)).foregroundStyle(.secondary)
-                        Text("ofertas").font(.system(size: 9)).foregroundStyle(.secondary)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-
-            Divider()
-
-            // Margen / ROI de arbitraje (mejor oportunidad entre plataformas)
-            if let arb = comp.bestArbitrage {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Margen potencial de reventa").font(.system(size: 12)).foregroundStyle(.secondary)
-                        Spacer()
-                        Text("\(Self.usd(arb.margin)) · \(String(format: "%.0f", arb.roi))% ROI")
-                            .font(.system(size: 14, weight: .heavy))
-                            .foregroundStyle(Color(red: 0.13, green: 0.55, blue: 0.30))
-                    }
-                    Text("Talla \(arb.size): comprar en \(arb.buyPlatform) (\(Self.usd(arb.buy))) → vender en \(arb.sellPlatform) (\(Self.usd(arb.sell)))")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                    Text("Bruto, sin comisiones de plataforma ni envío.")
-                        .font(.system(size: 10)).foregroundStyle(.tertiary)
-                }
-            } else {
-                Text("Sin diferencia de precio entre plataformas para calcular margen.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-            }
-
-            ComparisonSaleReportButton(comparison: comp)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.secondarySystemBackground)))
     }
 
     private func bestBuyBanner(_ best: (platform: String, size: String, price: Double)) -> some View {
@@ -5772,7 +5621,7 @@ struct MarketComparatorView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(sizes, id: \.self) { size in
-                    let active = currentSizeValue == size
+                    let active = selectedSize == size
                     Button {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.68)) { selectedSize = size }
                     } label: {
@@ -5797,81 +5646,12 @@ struct MarketComparatorView: View {
         let name: String
         let color: Color
         let price: Double?
-        let avg: Double?
         var id: String { name }
     }
 
-    /// "¿Dónde gano más vendiendo?" — payout neto tras comisiones por plataforma, para esta talla.
-    private func payoutCard(_ row: MarketSizeRow, platforms: [MarketPlatformQuote], ebayPrice: Double?) -> some View {
-        var prices: [Double] = platforms.compactMap { row.asks[$0.platform] }.filter { $0 > 0 }
-        if let e = ebayPrice, e > 0 { prices.append(e) }
-        let sorted = prices.sorted()
-        let ref = sorted.isEmpty ? 0 : sorted[(sorted.count - 1) / 2]   // precio de venta de referencia (mediana)
-        var payouts: [(name: String, color: Color, net: Double)] = platforms.map {
-            (name: $0.platform, color: $0.color, net: PlatformFees.net(price: ref, platform: $0.platform))
-        }
-        if ebayPrice != nil {
-            payouts.append((name: "eBay", color: Color(red: 0.20, green: 0.45, blue: 0.85), net: PlatformFees.net(price: ref, platform: "eBay")))
-        }
-        payouts.sort { $0.net > $1.net }
-        let maxNet = payouts.first?.net ?? 1
-        let best = payouts.first?.name
-        let green = Color(red: 0.13, green: 0.55, blue: 0.30)
-
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("¿DÓNDE GANAS MÁS VENDIENDO?")
-                    .font(.system(size: 11, weight: .heavy)).tracking(0.5).foregroundStyle(.secondary)
-                Spacer()
-                if let s = currentSizeValue { Text("talla \(s)").font(.system(size: 11)).foregroundStyle(.secondary) }
-            }
-            if ref <= 0 {
-                Text("Sin precio de referencia para esta talla.").font(.system(size: 12)).foregroundStyle(.secondary)
-            } else {
-                ForEach(payouts.indices, id: \.self) { i in
-                    let p = payouts[i]
-                    let frac = maxNet > 0 ? CGFloat(p.net / maxNet) : 0
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack(spacing: 8) {
-                            Circle().fill(p.color).frame(width: 9, height: 9)
-                            Text(p.name).font(.system(size: 14, weight: .bold))
-                            if p.name == best {
-                                Text("MÁS PAGA").font(.system(size: 8, weight: .heavy)).tracking(0.4)
-                                    .padding(.horizontal, 5).padding(.vertical, 2)
-                                    .background(Capsule().fill(green.opacity(0.15))).foregroundStyle(green)
-                            }
-                            Spacer()
-                            Text("cobras \(Self.usd(p.net))")
-                                .font(.system(size: 15, weight: .heavy, design: .rounded))
-                                .foregroundStyle(p.name == best ? green : .primary)
-                                .contentTransition(.numericText())
-                        }
-                        GeometryReader { g in
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(Color.black.opacity(0.05)).frame(height: 9)
-                                Capsule().fill(LinearGradient(colors: [p.color, p.color.opacity(0.5)], startPoint: .leading, endPoint: .trailing))
-                                    .frame(width: max(8, g.size.width * frac), height: 9)
-                            }
-                        }.frame(height: 9)
-                        Text("vende a \(Self.usd(ref)) · −\(PlatformFees.ratePercent(p.name))% comisión")
-                            .font(.system(size: 10)).foregroundStyle(.secondary)
-                    }
-                }
-                Text("Comisiones aproximadas; ajustables.")
-                    .font(.system(size: 9)).foregroundStyle(.secondary.opacity(0.7))
-            }
-        }
-        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemBackground)))
-    }
-
-    private func sizeComparisonCard(_ row: MarketSizeRow, platforms: [MarketPlatformQuote], ebayPrice: Double?) -> some View {
-        // Entradas combinadas: StockX/GOAT (KicksDB) + eBay si hay precio para esta talla.
-        var entries: [SizeEntry] = platforms.map {
-            SizeEntry(name: $0.platform, color: $0.color, price: row.asks[$0.platform], avg: $0.avg)
-        }
-        if let e = ebayPrice {
-            entries.append(SizeEntry(name: "eBay", color: Color(red: 0.20, green: 0.45, blue: 0.85), price: e, avg: nil))
+    private func sizeComparisonCard(_ row: MarketSizeRow, platforms: [MarketPlatformQuote]) -> some View {
+        let entries = platforms.map {
+            SizeEntry(name: $0.platform, color: $0.color, price: row.asks[$0.platform])
         }
         let priced = entries.compactMap { $0.price }
         let cheapestPrice = priced.min()
@@ -5904,11 +5684,6 @@ struct MarketComparatorView: View {
                             .font(.system(size: 17, weight: .heavy, design: .rounded))
                             .contentTransition(.numericText())
                             .foregroundStyle(isCheapest ? Color(red: 0.13, green: 0.55, blue: 0.30) : .primary)
-                        if let avg = e.avg {
-                            Text("media \(Self.usd(avg))").font(.system(size: 10)).foregroundStyle(.secondary)
-                        } else if e.name == "eBay" {
-                            Text("Authenticity Guar.").font(.system(size: 9)).foregroundStyle(.secondary)
-                        }
                     }
                 }
                 .padding(.vertical, 2)
@@ -5920,7 +5695,7 @@ struct MarketComparatorView: View {
                 Label("Disponible en", systemImage: "shippingbox")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                 Spacer()
-                Text("\(priced.count) de \(entries.count) plataformas")
+                Text("\(priced.count) of \(entries.count) marketplaces")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.primary)
             }
@@ -5952,96 +5727,34 @@ struct MarketComparatorView: View {
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.secondarySystemBackground)))
     }
 
-    @ViewBuilder
-    private func salesCard(_ comp: MarketComparison) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label("Ventas recientes (Sell)", systemImage: "chart.line.uptrend.xyaxis")
-                    .font(.system(size: 13, weight: .bold))
-                Spacer()
-                if sellLoading { ProgressView() }
-            }
-            if let last = sellPoints.last {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Última venta media").font(.system(size: 11)).foregroundStyle(.secondary)
-                        Text("\(sellPoints.count) días de historial").font(.system(size: 10)).foregroundStyle(.tertiary)
-                    }
-                    Spacer()
-                    Text(Self.usd(last.avg)).font(.system(size: 18, weight: .heavy, design: .rounded))
-                }
-                sparkline(sellPoints.map(\.avg)).frame(height: 34)
-            } else if !sellLoading {
-                Text("Historial de ventas: requiere un plan KicksDB con datos de ventas (Premium).")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.secondarySystemBackground)))
-        .task(id: comp.query) { await loadSales(comp) }
-    }
-
-    private func sparkline(_ values: [Double]) -> some View {
-        GeometryReader { geo in
-            let minV = values.min() ?? 0
-            let maxV = values.max() ?? 1
-            let range = max(maxV - minV, 1)
-            Path { p in
-                for (i, v) in values.enumerated() {
-                    let x = values.count > 1 ? geo.size.width * CGFloat(i) / CGFloat(values.count - 1) : 0
-                    let y = geo.size.height * (1 - CGFloat((v - minV) / range))
-                    if i == 0 { p.move(to: CGPoint(x: x, y: y)) } else { p.addLine(to: CGPoint(x: x, y: y)) }
-                }
-            }
-            .stroke(Color(red: 0.13, green: 0.55, blue: 0.30), lineWidth: 2)
-        }
-    }
-
-    @MainActor
-    private func loadSales(_ comp: MarketComparison) async {
-        // Ventas: preferimos StockX; el endpoint exige el product ID (UUID), no el slug.
-        let q = comp.platforms.first(where: { $0.platformKey == "stockx" && $0.productID != nil })
-            ?? comp.platforms.first(where: { ($0.platformKey == "stockx" || $0.platformKey == "goat") && $0.productID != nil })
-        guard let quote = q, let pid = quote.productID else { sellPoints = []; return }
-        sellLoading = true
-        sellPoints = []
-        defer { sellLoading = false }
-        sellPoints = await KicksDBClient.dailySales(platformKey: quote.platformKey, productID: pid)
-    }
-
-    // MARK: Lógica
-
-    private var currentSizeValue: String? { selectedSize }
-
     private func currentSize(_ comp: MarketComparison) -> String? {
         selectedSize ?? comp.sizes.first
     }
 
     @MainActor
     private func runSearch() async {
-        let q = queryText.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return }
-        suggestTask?.cancel()
+        let query = queryText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
         suggestions = []
-        suggestLoading = false
         searchFocused = false
+        if request?.query != query { selectedSize = nil }
+        let fallback = query.caseInsensitiveCompare(initialQuery) == .orderedSame ? initialFallback : nil
+        request = .init(query: query, fallback: fallback)
+        comparison = nil
         isLoading = true
-        errorText = nil
-        defer { isLoading = false }
-        do {
-            if let result = try await KicksDBClient.fetchComparison(query: q, fallbackQuery: initialFallback) {
-                comparison = result
-                let normalizedInit = initialSizes.compactMap { MarketComparison.normalizeSize($0) }
-                selectedSize = normalizedInit.first(where: { result.sizes.contains($0) }) ?? result.sizes.first
-            } else {
-                comparison = nil
-                errorText = "No se encontró el producto en StockX ni GOAT. Prueba con el SKU exacto (ej. DZ5485-100)."
-            }
-        } catch {
-            comparison = nil
-            errorText = error.localizedDescription
+        searchRevision += 1
+    }
+
+    @MainActor
+    private func loadComparison(_ request: PublicPriceService.ProductQuery) async {
+        let result = await PublicMarketComparison.load(query: request.query, fallback: request.fallback)
+        guard !Task.isCancelled else { return }
+        comparison = result
+        let preferred = [selectedSize].compactMap { $0 } + initialSizes.map {
+            PublicPriceService.normalizeSize($0)
         }
+        selectedSize = preferred.first(where: { result.sizes.contains($0) }) ?? result.sizes.first
+        isLoading = false
     }
 
     private static func usd(_ value: Double) -> String {
@@ -6200,10 +5913,10 @@ enum PriceAlertType: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .priceDrop:     return "Baja de precio (comprar)"
-        case .priceRise:     return "Sube de precio (vender)"
-        case .sizeAvailable: return "Aparece una talla"
-        case .arbitrage:     return "Arbitraje entre plataformas"
+        case .priceDrop:     return "Price drop (buy)"
+        case .priceRise:     return "Price increase (sell)"
+        case .sizeAvailable: return "Size back in stock"
+        case .arbitrage:     return "Marketplace arbitrage"
         }
     }
     var icon: String {
@@ -6340,7 +6053,7 @@ final class ScanCorrectionStore: ObservableObject {
     }
 }
 
-/// Pantalla "Lo que aprendió la IA": ver y borrar las correcciones del escáner.
+/// Pantalla "Scanner corrections": ver y borrar las correcciones del escáner.
 struct ScanCorrectionsView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var store = ScanCorrectionStore.shared
@@ -6350,9 +6063,9 @@ struct ScanCorrectionsView: View {
             Group {
                 if store.items.isEmpty {
                     ContentUnavailableView(
-                        "Sin correcciones",
+                        "No corrections",
                         systemImage: "brain.head.profile",
-                        description: Text("Cuando uses «No es este» al escanear, lo que le enseñes a la IA aparecerá aquí.")
+                        description: Text("When you fix a match after scanning, the correction appears here.")
                     )
                 } else {
                     List {
@@ -6364,19 +6077,19 @@ struct ScanCorrectionsView: View {
                                             .font(.system(size: 11)).foregroundStyle(.green)
                                         Text(c.right).font(.system(size: 14, weight: .semibold))
                                     }
-                                    Text("La IA decía: \(c.wrong)")
+                                    Text("Original match: \(c.wrong)")
                                         .font(.system(size: 11)).foregroundStyle(.secondary)
                                 }
                                 .padding(.vertical, 2)
                             }
                             .onDelete { idx in idx.map { store.items[$0] }.forEach(store.remove) }
                         } footer: {
-                            Text("La IA usa estas correcciones para no repetir errores al escanear.")
+                            Text("The scanner uses these corrections for future scans.")
                         }
                     }
                 }
             }
-            .navigationTitle("Lo que aprendió la IA")
+            .navigationTitle("Scanner corrections")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Close") { dismiss() } }
@@ -6408,18 +6121,17 @@ enum PriceAlertNotifications {
 enum PriceAlertChecker {
     private static func money(_ v: Double) -> String { "$\(Int(v.rounded()))" }
 
-    /// Evalúa una alerta contra el mercado actual (StockX+GOAT). Devuelve si se cumple + mensaje + valor.
+    /// Evalúa una alerta contra las ofertas públicas por talla.
     @MainActor
     static func evaluate(_ alert: PriceAlert) async -> (met: Bool, message: String, value: Double?) {
-        guard let comp = try? await KicksDBClient.fetchComparison(query: alert.query) else {
-            return (false, "", nil)
-        }
+        let comp = await PublicMarketComparison.load(query: alert.query)
+        guard !Task.isCancelled, !comp.rows.isEmpty else { return (false, "", nil) }
         switch alert.type {
         case .priceDrop:
             let price: Double?
-            if let size = alert.targetSize, let norm = MarketComparison.normalizeSize(size),
-               let row = comp.rows.first(where: { $0.size == norm }) {
-                price = row.cheapest?.price
+            if let size = alert.targetSize {
+                let normalized = PublicPriceService.normalizeSize(size)
+                price = comp.rows.first(where: { $0.size == normalized })?.cheapest?.price
             } else {
                 price = comp.bestBuyOverall?.price
             }
@@ -6429,27 +6141,28 @@ enum PriceAlertChecker {
                 : (false, "", p)
         case .priceRise:
             let price: Double?
-            if let size = alert.targetSize, let norm = MarketComparison.normalizeSize(size),
-               let row = comp.rows.first(where: { $0.size == norm }) {
-                price = row.cheapest?.price
+            if let size = alert.targetSize {
+                let normalized = PublicPriceService.normalizeSize(size)
+                price = comp.rows.first(where: { $0.size == normalized })?.cheapest?.price
             } else {
                 price = comp.bestBuyOverall?.price
             }
             guard let p = price, let target = alert.targetPrice else { return (false, "", price) }
             return p >= target
-                ? (true, "Hora de vender: \(alert.displayName) a \(money(p)) (≥ \(money(target)))", p)
+                ? (true, "Time to sell: \(alert.displayName) at \(money(p)) (≥ \(money(target)))", p)
                 : (false, "", p)
         case .sizeAvailable:
-            guard let size = alert.targetSize, let norm = MarketComparison.normalizeSize(size) else { return (false, "", nil) }
+            guard let size = alert.targetSize else { return (false, "", nil) }
+            let norm = PublicPriceService.normalizeSize(size)
             if let row = comp.rows.first(where: { $0.size == norm }), let c = row.cheapest {
-                return (true, "Talla \(norm) de \(alert.displayName): \(money(c.price)) en \(c.platform)", c.price)
+                return (true, "Size \(norm) for \(alert.displayName): \(money(c.price)) on \(c.platform)", c.price)
             }
             return (false, "", nil)
         case .arbitrage:
             guard let arb = comp.bestArbitrage else { return (false, "", nil) }
             let threshold = alert.minMarginPercent ?? 15
             return arb.roi >= threshold
-                ? (true, "Arbitraje \(Int(arb.roi))% en \(alert.displayName): \(money(arb.buy)) (\(arb.buyPlatform)) → \(money(arb.sell)) (\(arb.sellPlatform))", arb.margin)
+                ? (true, "\(Int(arb.roi))% arbitrage on \(alert.displayName): \(money(arb.buy)) (\(arb.buyPlatform)) → \(money(arb.sell)) (\(arb.sellPlatform))", arb.margin)
                 : (false, "", arb.margin)
         }
     }
@@ -6466,7 +6179,7 @@ enum PriceAlertChecker {
             let r = await evaluate(alert)
             guard r.met else { continue }
             if let last = alert.lastTriggeredAt, Date().timeIntervalSince(last) < 6 * 3600 { continue }
-            PriceAlertNotifications.fire(title: "Upsoled · Alerta de precio", body: r.message, id: alert.id.uuidString)
+            PriceAlertNotifications.fire(title: "Upsoled · Price Alert", body: r.message, id: alert.id.uuidString)
             var updated = alert
             updated.lastTriggeredAt = Date()
             updated.lastValue = r.value
@@ -6492,21 +6205,21 @@ struct CreatePriceAlertSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Producto") {
+                Section("Product") {
                     Text(displayName).font(.system(size: 14, weight: .semibold))
                     Text(query).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
                 }
-                Section("Tipo de alerta") {
-                    Picker("Tipo", selection: $type) {
+                Section("Alert type") {
+                    Picker("Type", selection: $type) {
                         ForEach(PriceAlertType.allCases) { Text($0.label).tag($0) }
                     }
                     .pickerStyle(.inline)
                 }
-                Section("Condición") {
+                Section("Condition") {
                     switch type {
                     case .priceDrop:
                         HStack {
-                            Text("Avísame si baja de")
+                            Text("Notify me below")
                             Spacer()
                             TextField("$", text: $priceText)
                                 .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 90)
@@ -6514,7 +6227,7 @@ struct CreatePriceAlertSheet: View {
                         if !sizes.isEmpty { sizePicker }
                     case .priceRise:
                         HStack {
-                            Text("Avísame si sube de")
+                            Text("Notify me above")
                             Spacer()
                             TextField("$", text: $priceText)
                                 .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 90)
@@ -6524,7 +6237,7 @@ struct CreatePriceAlertSheet: View {
                         sizePicker
                     case .arbitrage:
                         HStack {
-                            Text("ROI mínimo %")
+                            Text("Minimum ROI %")
                             Spacer()
                             TextField("15", text: $marginText)
                                 .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 60)
@@ -6535,8 +6248,8 @@ struct CreatePriceAlertSheet: View {
             .navigationTitle("Nueva alerta")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Cancelar") { dismiss() } }
-                ToolbarItem(placement: .topBarTrailing) { Button("Crear") { create() }.disabled(!canCreate) }
+                ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) { Button("Create") { create() }.disabled(!canCreate) }
             }
         }
         .preferredColorScheme(.light)
@@ -6588,9 +6301,9 @@ struct PriceAlertsListView: View {
             Group {
                 if store.alerts.isEmpty {
                     ContentUnavailableView(
-                        "Sin alertas",
+                        "No alerts",
                         systemImage: "bell.slash",
-                        description: Text("Créalas desde el comparador para avisarte de bajadas de precio, tallas o arbitraje.")
+                        description: Text("Create alerts from price comparison for price drops, available sizes, or arbitrage.")
                     )
                 } else {
                     List {
@@ -6599,7 +6312,7 @@ struct PriceAlertsListView: View {
                     }
                 }
             }
-            .navigationTitle("Alertas")
+            .navigationTitle("Price alerts")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Close") { dismiss() } }

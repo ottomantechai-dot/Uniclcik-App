@@ -29,7 +29,7 @@ struct UpsoledProductsView: View {
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(Color(red: 0.14, green: 0.36, blue: 0.75))
                     }
-                    .accessibilityLabel("Comparar precios entre plataformas")
+                    .accessibilityLabel("Compare prices across marketplaces")
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -39,7 +39,7 @@ struct UpsoledProductsView: View {
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(Color(red: 0.14, green: 0.36, blue: 0.75))
                     }
-                    .accessibilityLabel("Alertas de precio")
+                    .accessibilityLabel("Price alerts")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -58,7 +58,7 @@ struct UpsoledProductsView: View {
                                 )
                             )
                     }
-                    .accessibilityLabel("Añadir producto")
+                    .accessibilityLabel("Add product")
                 }
             }
             .sheet(isPresented: $showingAdd) {
@@ -87,7 +87,7 @@ struct UpsoledProductsView: View {
             } else if let error = vm.errorMessage, vm.products.isEmpty {
                 emptyOrErrorState(message: error)
             } else if vm.filtered.isEmpty {
-                emptyOrErrorState(message: "Aún no hay productos en este catálogo.")
+                emptyOrErrorState(message: "No products in this catalog yet.")
             } else {
                 gridList
             }
@@ -99,7 +99,7 @@ struct UpsoledProductsView: View {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("Buscar nombre, marca o SKU", text: $vm.searchText)
+                TextField("Search name, brand, or SKU", text: $vm.searchText)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
                 if !vm.searchText.isEmpty {
@@ -163,7 +163,7 @@ struct UpsoledProductsView: View {
             Button {
                 showingAdd = true
             } label: {
-                Text("Añadir el primero")
+                Text("Add your first product")
                     .font(.system(size: 13, weight: .semibold))
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
@@ -326,17 +326,17 @@ struct AddUpsoledProductSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Información básica") {
-                    TextField("Nombre del producto", text: $draft.name)
+                Section("Basic information") {
+                    TextField("Product name", text: $draft.name)
                         .textInputAutocapitalization(.words)
-                    TextField("Marca", text: $draft.brand)
+                    TextField("Brand", text: $draft.brand)
                         .textInputAutocapitalization(.words)
-                    TextField("SKU / Style code (opcional)", text: $draft.sku)
+                    TextField("SKU or style code (optional)", text: $draft.sku)
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled(true)
                 }
 
-                Section("Precio") {
+                Section("Price") {
                     HStack {
                         Text("$")
                             .foregroundStyle(.secondary)
@@ -348,17 +348,17 @@ struct AddUpsoledProductSheet: View {
                     }
                 }
 
-                Section("Categoría") {
-                    Picker("Categoría", selection: $draft.category) {
+                Section("Category") {
+                    Picker("Category", selection: $draft.category) {
                         Text("Shoes").tag("shoes")
                         Text("Clothing").tag("clothing")
                         Text("Accessories").tag("accessories")
                         Text("Vintage").tag("vintage")
                         Text("New Drops").tag("new-drops")
                     }
-                    Picker("Condición", selection: $draft.condition) {
-                        Text("Nuevo").tag("new")
-                        Text("Usado").tag("used")
+                    Picker("Condition", selection: $draft.condition) {
+                        Text("New").tag("new")
+                        Text("Used").tag("used")
                         Text("Vintage").tag("vintage")
                         Text("Rare").tag("rare")
                     }
@@ -369,13 +369,13 @@ struct AddUpsoledProductSheet: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled(true)
                 } header: {
-                    Text("Tallas disponibles")
+                    Text("Available sizes")
                 } footer: {
-                    Text("Separadas por coma. Ej. \"8, 9, 10, 11\".")
+                    Text("Enter a comma-separated list, such as 8, 9, 10, 11.")
                         .font(.caption2)
                 }
 
-                Section("Imagen") {
+                Section("Image") {
                     PhotosPicker(
                         selection: $pickedItem,
                         matching: .images,
@@ -383,7 +383,7 @@ struct AddUpsoledProductSheet: View {
                     ) {
                         HStack {
                             Image(systemName: "photo.on.rectangle.angled")
-                            Text(pickedImageData == nil ? "Elegir foto" : "Cambiar foto")
+                            Text(pickedImageData == nil ? "Choose photo" : "Change photo")
                         }
                     }
                     .onChange(of: pickedItem) { _, newItem in
@@ -406,17 +406,17 @@ struct AddUpsoledProductSheet: View {
                             pickedItem = nil
                             pickedImageData = nil
                         } label: {
-                            Label("Quitar foto", systemImage: "trash")
+                            Label("Remove photo", systemImage: "trash")
                         }
                     }
 
-                    TextField("…o pega una URL (https://…)", text: $draft.imageURL)
+                    TextField("Or paste a URL (https://…)", text: $draft.imageURL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled(true)
                         .keyboardType(.URL)
                 }
 
-                Section("Descripción") {
+                Section("Description") {
                     TextEditor(text: $draft.description)
                         .frame(minHeight: 80)
                 }
@@ -429,11 +429,11 @@ struct AddUpsoledProductSheet: View {
                     }
                 }
             }
-            .navigationTitle("Nuevo producto")
+            .navigationTitle("New product")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancelar") { dismiss() }
+                    Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -457,7 +457,7 @@ struct AddUpsoledProductSheet: View {
                         if viewModel.isCreating {
                             ProgressView().controlSize(.small)
                         } else {
-                            Text("Guardar").fontWeight(.semibold)
+                            Text("Save").fontWeight(.semibold)
                         }
                     }
                     .disabled(!draft.isValid || viewModel.isCreating)

@@ -294,10 +294,10 @@ struct Shoe360ProCaptureView: View {
     private var processingSubtitle: String {
         if isExtracting {
             let ex = max(extractBarWeight, 0.001)
-            return "Paso 1/2 · Fotogramas del vídeo (\(Int((progress / ex * 100).rounded())) %)"
+            return "Step 1/2 · Video frames (\(Int((progress / ex * 100).rounded())) %)"
         }
         if isApplyingStudio {
-            return "Paso 2/2 · Fondo blanco Gemini (mismo ángulo que el vídeo) — \(Int((studioFractionDone * 100).rounded())) %"
+            return "Step 2/2 · White background (same camera angle) — \(Int((studioFractionDone * 100).rounded())) %"
         }
         return ""
     }
@@ -388,7 +388,7 @@ struct Shoe360ProCaptureView: View {
                     Button {
                         commitSpin()
                     } label: {
-                        Label("Guardar vista 360° Pro", systemImage: "checkmark.circle.fill")
+                        Label("Save 360° Pro view", systemImage: "checkmark.circle.fill")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(Color.white)
                             .frame(maxWidth: .infinity, minHeight: 52)
@@ -418,7 +418,7 @@ struct Shoe360ProCaptureView: View {
             .padding(.top, 8)
         }
         .background(Color.white.ignoresSafeArea())
-        .navigationTitle("360° Pro (vídeo + IA)")
+        .navigationTitle("360° Pro (Video + AI)")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {

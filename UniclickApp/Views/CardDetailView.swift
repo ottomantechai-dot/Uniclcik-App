@@ -6,15 +6,20 @@ import SwiftUI
 
 struct CardDetailView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State var card: PokemonCardData
     @State private var related: [PokemonCardData] = []
     @State private var report: SaleReport?
+    @State private var checkedCardID: String?
+    @State private var publicPrices: PublicCardPrices?
     /// Cartas de cada colección ya pedidas: al volver a una colección salen al instante.
     private static var relatedCache: [String: [PokemonCardData]] = [:]
 
     private let gray = Color(red: 0.965, green: 0.965, blue: 0.975)
     private var number: String { card.id.split(separator: "-").last.map { "#" + $0 } ?? "—" }
-    private var sample: CardSample? { CardSample.find(card) }
+    private var quotes: PublicCardPrices? { checkedCardID == card.id ? publicPrices : nil }
+    private let priceSources = ["PriceCharting", "TCGplayer", "eBay"]
+    private static let saleDateFormat = Date.FormatStyle(date: .abbreviated, time: .omitted, timeZone: .gmt)
     private var setLogo: URL? { PokemonTCGClient.storedSets().first { $0.name == card.setName }?.logoURL }
 
     var body: some View {
@@ -64,10 +69,13 @@ struct CardDetailView: View {
 
                     gradeTable.tourTarget("card.grades").padding(.top, 18)
 
-                    if let sample {
-                        ShoeMarketHistoryCard(sales: sample.history, summary: sample.stats, source: sample.asOf, sourceBrand: "TCGplayer")
-                            .background(.white, in: .rect(cornerRadius: 24))
-                            .padding(.top, 18)
+                    if let quotes {
+                        let history = saleHistory(quotes)
+                        if !history.isEmpty {
+                            ShoeMarketHistoryCard(sales: history, source: "via PriceCharting", sourceBrand: "eBay")
+                                .background(.white, in: .rect(cornerRadius: 24))
+                                .padding(.top, 18)
+                        }
                     }
 
                     ShoeProductDetailsCard(rows: [
@@ -89,9 +97,9 @@ struct CardDetailView: View {
                                             .frame(width: 118, height: 160)
                                             .overlay(alignment: .bottomLeading) { CardSourceDots(size: 20).padding(.leading, 2).padding(.bottom, 3) }
                                             Text(other.name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black).lineLimit(1).frame(width: 118, alignment: .leading)
-                                            Text(other.tcgMarketUSD.map(SaleReport.usd) ?? "No price")
-                                                .font(.system(size: 12, weight: .heavy, design: .rounded))
-                                                .foregroundStyle(other.tcgMarketUSD == nil ? Color.black.opacity(0.4) : .black)
+                                            Text(other.rarity)
+                                                .font(.system(size: 11, weight: .medium))
+                                                .foregroundStyle(.secondary).lineLimit(1)
                                         }
                                         .padding(10)
                                         .background(.white, in: .rect(cornerRadius: 18))
@@ -132,6 +140,18 @@ struct CardDetailView: View {
                 CardImage.prefetch(found.compactMap(\.thumbURL))
                 related = found.filter { $0.id != card.id }
             }
+            .task(id: scenePhase == .active ? card.id : nil) {
+                guard scenePhase == .active else { return }
+                let id = card.id
+                let collectorNumber = id.split(separator: "-").last.map(String.init) ?? ""
+                let lookup = PublicPriceService.CardQuery(name: card.name, set: card.setName, number: collectorNumber)
+                await PublicPriceService.poll {
+                    let result = await PublicPriceService.card(lookup)
+                    guard !Task.isCancelled else { return }
+                    publicPrices = result
+                    checkedCardID = id
+                }
+            }
             .fullScreenCover(item: $report) { SaleReportView(report: $0) }
         }
         .preferredColorScheme(.light)
@@ -153,30 +173,35 @@ struct CardDetailView: View {
             .glassEffect(.regular, in: .capsule)
     }
 
-    /// Precio de mercado real y su tendencia.
     private var priceCard: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Market price").font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.55))
-                Text((sample?.market ?? card.tcgMarketUSD).map(SaleReport.usd) ?? "—")
+                Text("Ungraded market estimate")
+                    .font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.55))
+                Text(quotes?.estimates["Raw"].map(SaleReport.usd) ?? "—")
                     .font(.system(size: 34, weight: .heavy, design: .rounded)).foregroundStyle(.black)
-                if let sample {
-                    Text("Last sale \(SaleReport.usd(sample.lastSale)) · TCGplayer · \(sample.asOf)")
-                        .font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.45))
+                if let quotes {
+                    Link("PriceCharting · Checked \(quotes.checkedAt.formatted(date: .omitted, time: .shortened))", destination: quotes.url)
+                        .font(.system(size: 11, weight: .medium))
+                } else {
+                    Text(checkedCardID == card.id ? "Public prices unavailable" : "Checking public prices…")
+                        .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
                 }
             }
             Spacer()
-            let change = sample?.changePercent ?? card.changePercent
-            if change != 0 {
-                Text(String(format: "%+.0f%%", change))
-                    .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                    .padding(.horizontal, 10).frame(height: 30)
-                    .background(change >= 0 ? Color(red: 0.13, green: 0.55, blue: 0.30) : Color.red, in: .capsule)
-            }
         }
         .padding(16).frame(maxWidth: .infinity)
         .background(.white, in: .rect(cornerRadius: 22))
         .glassEffect(.regular, in: .rect(cornerRadius: 22))
+    }
+
+    private func saleHistory(_ prices: PublicCardPrices) -> [DailySalePoint] {
+        let groups = Dictionary(grouping: prices.sales.filter {
+            $0.source == "eBay" && $0.grade == "Raw"
+        }, by: \.date)
+        return groups.map { day, sales in
+            DailySalePoint(date: day, avg: sales.map(\.amount).reduce(0, +) / Double(sales.count), orders: sales.count)
+        }.sorted { $0.date < $1.date }
     }
 
     /// «Market prices» de la carta: una fila por gradación y una columna por plataforma.
@@ -191,13 +216,15 @@ struct CardDetailView: View {
                 Image("LogoPSAMark").resizable().scaledToFit().frame(height: 11).foregroundStyle(Color(red: 0.93, green: 0.05, blue: 0.05))
                     .frame(width: 58, height: 38).background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
                 // Cada plataforma con su logo y su nombre completo. Solo empresas americanas.
-                ForEach(["Collectr", "TCGplayer", "eBay"], id: \.self) { name in
+                ForEach(priceSources, id: \.self) { name in
                     Group {
                         if name == "eBay" {
                             StylizedMarketplaceLogo(brand: "eBay").frame(height: 15)
                         } else {
                             HStack(spacing: 4) {
-                                Image("Logo" + name).resizable().scaledToFit().frame(width: 16, height: 16).clipShape(.rect(cornerRadius: 4))
+                                if name == "TCGplayer" {
+                                    Image("LogoTCGplayer").resizable().scaledToFit().frame(width: 16, height: 16).clipShape(.rect(cornerRadius: 4))
+                                }
                                 Text(name).font(.system(size: 10, weight: .heavy)).foregroundStyle(.black).lineLimit(1).minimumScaleFactor(0.8)
                             }
                         }
@@ -214,24 +241,43 @@ struct CardDetailView: View {
                         else { DotMatrixText(text: grade) }
                     }
                     .frame(width: 58, height: 40).background(Color.black, in: .rect(cornerRadius: 11))
-                    ForEach(0..<3, id: \.self) { column in
-                        let platform = ["Collectr", "TCGplayer", "eBay"][column]
-                        let value: String? = sample.map { $0.grades[grade]?[platform].map { SaleReport.usd($0.rounded()) } }
-                            ?? (grade == "Raw" && column == 1 ? card.tcgMarketUSD.map(SaleReport.usd) : nil)
-                        Text(value ?? "—").font(.system(size: 14, weight: value == nil ? .semibold : .heavy, design: .rounded))
-                            .foregroundStyle(value == nil ? Color.black.opacity(0.25) : .black)
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                            .background { RoundedRectangle(cornerRadius: 11).strokeBorder(Color.black.opacity(0.08)) }
+                    ForEach(priceSources, id: \.self) { source in
+                        gradeCell(source: source, grade: grade)
                     }
                 }
             }
-            Text(sample.map { "Prices read from each marketplace · \($0.asOf)" } ?? "Graded prices appear here as soon as the market responds")
+            Text("PriceCharting shows estimates. eBay and TCGplayer show sales recorded by PriceCharting.")
                 .font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.45))
                 .frame(maxWidth: .infinity).padding(.top, 4)
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(.white, in: .rect(cornerRadius: 22))
         .glassEffect(.regular, in: .rect(cornerRadius: 22))
+    }
+
+    private func gradeCell(source: String, grade: String) -> some View {
+        let sale = quotes?.latestSale(source: source, grade: grade)
+        let value = source == "PriceCharting" ? quotes?.estimates[grade] : sale?.amount
+        let cell = VStack(spacing: 2) {
+            Text(value.map(SaleReport.usd) ?? "—")
+                .font(.system(size: 14, weight: value == nil ? .semibold : .heavy, design: .rounded))
+                .foregroundStyle(value == nil ? Color.black.opacity(0.25) : .black)
+                .minimumScaleFactor(0.65).lineLimit(1)
+            if let sale {
+                Text(sale.date, format: Self.saleDateFormat)
+                    .font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 42)
+        .background { RoundedRectangle(cornerRadius: 11).strokeBorder(Color.black.opacity(0.08)) }
+
+        return Group {
+            if let url = sale?.url {
+                Link(destination: url) { cell }.buttonStyle(.plain)
+            } else {
+                cell
+            }
+        }
     }
 }
 
@@ -303,15 +349,17 @@ struct CardImage: View {
 }
 
 
-/// Dónde se compara el precio de una carta: Collectr, TCGplayer y eBay, en círculos montados.
+/// Fuentes que se presentan en la tabla de precios de cartas.
 struct CardSourceDots: View {
     var size: CGFloat = 22
     var body: some View {
         HStack(spacing: -5) {
-            ForEach(Array(["Collectr", "TCGplayer", "eBay"].enumerated()), id: \.offset) { index, name in
+            ForEach(Array(["PriceCharting", "TCGplayer", "eBay"].enumerated()), id: \.offset) { index, name in
                 Group {
                     if name == "eBay" {
                         StylizedMarketplaceLogo(brand: "eBay").frame(width: size * 0.72, height: size * 0.34)
+                    } else if name == "PriceCharting" {
+                        Text("PC").font(.system(size: size * 0.33, weight: .heavy)).foregroundStyle(.black)
                     } else {
                         Image("Logo" + name).resizable().scaledToFill().frame(width: size * 0.68, height: size * 0.68).clipShape(.circle)
                     }

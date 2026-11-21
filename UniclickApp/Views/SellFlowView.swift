@@ -881,49 +881,47 @@ struct ShoeSamplePriceCard: View {
     }
 }
 
-/// Precio de mercado de un producto del catálogo: el mejor precio y lo que pide cada plataforma.
+/// Precio de compra publicado para el producto y la variante visibles.
 struct CatalogMarketPriceCard: View {
-    let market: UpsoledMarketPrices
+    let comparison: MarketComparison?
+    let size: String?
+    let isShoe: Bool
 
     var body: some View {
-        let best = market.best
-        let quotes = market.quotes
+        let row = comparison?.rows.first { $0.size == size }
+        let bestPrice = size == nil ? comparison?.bestBuyOverall?.price : row?.cheapest?.price
+        let bestPlatform = size == nil ? comparison?.bestBuyOverall?.platform : row?.cheapest?.platform
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Buy now from").font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.5))
-                    Text(best.map { SaleReport.usd($0.price) } ?? "—").font(.system(size: 38, weight: .heavy, design: .rounded)).foregroundStyle(.black)
+                    Text(size.map { isShoe ? "Buy now · US \($0)" : "Buy now · \($0)" } ?? "Buy now from")
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                    Text(bestPrice.map(SaleReport.usd) ?? "—")
+                        .font(.system(size: 38, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                 }
                 Spacer()
-                if let best { StylizedMarketplaceLogo(brand: best.platform).frame(width: 62, height: 18, alignment: .trailing) }
-            }
-            if let bid = market.stockx?.highestBid {
-                HStack(spacing: 8) {
-                    VStack(spacing: 2) {
-                        Text(SaleReport.usd(bid)).font(.system(size: 17, weight: .heavy, design: .rounded)).foregroundStyle(.black)
-                        Text("Highest bid · StockX").font(.system(size: 11, weight: .semibold)).foregroundStyle(.black.opacity(0.5))
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 54).background(Color.black.opacity(0.04), in: .rect(cornerRadius: 14))
+                if let bestPlatform {
+                    StylizedMarketplaceLogo(brand: bestPlatform).frame(width: 62, height: 18, alignment: .trailing)
                 }
             }
-            VStack(spacing: 0) {
-                ForEach(Array(quotes.enumerated()), id: \.element.platform) { index, quote in
-                    HStack {
-                        StylizedMarketplaceLogo(brand: quote.platform).frame(width: 60, height: 17, alignment: .leading)
-                        if quote.platform == "eBay", let count = market.ebay?.listings {
-                            Text("\(count) listings").font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.4))
+            if let comparison, !comparison.rows.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(comparison.platforms) { platform in
+                        let price = size == nil ? platform.lowestAsk : row?.asks[platform.platform]
+                        HStack {
+                            Text(platform.platform).font(.system(size: 13, weight: .semibold))
+                            Spacer()
+                            Text(price.map(SaleReport.usd) ?? "—")
+                                .font(.system(size: 15, weight: .heavy, design: .rounded))
+                                .foregroundStyle(price == nil ? .secondary : .primary)
                         }
-                        Spacer()
-                        Text((quote.platform == "eBay" ? "around " : "from ") + SaleReport.usd(quote.price))
-                            .font(.system(size: 15, weight: .heavy, design: .rounded))
-                            .foregroundStyle(best?.platform == quote.platform ? sellGreen : .black)
+                        .padding(.vertical, 8)
                     }
-                    .padding(.vertical, 11)
-                    if index < quotes.count - 1 { Divider() }
                 }
+            } else {
+                Text(comparison == nil ? "Checking public offers…" : "No public offers available")
+                    .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
             }
-            Text("Prices read from each marketplace" + (market.asof.map { " · \($0)" } ?? ""))
-                .font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.4))
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(.white, in: .rect(cornerRadius: 22)).glassEffect(.regular, in: .rect(cornerRadius: 22))

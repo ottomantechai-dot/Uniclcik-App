@@ -427,7 +427,7 @@ struct ChatConversationView: View {
                         .font(.headline)
                         .foregroundStyle(.primary)
                     DatePicker(
-                        "Límite",
+                        "Deadline",
                         selection: $deadlineEditValue,
                         in: Date()...,
                         displayedComponents: [.date, .hourAndMinute]
@@ -447,7 +447,7 @@ struct ChatConversationView: View {
                             await MainActor.run { deadlineEditTask = nil }
                         }
                     } label: {
-                        Text("Guardar")
+                        Text("Save")
                             .font(.system(size: 17, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)

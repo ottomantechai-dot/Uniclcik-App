@@ -4,6 +4,7 @@ import UIKit
 import Combine
 
 struct DashboardView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var auth: AuthViewModel
     @EnvironmentObject private var carsVM: CarsViewModel
     @EnvironmentObject private var tabRouter: MainTabRouter
@@ -62,11 +63,15 @@ struct DashboardView: View {
             .onChange(of: closetItems.count) { _, _ in scheduleHomeStatsRefresh() }
             .onChange(of: closetInventoryFingerprint) { _, _ in scheduleHomeStatsRefresh() }
             .onReceive(inventoryRefreshPublisher) { _ in scheduleHomeStatsRefresh() }
-            // Solo recargamos la tabla de mercado cuando cambia el MODELO seleccionado,
-            // NO con cada cambio de inventario (eso reiniciaba el task y cancelaba la
-            // petición en curso → "Operación cancelada" en bucle y precios sin cargar).
-            .task(id: homeMarketLookupKey) {
-                await loadHomeMarketTable()
+            .task(id: scenePhase == .active ? homeMarketLookupKey : nil) {
+                guard scenePhase == .active else { return }
+                guard let lookup = resolvedMarketLookup() else { homeMarketComparison = nil; return }
+                if homeMarketComparison?.query != lookup.query { homeMarketComparison = nil }
+                await PublicPriceService.poll {
+                    let comparison = await PublicMarketComparison.load(query: lookup.query, fallback: lookup.fallback)
+                    guard !Task.isCancelled else { return }
+                    homeMarketComparison = comparison
+                }
             }
     }
 
@@ -146,47 +151,6 @@ struct DashboardView: View {
         homeStatsReady = true
     }
 
-    @MainActor
-    private func loadHomeMarketTable() async {
-        guard let lookup = resolvedMarketLookup() else {
-            homeMarketComparison = nil
-            return
-        }
-
-        if KicksDBClient.isConfigured {
-            do {
-                if let comparison = try await KicksDBClient.fetchComparison(
-                    query: lookup.query,
-                    fallbackQuery: lookup.fallback
-                ) {
-                    homeMarketComparison = await HomeMarketTableBuilder.prepareHomeComparison(
-                        from: comparison,
-                        query: lookup.query
-                    )
-                    return
-                }
-            } catch {
-                #if DEBUG
-                print("[Home] KicksDB market table: \(error.localizedDescription)")
-                #endif
-            }
-        }
-
-        if let sourceID = lookup.sourceID,
-           let item = trendingHighlights.first(where: { $0.id == sourceID }),
-           let cached = Self.cachedMarketComparison(for: item) {
-            homeMarketComparison = Self.homeReadyComparison(from: cached)
-            return
-        }
-
-        if let cached = Self.cachedMarketComparison(closetItems: closetItems) {
-            homeMarketComparison = Self.homeReadyComparison(from: cached)
-        } else if !Task.isCancelled {
-            // Si se canceló, conservamos el último dato bueno en vez de dejar la tabla vacía.
-            homeMarketComparison = nil
-        }
-    }
-
     private func resolvedMarketLookup() -> (query: String, fallback: String?, sourceID: String?)? {
         let trending = trendingHighlights
 
@@ -209,74 +173,6 @@ struct DashboardView: View {
         }
 
         return nil
-    }
-
-    private static func homeReadyComparison(from cached: MarketComparison) -> MarketComparison {
-        let rows = HomeMarketTableBuilder.buildHomeRows(from: cached)
-        return MarketComparison(
-            query: cached.query,
-            platforms: cached.platforms,
-            sizes: rows.map(\.size),
-            rows: rows,
-            fetchedAt: cached.fetchedAt,
-            skuAligned: cached.skuAligned
-        )
-    }
-
-    /// Precios cacheados del inventario cuando KicksDB no está disponible.
-    private static func cachedMarketComparison(for item: HomeSneakerHighlight) -> MarketComparison? {
-        guard let closet = item.closetItem,
-              let marketPrice = closet.marketPrice,
-              !marketPrice.platforms.isEmpty else { return nil }
-
-        let sizeRaw = marketPrice.sizeUsed?.trimmingCharacters(in: .whitespacesAndNewlines)
-            ?? closet.sizeText?.trimmingCharacters(in: .whitespacesAndNewlines)
-            ?? ""
-        let size = sizeRaw.isEmpty ? "Avg" : sizeRaw
-
-        var asks: [String: Double] = [:]
-        for platform in marketPrice.platforms {
-            asks[platform.name] = Double(platform.avg)
-        }
-
-        guard !asks.isEmpty else { return nil }
-
-        return MarketComparison(
-            query: closet.resolvedSKU ?? closet.marketLookupQuery,
-            platforms: [],
-            sizes: [size],
-            rows: [MarketSizeRow(size: size, asks: asks)],
-            fetchedAt: closet.marketPriceFetchedAt ?? Date(),
-            skuAligned: true
-        )
-    }
-
-    /// Precios cacheados del inventario cuando KicksDB no está disponible.
-    private static func cachedMarketComparison(closetItems: [ClosetItem]) -> MarketComparison? {
-        guard let item = closetItems.first(where: {
-            $0.isActiveInStock && $0.category == .shoes && $0.marketPrice != nil && !($0.marketPrice?.platforms.isEmpty ?? true)
-        }), let marketPrice = item.marketPrice else { return nil }
-
-        let sizeRaw = marketPrice.sizeUsed?.trimmingCharacters(in: .whitespacesAndNewlines)
-            ?? item.sizeText?.trimmingCharacters(in: .whitespacesAndNewlines)
-            ?? ""
-        let size = sizeRaw.isEmpty ? "Avg" : sizeRaw
-
-        var asks: [String: Double] = [:]
-        for platform in marketPrice.platforms {
-            asks[platform.name] = Double(platform.avg)
-        }
-
-        guard !asks.isEmpty else { return nil }
-
-        return MarketComparison(
-            query: item.resolvedSKU ?? item.marketLookupQuery,
-            platforms: [],
-            sizes: [size],
-            rows: [MarketSizeRow(size: size, asks: asks)],
-            fetchedAt: item.marketPriceFetchedAt ?? Date(),
-            skuAligned: true
-        )
     }
 
     private static func featuredMarketLookup(
