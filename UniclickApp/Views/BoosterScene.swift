@@ -8,6 +8,12 @@ struct BoosterCard: Decodable, Identifiable {
     let rarity: String
     let special: Bool
 
+    /// Carta especial de verdad: las de arte completo, numeradas por encima de la colección
+    /// (Illustration Rare, Ultra Rare, Special Illustration Rare e Hyper Rare).
+    var isHit: Bool {
+        ["Illustration Rare", "Ultra Rare", "Special Illustration Rare", "Hyper Rare"].contains(rarity)
+    }
+
     func image() -> UIImage? {
         UIImage(contentsOfFile: BoosterResources.folder
             .appendingPathComponent("Cards/\(id).jpg").path)
@@ -26,11 +32,27 @@ enum BoosterResources {
     static func draw(from catalog: [BoosterCard]) throws -> [BoosterCard] {
         let standard = Dictionary(grouping: catalog.filter { !$0.special }, by: \.id)
             .values.compactMap(\.first)
-        guard standard.count >= 4, let special = catalog.filter(\.special).randomElement() else {
+        // La última carta es siempre de las más raras de la colección.
+        let top = catalog.filter { ["Special Illustration Rare", "Hyper Rare"].contains($0.rarity) }
+        guard standard.count >= 4, let hit = (top.isEmpty ? catalog.filter(\.isHit) : top).randomElement() else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        return Array(standard.shuffled().prefix(4)) + [special]
+        var cards = Array(standard.shuffled().prefix(4))
+        // Las «ex» normales (Double Rare) salen de vez en cuando como una carta más, sin efecto especial.
+        if Int.random(in: 0..<6) == 0, let double = catalog.filter({ $0.special && !$0.isHit }).randomElement() {
+            cards[3] = double
+        }
+        return cards + [hit]
     }
+}
+
+/// Estado de la animación de la carta especial: giro, halo, destello y escala.
+struct BoosterSpecialFX: Equatable {
+    var index = -1
+    var spin = 0.0
+    var glow = 0.0
+    var flash = 0.0
+    var scale = 1.0
 }
 
 @MainActor
@@ -99,6 +121,9 @@ final class BoosterScene {
     private var lastViewport = CGSize.zero
     private var lastFocus = 0.0
     private var lastDisplayScale: CGFloat = 0
+    private var lastSpecial = BoosterSpecialFX()
+    private let specialEffects = SCNNode()
+    private var specialMaterials: [SCNMaterial] = []
 
     var finalFrame: Double { Double(manifest.poses.count - 1) }
     private var sceneWidth: Double { 2 * cameraDistance * tan(manifest.fieldOfView * .pi / 360) }
@@ -227,6 +252,7 @@ final class BoosterScene {
             cardFaces.append(copyFace)
         }
         nodes["card"] = nil
+        makeSpecialEffects(for: geometry)
 
         scene.background.contents = nil
         scene.lightingEnvironment.contents = try Self.image("studio.jpg")
@@ -264,6 +290,91 @@ final class BoosterScene {
             let image = card.image()
             material.diffuse.contents = image
             material.emission.contents = image
+        }
+        if let special = hand.firstIndex(where: \.isHit), cardNodes.indices.contains(special) {
+            cardNodes[special].addChildNode(specialEffects)
+        } else {
+            specialEffects.removeFromParentNode()
+        }
+    }
+
+    // MARK: Carta especial
+
+    private static let sheenShader = """
+    #pragma arguments
+    float glow;
+    float flash;
+    #pragma transparent
+    #pragma body
+    float2 uv = _surface.diffuseTexcoord;
+    float mask = _output.color.a;
+    float t = scn_frame.time;
+    float sweep = fract(t * 0.30) * 2.8 - 0.9;
+    float band = 1.0 - smoothstep(0.0, 0.17, abs(uv.x + uv.y * 0.55 - sweep));
+    float wave = (uv.x + uv.y) * 0.8 + t * 0.14;
+    float3 tint = 0.5 + 0.5 * cos(6.2831853 * (float3(wave, wave, wave) + float3(0.0, 0.33, 0.67)));
+    float3 light = mix(float3(1.0, 1.0, 1.0), tint, 0.35) * band * 0.26 * glow + float3(1.0, 1.0, 1.0) * flash;
+    _output.color.rgb = light * mask;
+    _output.color.a = min(1.0, band * 0.26 * glow + flash) * mask;
+    """
+
+    var specialEffectNodes: [SCNNode] { [specialEffects] }
+    private var cardSize = CGSize.zero
+
+    /// Rectángulo en pantalla de la carta que está delante, ya colocada.
+    func settledCardFrame(in viewport: CGSize) -> CGRect {
+        guard let pose = manifest.poses.last?["card"], cardSize.width > 0, viewport.width > 0 else { return .zero }
+        let position = pose.matrix.columns.3
+        let visibleWidth = sceneWidth * (1 - Double(position.z) / cameraDistance)
+        let scale = viewport.width / visibleWidth
+        let width = cardSize.width * revealedCardScale * scale
+        let height = cardSize.height * revealedCardScale * scale
+        return CGRect(x: viewport.width / 2 + Double(position.x) * scale - width / 2,
+                      y: viewport.height / 2 - height / 2, width: width, height: height)
+    }
+
+    private func makeSpecialEffects(for geometry: SCNGeometry) {
+        let (low, high) = geometry.boundingBox
+        let width = CGFloat(high.x - low.x), height = CGFloat(high.y - low.y)
+        let centerX = (high.x + low.x) / 2, centerY = (high.y + low.y) / 2
+        cardSize = CGSize(width: width, height: height)
+        specialMaterials = []
+
+        let mask = Self.cardMask()
+        for facing in [Float(1), -1] {
+            let plane = SCNPlane(width: width, height: height)
+            let material = Self.effectMaterial(mask: mask, shader: Self.sheenShader, blend: .add)
+            plane.materials = [material]
+            let node = SCNNode(geometry: plane)
+            node.position = SCNVector3(centerX, centerY, facing > 0 ? high.z + 0.0018 : low.z - 0.0018)
+            if facing < 0 { node.eulerAngles.y = .pi }
+            node.renderingOrder = 11
+            specialEffects.addChildNode(node)
+            specialMaterials.append(material)
+        }
+        specialEffects.isHidden = true
+    }
+
+    private static func effectMaterial(mask: UIImage, shader: String, blend: SCNBlendMode) -> SCNMaterial {
+        let material = SCNMaterial()
+        material.lightingModel = .constant
+        material.diffuse.contents = mask
+        material.blendMode = blend
+        material.writesToDepthBuffer = false
+        material.shaderModifiers = [.fragment: shader]
+        material.setValue(Float(0), forKey: "glow")
+        material.setValue(Float(0), forKey: "flash")
+        return material
+    }
+
+    private static func cardMask() -> UIImage {
+        let size = CGSize(width: 250, height: 350)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            UIColor.white.setFill()
+            UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: size.width * 0.058).fill()
         }
     }
 
@@ -334,7 +445,7 @@ final class BoosterScene {
 
     func apply(frame: Double, viewport: CGSize, focus: Double, firstCard: Int, slide: Double,
                cut: Double, cutWeight: Double, sealGuideProgress: Double = 0, animateSealGuide: Bool = false,
-               displayScale: CGFloat = 1) {
+               displayScale: CGFloat = 1, special: BoosterSpecialFX = BoosterSpecialFX()) {
         let clamped = min(max(0, frame), finalFrame)
         let enlarged = 1 + (closeScale - 1) * focus
         let lowered = closeDrop(in: viewport) * focus
@@ -345,8 +456,16 @@ final class BoosterScene {
             geometry.setValue(Float(cutWeight), forKey: "tearWeight")
         }
 
-        guard clamped != lastFrame || firstCard != lastFirstCard || slide != lastSlide ||
+        let lit = special.glow > 0.001 || special.flash > 0.001
+        if specialEffects.isHidden == lit { specialEffects.isHidden = !lit }
+        for material in specialMaterials {
+            material.setValue(Float(special.glow), forKey: "glow")
+            material.setValue(Float(special.flash), forKey: "flash")
+        }
+
+        guard clamped != lastFrame || firstCard != lastFirstCard || slide != lastSlide || special != lastSpecial ||
                 viewport != lastViewport || focus != lastFocus || displayScale != lastDisplayScale else { return }
+        lastSpecial = special
         lastFrame = clamped
         lastFirstCard = firstCard
         lastSlide = slide
@@ -415,6 +534,10 @@ final class BoosterScene {
                 let layer = Float(Double(depth) - reveal) * Float(emergence)
                 transform.columns.3.y -= layer * 0.013
                 transform.columns.3.z -= max(0.009, Float(Double(depth) - reveal) * 0.047)
+            }
+            if index == special.index, special.spin != 0 || special.scale != 1 {
+                transform = transform * simd_float4x4(simd_quatf(angle: Float(special.spin), axis: SIMD3(0, 1, 0)))
+                for column in 0..<3 { transform[column] *= Float(special.scale) }
             }
             node.simdTransform = transform
         }
@@ -595,6 +718,7 @@ struct BoosterStage: UIViewRepresentable, Animatable {
     let cutWeight: Double
     let sealGuideProgress: Double
     let animateSealGuide: Bool
+    var special = BoosterSpecialFX()
     @Environment(\.displayScale) private var displayScale
 
     var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
@@ -616,6 +740,8 @@ struct BoosterStage: UIViewRepresentable, Animatable {
         view.isUserInteractionEnabled = false
         view.rendersContinuously = false
         view.preferredFramesPerSecond = 60
+        // Compila ya los brillos de la carta especial para que no haya parón al mostrarla.
+        view.prepare(renderer.specialEffectNodes, completionHandler: nil)
         return view
     }
 
@@ -623,8 +749,8 @@ struct BoosterStage: UIViewRepresentable, Animatable {
         renderer.show(hand)
         renderer.apply(frame: frame, viewport: viewport, focus: focus, firstCard: firstCard, slide: slide,
                        cut: cut, cutWeight: cutWeight, sealGuideProgress: sealGuideProgress,
-                       animateSealGuide: animateSealGuide, displayScale: displayScale)
-        let playing = animateSealGuide && sealGuideProgress >= 1
+                       animateSealGuide: animateSealGuide, displayScale: displayScale, special: special)
+        let playing = (animateSealGuide && sealGuideProgress >= 1) || special.glow > 0.001
         if view.rendersContinuously != playing {
             view.rendersContinuously = playing
             view.isPlaying = playing

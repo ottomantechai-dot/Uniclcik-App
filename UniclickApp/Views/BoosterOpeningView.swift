@@ -26,6 +26,7 @@ struct BoosterOpeningView: View {
     @State private var guideDate = Date.distantPast
     @State private var animationTime = Date.distantPast
     @State private var slideAnimation: CardSlide?
+    @State private var specialDate: Date?
 
     private struct CardSlide: Equatable {
         let start: Date
@@ -51,6 +52,37 @@ struct BoosterOpeningView: View {
     private static let backgroundArt = UIImage(contentsOfFile: BoosterResources.folder
         .appendingPathComponent("opening-sky.png").path)
     private var card: BoosterCard? { hand.indices.contains(index) ? hand[index] : nil }
+    private let specialDuration = 2.0
+    /// La carta especial es la que está delante: fondo arcoíris, giro y brillo.
+    private var specialActive: Bool { phase == .cards && card?.isHit == true }
+    private var specialBusy: Bool {
+        guard specialActive, !reduceMotion else { return false }
+        guard let specialDate else { return true }
+        return Date.now.timeIntervalSince(specialDate) < 1.55
+    }
+
+    private var specialFX: BoosterSpecialFX {
+        guard let special = hand.firstIndex(where: \.isHit) else { return BoosterSpecialFX() }
+        var fx = BoosterSpecialFX(index: special)
+        if reduceMotion {
+            fx.glow = specialActive ? 0.85 : 0
+            return fx
+        }
+        guard specialActive else { return fx }
+        func smooth(_ value: Double) -> Double {
+            let t = min(1, max(0, value))
+            return t * t * (3 - 2 * t)
+        }
+        // Empieza de frente como las demás, da una vuelta completa y vuelve a su sitio.
+        let t = specialDate.map { max(0, animationTime.timeIntervalSince($0)) } ?? 0
+        let turn = min(1, max(0, (t - 0.18) / 1.05))
+        let eased = turn < 0.5 ? 4 * turn * turn * turn : 1 - pow(-2 * turn + 2, 3) / 2
+        fx.spin = turn >= 1 ? 0 : 2 * .pi * eased
+        fx.flash = t < 1.12 ? smooth((t - 0.86) / 0.24) : 1 - smooth((t - 1.18) / 0.40)
+        fx.glow = smooth((t - 0.95) / 0.30)
+        fx.scale = 1 + 0.07 * sin(.pi * min(1, max(0, (t - 0.18) / 1.25)))
+        return fx
+    }
 
     var body: some View {
         openingContent
@@ -66,8 +98,11 @@ struct BoosterOpeningView: View {
                         sky
                     }
                 }
+                if specialActive { BoosterSpecialSky().transition(.opacity) }
                 brandPattern
+                if specialActive { BoosterSpecialSparkles().transition(.opacity) }
             }
+            .animation(.easeInOut(duration: 0.55), value: specialActive)
             .ignoresSafeArea()
             .allowsHitTesting(false)
             .accessibilityHidden(true)
@@ -97,10 +132,10 @@ struct BoosterOpeningView: View {
             guard phase == .opening else { return }
             let duration = reduceMotion ? 0.12 : cutDuration + openingDuration
             let revealTime = reduceMotion ? 0.08 : cutDuration + 0.81
-            let reveal: BoosterSounds.Cue = hand.first?.special == true ? .special : .reveal
+            let reveal: BoosterSounds.Cue = hand.first?.isHit == true ? .special : .reveal
             let cues: [(time: Double, sound: BoosterSounds.Cue)] = reduceMotion
                 ? [(revealTime, reveal)]
-                : [(cutDuration + sealRelease, .flap), (revealTime, reveal)]
+                : [(revealTime, reveal)]
             await animate(from: openingDate, duration: duration, cues: cues)
             guard !Task.isCancelled else { return }
             phase = .cards
@@ -116,6 +151,19 @@ struct BoosterOpeningView: View {
                 self.slideAnimation = nil
             }
         }
+        .onChange(of: specialActive) { _, active in
+            specialDate = active ? .now : nil
+            BoosterMusic.duck(active)
+        }
+        .onChange(of: scenePhase) { _, next in
+            if next == .active { BoosterMusic.resume() } else { BoosterMusic.pause() }
+        }
+        .onDisappear { BoosterMusic.stop() }
+        .task(id: specialDate) {
+            guard let specialDate, !reduceMotion else { return }
+            await animate(from: specialDate, duration: specialDuration)
+        }
+        .sensoryFeedback(.impact(weight: .heavy), trigger: specialDate) { _, next in next != nil }
         .onChange(of: draggingStage) { _, dragging in
             guard !dragging else { return }
             openingSwipeConsumed = false
@@ -381,11 +429,41 @@ struct BoosterOpeningView: View {
             let release = opening ? 1 - min(1, max(0, releaseTime / sealRelease)) : 0
             let flash = opening && releaseTime >= 0 ? max(0, min(1, releaseTime / sealRelease)) : 0
             let guide = min(1, max(0, animationTime.timeIntervalSince(guideDate) / guideDuration))
+            let special = specialFX
             BoosterStage(renderer: renderer, hand: hand, firstCard: index, frame: frame,
                          tilt: dragTilt, shift: dragShift,
                          viewport: size, focus: focus, slide: slide, cut: trace, cutWeight: release,
                          sealGuideProgress: phase == .ready ? (reduceMotion ? 1 : guide * (2 - guide)) : 0,
-                         animateSealGuide: !reduceMotion && scenePhase == .active)
+                         animateSealGuide: !reduceMotion && scenePhase == .active, special: special)
+                .overlay(alignment: .topLeading) {
+                    if phase == .cards, let card, let price = prices[card.id] {
+                        let frame = renderer.settledCardFrame(in: size)
+                        let settled = special.index == index && !reduceMotion
+                            ? min(1, max(0, (max(0, animationTime.timeIntervalSince(specialDate ?? .now)) - 1.35) / 0.35))
+                            : 1.0
+                        Text(price, format: .currency(code: "USD"))
+                            .font(.system(size: 34, weight: .bold, design: .rounded).monospacedDigit())
+                            .foregroundStyle(.black)
+                            .contentTransition(.numericText())
+                            .frame(width: frame.width, height: 62)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 22))
+                            .offset(x: frame.minX, y: frame.maxY + 16)
+                            .opacity(settled * max(0, 1 - slide * 4))
+                            .allowsHitTesting(false)
+                            .accessibilityLabel("Market price \(price.formatted(.currency(code: "USD")))")
+                            .id(card.id)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(.easeOut(duration: 0.25), value: index)
+                .overlay {
+                    if special.flash > 0.01 {
+                        RadialGradient(colors: [.white.opacity(0.5 * special.flash), .white.opacity(0)],
+                                       center: .center, startRadius: 20, endRadius: size.height * 0.62)
+                            .blendMode(.plusLighter)
+                            .allowsHitTesting(false)
+                    }
+                }
                 .overlay {
                     if trace > 0 && release > 0 {
                         Rectangle().fill(.black.opacity(0.19 * min(1, trace * 3) * pow(release, 2)))
@@ -556,7 +634,7 @@ struct BoosterOpeningView: View {
                 guard !openingSwipeConsumed else { return }
                 let movement = value.translation
                 if phase == .cards {
-                    guard slideAnimation == nil, startsOnCard(value, in: size) else { return }
+                    guard slideAnimation == nil, !specialBusy, startsOnCard(value, in: size) else { return }
                     if isCardSwipe(movement, in: size) {
                         if cardSlide == 0 { recenterDrag() }
                         cardSlide = Double((movement.width - size.width * 0.23) / max(1, size.width))
@@ -619,6 +697,8 @@ struct BoosterOpeningView: View {
             hand = cards
             renderer = scene
             BoosterSounds.prepare()
+            BoosterSounds.play(.appear)
+            BoosterMusic.start()
         } catch {
             print("[Booster] Could not load Paradox Rift: \(error)")
             loadError = true
@@ -628,7 +708,6 @@ struct BoosterOpeningView: View {
     private func positionPack() {
         guard phase == .sealed, renderer != nil else { return }
         BoosterSounds.play(.select)
-        if !reduceMotion { BoosterSounds.play(.approach) }
         dragTilt = .zero
         dragShift = .zero
         positionDate = .now
@@ -645,8 +724,11 @@ struct BoosterOpeningView: View {
     }
 
     private func finishSwipe(toward target: Double) {
-        guard phase == .cards, slideAnimation == nil, target > 0 || cardSlide > 0 else { return }
-        if target > 0 { BoosterSounds.swipe(cardIndex: index) }
+        guard phase == .cards, slideAnimation == nil, !specialBusy, target > 0 || cardSlide > 0 else { return }
+        if target > 0 {
+            if index == hand.count - 1 { BoosterSounds.play(.last) }
+            else { BoosterSounds.swipe(cardIndex: index) }
+        }
         if reduceMotion {
             if target > 0 { advanceCard() }
             else { cardSlide = 0 }
@@ -662,7 +744,7 @@ struct BoosterOpeningView: View {
         slideAnimation = nil
         if index < hand.count - 1 {
             index += 1
-            if hand[index].special { BoosterSounds.play(.special) }
+            if hand[index].isHit { BoosterSounds.play(.specialNext) }
         } else {
             BoosterSounds.play(.recap)
             phase = .finished
@@ -670,17 +752,151 @@ struct BoosterOpeningView: View {
     }
 }
 
+/// Fondo arcoíris suave que va cambiando de color mientras se muestra la carta especial.
+private struct BoosterSpecialSky: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let drift = Float(sin(t * 0.45)) * 0.10
+            let lift = Float(cos(t * 0.38)) * 0.10
+            let hues: [Double] = [0.92, 0.02, 0.08, 0.84, 0.95, 0.04, 0.68, 0.76, 0.58]
+            MeshGradient(width: 3, height: 3, points: [
+                [0, 0], [0.5 + drift, 0], [1, 0],
+                [0, 0.5 + lift], [0.5 - drift, 0.5 - lift], [1, 0.5 - lift],
+                [0, 1], [0.5 - drift, 1], [1, 1]
+            ], colors: hues.enumerated().map { offset, hue in
+                let shifted = (hue + 1 + 0.075 * sin(t * 0.42 + Double(offset) * 0.9)).truncatingRemainder(dividingBy: 1)
+                return Color(hue: shifted < 0 ? shifted + 1 : shifted,
+                             saturation: offset == 4 ? 0.34 : 0.50, brightness: 1)
+            })
+        }
+    }
+}
+
+/// Partículas blancas suaves que suben y parpadean sobre el fondo de la carta especial.
+private struct BoosterSpecialSparkles: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { timeline in
+            Canvas { context, size in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                var soft = context
+                soft.addFilter(.blur(radius: 5))
+                for particle in 0..<42 {
+                    let seed = Double(particle)
+                    func noise(_ salt: Double) -> Double {
+                        let value = sin(seed * 12.9898 + salt * 78.233) * 43758.5453
+                        return value - floor(value)
+                    }
+                    let speed = 0.012 + 0.030 * noise(1)
+                    let rise = (noise(2) - t * speed).truncatingRemainder(dividingBy: 1)
+                    let y = (rise < 0 ? rise + 1 : rise) * (size.height + 40) - 20
+                    let x = noise(3) * size.width + sin(t * (0.3 + noise(4) * 0.5) + seed) * 10
+                    let radius = 1.2 + 3.4 * pow(noise(5), 2.2)
+                    let twinkle = 0.30 + 0.70 * pow(abs(sin(t * (0.6 + 1.5 * noise(6)) + seed * 1.7)), 2)
+                    let dot = CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2)
+                    soft.fill(Path(ellipseIn: dot.insetBy(dx: -radius * 1.6, dy: -radius * 1.6)),
+                              with: .color(.white.opacity(0.42 * twinkle)))
+                    context.fill(Path(ellipseIn: dot), with: .color(.white.opacity(0.92 * twinkle)))
+                    if particle.isMultiple(of: 7) {
+                        let reach = radius * 4.2 * twinkle
+                        var star = Path()
+                        star.move(to: CGPoint(x: x - reach, y: y))
+                        star.addLine(to: CGPoint(x: x + reach, y: y))
+                        star.move(to: CGPoint(x: x, y: y - reach))
+                        star.addLine(to: CGPoint(x: x, y: y + reach))
+                        context.stroke(star, with: .color(.white.opacity(0.75 * twinkle)),
+                                       style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+                    }
+                }
+            }
+        }
+        .blendMode(.plusLighter)
+    }
+}
+
+/// Música de fondo, solo mientras la pantalla de sobres está abierta.
+@MainActor
+private enum BoosterMusic {
+    private static let level: Float = 0.30
+    private static let player: AVAudioPlayer? = {
+        let url = BoosterResources.folder.appendingPathComponent("Audio/music-loop.m4a")
+        guard let player = try? AVAudioPlayer(contentsOf: url) else { return nil }
+        player.numberOfLoops = -1
+        player.volume = 0
+        return player
+    }()
+    private static var wanted = false
+
+    static func start() {
+        guard let player else { return }
+        wanted = true
+        player.currentTime = 0
+        player.volume = 0
+        player.play()
+        player.setVolume(level, fadeDuration: 1.2)
+    }
+
+    /// Baja la música un momento para que se oiga el sonido de la carta especial.
+    static func duck(_ lowered: Bool) {
+        guard wanted else { return }
+        player?.setVolume(lowered ? level * 0.45 : level, fadeDuration: 0.5)
+    }
+
+    static func pause() { player?.pause() }
+
+    static func resume() {
+        guard wanted, let player, !player.isPlaying else { return }
+        player.play()
+    }
+
+    static func stop() {
+        wanted = false
+        guard let player else { return }
+        player.setVolume(0, fadeDuration: 0.35)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            if !wanted { player.stop() }
+        }
+    }
+}
+
 @MainActor
 private enum BoosterSounds {
     enum Cue: String, CaseIterable {
-        case select, approach, ready, cut, flap, reveal, special, swipe, recap
-        case swipeAlternate = "swipe-alt"
+        case appear = "pocket-appear"
+        case select = "pocket-select"
+        case ready = "pocket-ready"
+        case cut = "pocket-cut"
+        case reveal = "pocket-reveal"
+        case special = "pocket-special"
+        case specialNext = "pocket-special-next"
+        case swipe1 = "pocket-swipe-1"
+        case swipe2 = "pocket-swipe-2"
+        case swipe3 = "pocket-swipe-3"
+        case last = "pocket-last"
+        case recap = "pocket-recap"
+
+        var fallback: String {
+            switch self {
+            case .appear: "approach"
+            case .select: "select"
+            case .ready: "ready"
+            case .cut: "cut"
+            case .reveal: "reveal"
+            case .special, .specialNext: "special"
+            case .swipe1, .swipe3, .last: "swipe"
+            case .swipe2: "swipe-alt"
+            case .recap: "recap"
+            }
+        }
     }
 
     private static let players: [Cue: AVAudioPlayer] = Dictionary(uniqueKeysWithValues: Cue.allCases.compactMap { cue in
-        let url = BoosterResources.folder.appendingPathComponent("Audio/\(cue.rawValue).wav")
-        guard let player = try? AVAudioPlayer(contentsOf: url) else { return nil }
-        return (cue, player)
+        // Si falta el sonido nuevo en la copia del proyecto, suena el original de la app.
+        for name in [cue.rawValue, cue.fallback] {
+            let url = BoosterResources.folder.appendingPathComponent("Audio/\(name).wav")
+            if let player = try? AVAudioPlayer(contentsOf: url) { return (cue, player) }
+        }
+        return nil
     })
 
     static func prepare() {
@@ -698,7 +914,7 @@ private enum BoosterSounds {
     }
 
     static func swipe(cardIndex: Int) {
-        play(cardIndex.isMultiple(of: 2) ? .swipe : .swipeAlternate)
+        play([Cue.swipe1, .swipe2, .swipe3][abs(cardIndex) % 3])
     }
 }
 
