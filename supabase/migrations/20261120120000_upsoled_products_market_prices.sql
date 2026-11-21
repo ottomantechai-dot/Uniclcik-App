@@ -208,3 +208,30 @@ update public.upsoled_products p
 set metadata = jsonb_set(p.metadata, '{market_prices,ebay}', jsonb_build_object('median_5_cheapest', v.med, 'listings', v.n)),
     updated_at = now()
 from v where p.name = v.name;
+
+-- eBay, tercera tanda (2026-11-21)
+with v(name,med,n) as (values
+('Puma Speedcat OG Black White',87.77,36),
+('Puma Speedcat OG Red White',75,38),
+('Salomon XT 6 Vanilla Ice Almond Milk',199,16),
+('Sp5der OG Web Hoodie Black',100,48),
+('Supreme Applique Flannel Backpack Red',263,35),
+('Supreme Box Logo Crewneck FW22 Heather Grey',249.99,14),
+('Supreme Box Logo Hooded Sweatshirt FW25 Heather Grey',282.99,17),
+('Supreme Cargo Pant FW26 Woodland Camo',367,8),
+('Supreme GORE-TEX Cargo Pant FW26 Red',629.17,3),
+('Supreme Martine Rose Champion Tee Black',94,24),
+('Supreme Polartec Face Mask Half Zip Hooded Sweatshirt Hearts',235,23),
+('Supreme Prayer Card Box Logo Tee Black',69.99,40),
+('Supreme Shoulder Bag FW26 Black',100,6),
+('Supreme Sith Tee Black',85,19),
+('Timberland 6 Inch Premium Waterproof Wheat',79.99,52),
+('UGG Tasman II Slipper Black',98,24),
+('UGG Tasman Slipper Chestnut',89.99,7),
+('Vans Knu Skool Black White',39.99,72),
+('Vans Old Skool Black White',24.99,26)
+)
+update public.upsoled_products p
+set metadata = jsonb_set(p.metadata, '{market_prices,ebay}', jsonb_build_object('median_5_cheapest', v.med, 'listings', v.n)),
+    updated_at = now()
+from v where p.name = v.name;
