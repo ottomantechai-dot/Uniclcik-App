@@ -881,55 +881,8 @@ struct ShoeSamplePriceCard: View {
     }
 }
 
-/// Precio de compra publicado para el producto y la variante visibles.
+/// Precio de mercado de un producto del catálogo: el mejor precio y lo que pide cada plataforma.
 struct CatalogMarketPriceCard: View {
-    let comparison: MarketComparison?
-    let size: String?
-    let isShoe: Bool
-
-    var body: some View {
-        let row = comparison?.rows.first { $0.size == size }
-        let bestPrice = size == nil ? comparison?.bestBuyOverall?.price : row?.cheapest?.price
-        let bestPlatform = size == nil ? comparison?.bestBuyOverall?.platform : row?.cheapest?.platform
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(size.map { isShoe ? "Buy now · US \($0)" : "Buy now · \($0)" } ?? "Buy now from")
-                        .font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.5))
-                    Text(bestPrice.map(SaleReport.usd) ?? "—")
-                        .font(.system(size: 38, weight: .heavy, design: .rounded)).foregroundStyle(.black)
-                }
-                Spacer()
-                if let bestPlatform {
-                    StylizedMarketplaceLogo(brand: bestPlatform).frame(width: 62, height: 18, alignment: .trailing)
-                }
-            }
-            if let comparison, !comparison.rows.isEmpty {
-                VStack(spacing: 0) {
-                    ForEach(comparison.platforms) { platform in
-                        let price = size == nil ? platform.lowestAsk : row?.asks[platform.platform]
-                        HStack {
-                            Text(platform.platform).font(.system(size: 13, weight: .semibold))
-                            Spacer()
-                            Text(price.map(SaleReport.usd) ?? "—")
-                                .font(.system(size: 15, weight: .heavy, design: .rounded))
-                                .foregroundStyle(price == nil ? .secondary : .primary)
-                        }
-                        .padding(.vertical, 8)
-                    }
-                }
-            } else {
-                Text(comparison == nil ? "Checking public offers…" : "No public offers available")
-                    .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-            }
-        }
-        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white, in: .rect(cornerRadius: 22)).glassEffect(.regular, in: .rect(cornerRadius: 22))
-    }
-}
-
-/// Precio de mercado guardado en el catálogo: mejor precio, puja más alta de StockX y cada tienda.
-struct CatalogStoredPriceCard: View {
     let market: UpsoledMarketPrices
 
     var body: some View {
@@ -938,7 +891,7 @@ struct CatalogStoredPriceCard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Market Price").font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                    Text("Buy now from").font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.5))
                     Text(best.map { SaleReport.usd($0.price) } ?? "—").font(.system(size: 38, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                 }
                 Spacer()
@@ -969,7 +922,7 @@ struct CatalogStoredPriceCard: View {
                     if index < quotes.count - 1 { Divider() }
                 }
             }
-            Text("Marketplace snapshot" + (market.asof.map { " · \($0)" } ?? ""))
+            Text("Prices read from each marketplace" + (market.asof.map { " · \($0)" } ?? ""))
                 .font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.4))
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)

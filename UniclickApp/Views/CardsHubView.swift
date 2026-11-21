@@ -312,6 +312,19 @@ struct CardsMarketView: View {
             .aspectRatio(0.72, contentMode: .fit)
             .frame(maxWidth: .infinity)
             .overlay(alignment: .bottomLeading) { CardSourceDots(size: 20).padding(4) }
+            .overlay(alignment: .bottomTrailing) {
+                // Precio de mercado (TCGplayer) a la vista, en una cápsula de cristal, como dentro de la ficha.
+                if let price = tilePrice(card) {
+                    // Desde 100 $ sin céntimos, para que quepa junto a los logos.
+                    Text(price >= 100 ? PieceMarketPrice.formatUSD(Int(price.rounded())) : SaleReport.usd(price))
+                        .font(.system(size: 11, weight: .heavy, design: .rounded)).monospacedDigit()
+                        .foregroundStyle(.black).lineLimit(1).minimumScaleFactor(0.7)
+                        .padding(.horizontal, 7).frame(height: 22)
+                        .background(.white.opacity(0.55), in: .capsule)
+                        .glassEffect(.regular, in: .capsule)
+                        .padding(4)
+                }
+            }
             Text(card.name).font(.system(size: 11, weight: .bold)).foregroundStyle(.black).lineLimit(1)
             Text(card.rarity)
                 .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
@@ -319,6 +332,14 @@ struct CardsMarketView: View {
         .padding(6)
         .background(Color.white, in: .rect(cornerRadius: 12))
         .overlay(alignment: .topTrailing) { CardEditionBadge(card: card).scaleEffect(0.8, anchor: .topTrailing).padding(3) }
+    }
+
+    /// El mismo precio que enseña la ficha: la referencia guardada de TCGplayer o, si no hay, la del catálogo.
+    private func tilePrice(_ card: PokemonCardData) -> Double? {
+        if let saved = MarketReferenceStore.saved("card:\(card.id)").first(where: { $0.source == "TCGplayer" })?.amount, saved > 0 {
+            return saved
+        }
+        return card.tcgMarketUSD.flatMap { $0 > 0 ? $0 : nil }
     }
 
     private func reload() async {

@@ -106,7 +106,7 @@ final class Shoe360Loader: ObservableObject {
     }
 
     private nonisolated static func resolveSlug(titles: [String], imageURLs: [URL], queries: [String]) async -> String? {
-        var slugs: [String] = imageURLs.flatMap { slugs(fromImageURL: $0) }
+        var slugs: [String] = imageURLs.flatMap { Self.slugs(fromImageURL: $0) }
         for title in titles {
             for option in [slug(title), slug(title.replacingOccurrences(of: "Adidas", with: "adidas"))] where !option.isEmpty && !slugs.contains(option) {
                 slugs.append(option)

@@ -397,7 +397,6 @@ enum PlatformFees {
 
 struct ShoeMarketDetailView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.scenePhase) private var scenePhase
     let item: HomeSneakerHighlight
 
     @State private var comparison: MarketComparison?
@@ -423,8 +422,11 @@ struct ShoeMarketDetailView: View {
                         .background(Color.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                     if loading {
                         loadingSkeleton
-                    } else if let comp = comparison, !comp.rows.isEmpty || !comp.references.isEmpty {
-                        if !comp.rows.isEmpty { bestOfferCard(comp) }
+                    } else if let comp = comparison, !comp.rows.isEmpty {
+                        bestOfferCard(comp)
+                        sellerCard(comp)
+                        sellSuggestionCard(comp)
+                        calculatorCard(comp)
                         if !sales.isEmpty { salesCard }
                         DashboardMarketPricesSection(
                             comparison: comp,
@@ -463,10 +465,7 @@ struct ShoeMarketDetailView: View {
                         .font(.system(size: 15, weight: .semibold))
                 }
             }
-            .task(id: scenePhase) {
-                guard scenePhase == .active else { return }
-                await PublicPriceService.poll { await load() }
-            }
+            .task { await load() }
         }
         .preferredColorScheme(.light)
     }
@@ -475,11 +474,8 @@ struct ShoeMarketDetailView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                if let comparison, !comparison.rows.isEmpty {
-                    Circle().fill(Self.green).frame(width: 7, height: 7)
-                    Text(comparison.fetchedAt, style: .time)
-                        .font(.system(size: 10, weight: .heavy)).foregroundStyle(.white.opacity(0.9))
-                }
+                Circle().fill(Self.green).frame(width: 7, height: 7)
+                Text("LIVE").font(.system(size: 10, weight: .heavy)).tracking(1).foregroundStyle(.white.opacity(0.9))
                 Spacer()
             }
             Text(item.displayName)
@@ -889,11 +885,19 @@ struct ShoeMarketDetailView: View {
 
     @MainActor
     private func load() async {
-        guard let lookup = item.marketLookup else { loading = false; return }
-        let result = await PublicMarketComparison.load(query: lookup.query, fallback: lookup.fallback)
-        guard !Task.isCancelled else { return }
-        comparison = result
-        loading = false
+        loading = true
+        defer { loading = false }
+        guard let lookup = item.marketLookup,
+              let raw = try? await KicksDBClient.fetchComparison(query: lookup.query, fallbackQuery: lookup.fallback) else {
+            comparison = nil
+            return
+        }
+        comparison = await HomeMarketTableBuilder.prepareDetailComparison(from: raw, query: lookup.query)
+        if let q = comparison?.platforms.first(where: { $0.platformKey == "stockx" && $0.productID != nil })
+            ?? comparison?.platforms.first(where: { $0.productID != nil }),
+           let pid = q.productID {
+            sales = await KicksDBClient.dailySales(platformKey: q.platformKey, productID: pid)
+        }
     }
 }
 
@@ -1822,36 +1826,22 @@ struct DashboardMarketPricesSection: View {
     var maxVisibleRows: Int? = 3
     /// Zapato del que se enseñan los precios (en Inicio): su foto, su marca y su nombre encabezan la tabla.
     var featured: UpsoledProduct?
-    var selectedSize: String?
-    var initialReferences: [MarketReferenceQuote] = []
+    /// Si hay una talla elegida, la tabla enseña solo esa fila.
+    var selectedSize: String? = nil
 
-    private var references: [MarketReferenceQuote] {
-        if let quotes = comparison?.references, !quotes.isEmpty { return quotes }
-        if !initialReferences.isEmpty { return initialReferences }
-        return featured.map { MarketReferenceStore.saved("product:\($0.slug)") } ?? []
-    }
-
+    private let platforms = HomeMarketTableBuilder.homePlatforms
     private let rowHeight: CGFloat = 52
-    private var platforms: [String] {
-        let sources = comparison?.platforms.map(\.platform) ?? []
-        return sources.isEmpty ? ["Stadium Goods", "SNKRDUNK"] : sources
-    }
+    @State private var lastSale: Double?
 
     private var tableRows: [MarketSizeRow] {
-        let rows = comparison?.rows ?? []
-        if let selectedSize { return rows.filter { $0.size == selectedSize } }
-        guard let maxVisibleRows else { return rows }
-        return Array(rows.prefix(maxVisibleRows))
-    }
-
-    private var lowestAsk: (platform: String, price: Double)? {
-        if selectedSize != nil { return tableRows.first?.cheapest }
-        return comparison?.bestBuyOverall.map { ($0.platform, $0.price) }
-    }
-
-    private var emptyMessage: String {
-        if comparison == nil { return "Checking public prices…" }
-        return selectedSize == nil ? "No public offers available for this product." : "No public offers for this size."
+        if let selectedSize {
+            let rows = HomeMarketTableBuilder.buildAllSizeRows(from: comparison).filter { $0.size == selectedSize }
+            if !rows.isEmpty { return rows }
+        }
+        if let maxVisibleRows {
+            return HomeMarketTableBuilder.displayRows(from: comparison, maxRows: maxVisibleRows)
+        }
+        return HomeMarketTableBuilder.buildAllSizeRows(from: comparison)
     }
 
     var body: some View {
@@ -1870,7 +1860,7 @@ struct DashboardMarketPricesSection: View {
                         }
                     // Las plataformas van arriba, a la misma altura que el círculo de la marca; debajo, el nombre.
                     VStack(alignment: .leading, spacing: 10) {
-                        MarketplaceDots(brands: platforms, size: 30)
+                        MarketplaceDots(brands: ["StockX", "GOAT", "eBay", "Flight Club"], size: 30)
                         Text(featured.name.firstUppercased).font(.system(size: 16, weight: .bold)).foregroundStyle(.black)
                             .lineLimit(2).multilineTextAlignment(.leading)
                     }
@@ -1878,34 +1868,49 @@ struct DashboardMarketPricesSection: View {
                 }
             }
 
-            if let ask = lowestAsk {
-                summaryCol(label: "LOWEST ASK", value: SaleReport.usd(ask.price),
-                           sub: "Buy now · \(ask.platform)", color: DashboardHomePalette.accentGreen)
+            if comparison?.bestBuyOverall != nil || lastSale != nil {
+                priceSummary
             }
 
-            if !references.isEmpty {
-                MarketReferenceRows(quotes: references)
-            }
-
-            if tableRows.isEmpty && (references.isEmpty || selectedSize != nil) {
-                Text(emptyMessage)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity).padding(.vertical, 10)
-            } else if !tableRows.isEmpty {
-                HomeMarketPriceGridTable(platforms: platforms, rows: tableRows, rowHeight: rowHeight)
-                HStack(spacing: 12) {
-                    ForEach(comparison?.platforms ?? []) { quote in
-                        if let url = quote.productURL {
-                            Link(quote.platform, destination: url)
-                                .font(.system(size: 11, weight: .semibold))
+            if tableRows.isEmpty {
+                // Sin precios todavía: la tabla sale montada, con cada plataforma y cada talla en su casilla.
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "ruler").font(.system(size: 11, weight: .bold))
+                            Text("US").font(.system(size: 11, weight: .heavy))
+                        }
+                        .foregroundStyle(Color.black.opacity(0.55))
+                        .frame(width: 52, height: 38)
+                        .background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
+                        ForEach(["StockX", "GOAT", "eBay", "Flight Club"], id: \.self) { brand in
+                            StylizedMarketplaceLogo(brand: brand).frame(height: 13).padding(.horizontal, 6)
+                                .frame(maxWidth: .infinity, minHeight: 38)
+                                .background(Color.black.opacity(0.05), in: .rect(cornerRadius: 11))
                         }
                     }
+                    ForEach(featured == nil ? ["8", "9", "10", "11"] : ["7", "8", "9", "10", "11", "12"], id: \.self) { size in
+                        HStack(spacing: 8) {
+                            DotMatrixText(text: size)
+                                .frame(width: 52, height: 40)
+                                .background(Color.black, in: .rect(cornerRadius: 11))
+                            ForEach(0..<4, id: \.self) { _ in
+                                Text("—").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.black.opacity(0.25))
+                                    .frame(maxWidth: .infinity, minHeight: 40)
+                                    .background { RoundedRectangle(cornerRadius: 11).strokeBorder(Color.black.opacity(0.08)) }
+                            }
+                        }
+                    }
+                    Text("Prices appear here as soon as the market responds")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.black.opacity(0.45))
+                        .frame(maxWidth: .infinity).padding(.top, 4)
                 }
-                if let comparison, comparison.usesPublicPages {
-                    Text("USD before shipping and tax · Checked \(comparison.fetchedAt.formatted(date: .omitted, time: .shortened))")
-                        .font(.system(size: 10)).foregroundStyle(.secondary)
-                }
+            } else {
+                HomeMarketPriceGridTable(
+                    platforms: platforms,
+                    rows: tableRows,
+                    rowHeight: rowHeight
+                )
             }
         }
         .padding(.horizontal, 18)
@@ -1913,6 +1918,27 @@ struct DashboardMarketPricesSection: View {
         .padding(.bottom, 16)
         .background(.white, in: .rect(cornerRadius: 26))
         .glassEffect(.regular, in: .rect(cornerRadius: 26))
+        .task(id: comparison?.matchedSKU ?? comparison?.query ?? "") { await loadLastSale() }
+    }
+
+    /// Los dos precios reales que importan, lado a lado (sin promedios que confunden).
+    private var priceSummary: some View {
+        HStack(spacing: 0) {
+            if let ask = comparison?.bestBuyOverall {
+                summaryCol(label: "LOWEST ASK",
+                           value: PieceMarketPrice.formatUSD(Int(ask.price.rounded())),
+                           sub: "buy now · \(ask.platform)",
+                           color: DashboardHomePalette.accentGreen)
+            }
+            if let ls = lastSale {
+                Divider().frame(height: 36)
+                summaryCol(label: "ÚLTIMA VENTA",
+                           value: PieceMarketPrice.formatUSD(Int(ls.rounded())),
+                           sub: "venta real",
+                           color: DashboardHomePalette.accentBlue)
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     private func summaryCol(label: String, value: String, sub: String, color: Color) -> some View {
@@ -1926,6 +1952,16 @@ struct DashboardMarketPricesSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// Trae la última venta real (KicksDB) usando el productID del producto emparejado.
+    private func loadLastSale() async {
+        guard let comp = comparison,
+              let q = comp.platforms.first(where: { $0.platformKey == "stockx" && $0.productID != nil })
+                ?? comp.platforms.first(where: { $0.productID != nil }),
+              let pid = q.productID else { lastSale = nil; return }
+        let sales = await KicksDBClient.dailySales(platformKey: q.platformKey, productID: pid)
+        lastSale = sales.last?.avg
+    }
+
     private var tableHeader: some View {
         HStack {
             HStack(spacing: 7) {
@@ -1936,36 +1972,6 @@ struct DashboardMarketPricesSection: View {
                     .foregroundStyle(Color.black.opacity(0.88))
             }
             Spacer(minLength: 0)
-        }
-    }
-}
-
-private struct MarketReferenceRows: View {
-    let quotes: [MarketReferenceQuote]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(quotes) { quote in
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        if let url = quote.sourceURL {
-                            Link(quote.source, destination: url)
-                                .font(.subheadline.weight(.semibold))
-                        } else {
-                            Text(quote.source).font(.subheadline.weight(.semibold))
-                        }
-                        Text(quote.quoteKind.label + " · " + quote.observedOn)
-                            .font(.caption).foregroundStyle(.secondary)
-                        if quote.quoteKind == .estimate, let basis = quote.basis {
-                            Text(basis).font(.caption2).foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                    Text(quote.amount, format: .currency(code: "USD"))
-                        .font(.subheadline.weight(.semibold)).monospacedDigit()
-                }
-                .accessibilityElement(children: .combine)
-            }
         }
     }
 }
@@ -2296,9 +2302,10 @@ struct WatchRow: View {
     private func load() async {
         loading = true
         defer { loading = false }
-        let comp = await PublicMarketComparison.load(query: item.query)
-        guard !Task.isCancelled else { return }
-        price = comp.bestBuyOverall?.price
+        if let comp = (try? await KicksDBClient.fetchComparison(query: item.query)) ?? nil,
+           let v = comp.bestBuyOverall?.price {
+            price = v
+        }
     }
 }
 
