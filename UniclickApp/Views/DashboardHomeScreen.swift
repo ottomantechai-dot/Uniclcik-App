@@ -439,7 +439,8 @@ struct ShoeMarketDetailView: View {
                         if !sales.isEmpty { salesCard }
                         DashboardMarketPricesSection(
                             comparison: comp,
-                            maxVisibleRows: nil
+                            maxVisibleRows: nil,
+                            category: item.catalogProduct?.category
                         )
                     } else {
                         emptyState
@@ -1848,6 +1849,31 @@ struct DashboardMarketPricesSection: View {
     var featured: UpsoledProduct?
     /// Si hay una talla elegida, la tabla enseña solo esa fila.
     var selectedSize: String? = nil
+    /// Tipo de producto ("shoes", "clothing", "accessories"…): decide qué tallas se enseñan.
+    var category: String? = nil
+
+    private enum SizeKind { case shoes, clothing, oneSize }
+
+    /// Zapatos, ropa (S, M, L…) o talla única (gorras, bolsos). Si no se sabe, se deduce de las tallas que llegan.
+    private var sizeKind: SizeKind {
+        switch (category ?? featured?.category)?.lowercased() {
+        case "accessories", "bags": return .oneSize
+        case "clothing", "apparel", "vintage", "new-drops": return .clothing
+        case "shoes": return .shoes
+        default:
+            let sizes = comparison?.rows.map(\.size) ?? []
+            if sizes.contains(where: { ["XS", "S", "M", "L", "XL", "XXL"].contains($0.uppercased()) }) { return .clothing }
+            return .shoes
+        }
+    }
+
+    private var placeholderSizes: [String] {
+        switch sizeKind {
+        case .shoes: return featured == nil ? ["8", "9", "10", "11"] : ["7", "8", "9", "10", "11", "12"]
+        case .clothing: return ["S", "M", "L", "XL"]
+        case .oneSize: return ["OS"]
+        }
+    }
 
     private let rowHeight: CGFloat = 52
     @State private var lastSale: Double?
@@ -1917,8 +1943,7 @@ struct DashboardMarketPricesSection: View {
             if tableRows.isEmpty {
                 // Sin precios todavía: la tabla sale montada, con cada plataforma y cada talla en su casilla.
                 dotMatrixTable(columns: HomeMarketTableBuilder.homePlatforms,
-                               rows: (featured == nil ? ["8", "9", "10", "11"] : ["7", "8", "9", "10", "11", "12"])
-                                   .map { MarketSizeRow(size: $0, asks: [:]) })
+                               rows: placeholderSizes.map { MarketSizeRow(size: $0, asks: [:]) })
                 Text("Prices appear here as soon as the market responds")
                     .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.black.opacity(0.45))
                     .frame(maxWidth: .infinity).padding(.top, -8)
@@ -1942,7 +1967,8 @@ struct DashboardMarketPricesSection: View {
             HStack(spacing: 8) {
                 HStack(spacing: 4) {
                     Image(systemName: "ruler").font(.system(size: 11, weight: .bold))
-                    Text("US").font(.system(size: 11, weight: .heavy))
+                    Text(sizeKind == .shoes ? "US" : "SIZE").font(.system(size: 11, weight: .heavy))
+                        .lineLimit(1).minimumScaleFactor(0.7)
                 }
                 .foregroundStyle(Color.black.opacity(0.55))
                 .frame(width: 52, height: 38)
@@ -1965,9 +1991,17 @@ struct DashboardMarketPricesSection: View {
             ForEach(rows, id: \.size) { row in
                 let cheapest = columns.compactMap { row.asks[$0] }.filter { $0 > 0 }.min()
                 HStack(spacing: 8) {
-                    DotMatrixText(text: row.size)
-                        .frame(width: 52, height: 40)
-                        .background(Color.black, in: .rect(cornerRadius: 11))
+                    Group {
+                        // Números de puntos para tallas numéricas; S, M, L, «OS»… en texto normal.
+                        if row.size.allSatisfy({ $0.isNumber || $0 == "." }) {
+                            DotMatrixText(text: row.size)
+                        } else {
+                            Text(row.size.uppercased()).font(.system(size: 15, weight: .heavy, design: .rounded))
+                                .foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.6).padding(.horizontal, 4)
+                        }
+                    }
+                    .frame(width: 52, height: 40)
+                    .background(Color.black, in: .rect(cornerRadius: 11))
                     ForEach(columns, id: \.self) { brand in
                         let price = row.asks[brand].flatMap { $0 > 0 ? $0 : nil }
                         let best = price != nil && price == cheapest && columns.count > 1
@@ -2649,11 +2683,16 @@ struct HomeTrendingCardsRow: View {
 struct BottomFade: ViewModifier {
     var color: Color = .white
     func body(content: Content) -> some View {
-        content.overlay(alignment: .bottom) {
-            LinearGradient(colors: [color.opacity(0), color.opacity(0.9), color], startPoint: .top, endPoint: .bottom)
-                .frame(height: 120)
-                .ignoresSafeArea(edges: .bottom)
-                .allowsHitTesting(false)
+        content.overlay {
+            // El área segura termina encima de la barra de pestañas: se baja el difuminado esa altura
+            // para que quede detrás de la barra y no tape la última fila del contenido.
+            GeometryReader { geo in
+                LinearGradient(colors: [color.opacity(0), color.opacity(0.9), color], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 120)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .offset(y: geo.safeAreaInsets.bottom)
+            }
+            .allowsHitTesting(false)
         }
     }
 }

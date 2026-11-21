@@ -3546,7 +3546,7 @@ struct CatalogShoeBody: View {
 
     private var sizes: [String] {
         if let sample { return sample.sizes }
-        if isShoe, let live = liveComparison?.sizes.filter({ !$0.isEmpty }), !live.isEmpty { return live }
+        if (product.category ?? "shoes") != "accessories", let live = liveComparison?.sizes.filter({ !$0.isEmpty }), !live.isEmpty { return live }
         switch product.category ?? "shoes" {
         case "clothing": return ["XS", "S", "M", "L", "XL", "XXL"]
         case "accessories": return []
@@ -3642,10 +3642,10 @@ struct CatalogShoeBody: View {
                 (icon: "paintpalette", title: "Colorway", value: sample?.colorway ?? CatalogShelf.colorway(of: product.name)),
                 (icon: "shippingbox", title: "Condition", value: "New"),
             ] + (sample?.details ?? [])).padding(.top, 22)
-            if isShoe || sample?.comparison != nil {
-                DashboardMarketPricesSection(comparison: sample?.comparison ?? liveComparison,
-                                             maxVisibleRows: sample == nil ? 6 : nil).tourTarget("shoe.compare").padding(.top, 18)
-            }
+            // Comparador de precios para todo: zapatos con tallas US, ropa con S/M/L y gorras o bolsos con talla única.
+            DashboardMarketPricesSection(comparison: sample?.comparison ?? liveComparison,
+                                         maxVisibleRows: sample == nil ? 6 : nil,
+                                         category: product.category ?? "shoes").tourTarget("shoe.compare").padding(.top, 18)
             ShoeMarketHistoryCard(sales: sample?.sales ?? [], summary: sample?.stats, source: sample?.asOf)
                 .tourTarget("shoe.history")
                 .padding(.top, 18).padding(.bottom, 24)
@@ -3656,7 +3656,7 @@ struct CatalogShoeBody: View {
     /// Precios por talla: primero KicksDB (StockX, GOAT, eBay, Flight Club); si no da nada, las páginas públicas.
     @MainActor
     private func loadLivePrices() async {
-        guard isShoe, sample == nil else { return }
+        guard sample == nil else { return }
         liveComparison = nil
         let sku = product.sku?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let hasStyleCode = HomeSneakerHighlight.isRealStyleCode(sku) && !ShoeGTIN.isNumeric(sku)
