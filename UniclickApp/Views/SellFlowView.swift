@@ -938,7 +938,7 @@ struct CatalogStoredPriceCard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Buy now from").font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.5))
+                    Text("Market Price").font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.5))
                     Text(best.map { SaleReport.usd($0.price) } ?? "—").font(.system(size: 38, weight: .heavy, design: .rounded)).foregroundStyle(.black)
                 }
                 Spacer()
@@ -969,7 +969,7 @@ struct CatalogStoredPriceCard: View {
                     if index < quotes.count - 1 { Divider() }
                 }
             }
-            Text("Prices read from each marketplace" + (market.asof.map { " · \($0)" } ?? ""))
+            Text("Marketplace snapshot" + (market.asof.map { " · \($0)" } ?? ""))
                 .font(.system(size: 11, weight: .medium)).foregroundStyle(.black.opacity(0.4))
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)

@@ -4613,6 +4613,7 @@ struct MarketComparison {
     let skuAligned: Bool
     var usesPublicPages = false
     var sizeSystem: ShoeSizeSystem?
+    var references: [MarketReferenceQuote] = []
 
     var matchedTitle: String? { platforms.compactMap(\.matchedTitle).first }
     /// Nombres para buscar el giro 360°: primero el de StockX, que es quien publica esas fotos.
@@ -4721,9 +4722,15 @@ struct MarketComparison {
 
 enum PublicMarketComparison {
     @MainActor
-    static func load(query: String, fallback: String? = nil) async -> MarketComparison {
-        let result = await PublicPriceService.product(.init(query: query, fallback: fallback))
-        let platforms = result.offers.map { offer in
+    static func load(query: String, fallback: String? = nil, product: UpsoledProduct? = nil) async -> MarketComparison {
+        let catalog = product ?? CatalogShelf.products.first { MarketComparison.skuEquals($0.sku, query) }
+            ?? CatalogShelf.product(named: fallback ?? query)
+        let sku = catalog?.sku ?? (HomeSneakerHighlight.isRealStyleCode(query) ? query : nil)
+        async let publicOffers = PublicPriceService.product(.init(query: query, fallback: fallback))
+        async let official = marketplaceQuotes(sku: sku, title: catalog?.name ?? fallback)
+        async let references = savedReferences(for: catalog)
+        let result = await publicOffers
+        var platforms = result.offers.map { offer in
             let prices = offer.pricesBySize.values
             return MarketPlatformQuote(
                 platform: offer.source,
@@ -4738,6 +4745,7 @@ enum PublicMarketComparison {
                 imageURL: offer.imageURL
             )
         }
+        platforms += await official
         let sizes = Set(platforms.flatMap { $0.asksBySize.keys }).sorted(by: PublicPriceService.sizeOrder)
         let rows = sizes.map { size in
             MarketSizeRow(size: size, asks: Dictionary(uniqueKeysWithValues: platforms.compactMap { quote in
@@ -4749,8 +4757,41 @@ enum PublicMarketComparison {
             query: query, platforms: platforms, sizes: sizes, rows: rows, fetchedAt: result.checkedAt,
             skuAligned: verifiedSKUs.count > 1 && Set(verifiedSKUs.map(MarketComparison.normalizeSKU)).count == 1,
             usesPublicPages: true,
-            sizeSystem: result.offers.compactMap(\.sizeSystem).first
+            sizeSystem: result.offers.compactMap(\.sizeSystem).first,
+            references: await references
         )
+    }
+
+    private static func savedReferences(for product: UpsoledProduct?) async -> [MarketReferenceQuote] {
+        guard let product else { return [] }
+        return await MarketReferenceStore.load("product:\(product.slug)")
+    }
+
+    private static func marketplaceQuotes(sku: String?, title: String?) async -> [MarketPlatformQuote] {
+        guard let sku, HomeSneakerHighlight.isRealStyleCode(sku), !ShoeGTIN.isNumeric(sku) else { return [] }
+        guard let status = try? await MarketplaceGatewayService.fetchStatus() else { return [] }
+        async let brands: MarketComparison? = status.kicksdb
+            ? try? KicksDBClient.fetchComparison(query: sku, fallbackQuery: title) : nil
+        async let listings: [EbayListing]? = status.ebay
+            ? try? EbayPriceService.lowestListings(query: sku) : nil
+        var result = await brands?.platforms.filter { MarketComparison.skuEquals($0.matchedSKU, sku) } ?? []
+        let code = MarketComparison.normalizeSKU(sku)
+        let exact = await (listings ?? []).filter {
+            $0.currency == "USD" && $0.price.isFinite && $0.price > 0 &&
+                MarketComparison.normalizeSKU($0.title).contains(code)
+        }
+        var asks: [String: Double] = [:]
+        for sale in exact {
+            if let size = sale.sizeAspect.flatMap(MarketComparison.normalizeSize) {
+                asks[size] = min(asks[size] ?? sale.price, sale.price)
+            }
+        }
+        if let offer = exact.first, !asks.isEmpty {
+            result.append(MarketPlatformQuote(platform: "eBay", color: .primary, matchedTitle: title,
+                                              matchedSKU: sku, productURL: offer.url, asksBySize: asks,
+                                              avg: nil, lowestAsk: asks.values.min(), highestAsk: asks.values.max()))
+        }
+        return result
     }
 }
 

@@ -284,8 +284,7 @@ struct DashboardHomeScreen: View {
             HomeBentoGrid(closetItems: closetItems, catalogProducts: catalogProducts,
                           showsCards: $homeShowsCards,
                           onSneakers: onViewStock,
-                          onScan: { tabRouter.scanRequested = true; tabRouter.selected = .closet },
-                          onCards: { tabRouter.selected = .cards })
+                          onScan: { tabRouter.scanRequested = true; tabRouter.selected = .closet })
 
             CardsShowcase(onViewAll: { tabRouter.selected = .cards })
 
@@ -424,8 +423,8 @@ struct ShoeMarketDetailView: View {
                         .background(Color.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                     if loading {
                         loadingSkeleton
-                    } else if let comp = comparison, !comp.rows.isEmpty {
-                        bestOfferCard(comp)
+                    } else if let comp = comparison, !comp.rows.isEmpty || !comp.references.isEmpty {
+                        if !comp.rows.isEmpty { bestOfferCard(comp) }
                         if !sales.isEmpty { salesCard }
                         DashboardMarketPricesSection(
                             comparison: comp,
@@ -1824,6 +1823,13 @@ struct DashboardMarketPricesSection: View {
     /// Zapato del que se enseñan los precios (en Inicio): su foto, su marca y su nombre encabezan la tabla.
     var featured: UpsoledProduct?
     var selectedSize: String?
+    var initialReferences: [MarketReferenceQuote] = []
+
+    private var references: [MarketReferenceQuote] {
+        if let quotes = comparison?.references, !quotes.isEmpty { return quotes }
+        if !initialReferences.isEmpty { return initialReferences }
+        return featured.map { MarketReferenceStore.saved("product:\($0.slug)") } ?? []
+    }
 
     private let rowHeight: CGFloat = 52
     private var platforms: [String] {
@@ -1877,12 +1883,16 @@ struct DashboardMarketPricesSection: View {
                            sub: "Buy now · \(ask.platform)", color: DashboardHomePalette.accentGreen)
             }
 
-            if tableRows.isEmpty {
+            if !references.isEmpty {
+                MarketReferenceRows(quotes: references)
+            }
+
+            if tableRows.isEmpty && (references.isEmpty || selectedSize != nil) {
                 Text(emptyMessage)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity).padding(.vertical, 10)
-            } else {
+            } else if !tableRows.isEmpty {
                 HomeMarketPriceGridTable(platforms: platforms, rows: tableRows, rowHeight: rowHeight)
                 HStack(spacing: 12) {
                     ForEach(comparison?.platforms ?? []) { quote in
@@ -1926,6 +1936,36 @@ struct DashboardMarketPricesSection: View {
                     .foregroundStyle(Color.black.opacity(0.88))
             }
             Spacer(minLength: 0)
+        }
+    }
+}
+
+private struct MarketReferenceRows: View {
+    let quotes: [MarketReferenceQuote]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(quotes) { quote in
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if let url = quote.sourceURL {
+                            Link(quote.source, destination: url)
+                                .font(.subheadline.weight(.semibold))
+                        } else {
+                            Text(quote.source).font(.subheadline.weight(.semibold))
+                        }
+                        Text(quote.quoteKind.label + " · " + quote.observedOn)
+                            .font(.caption).foregroundStyle(.secondary)
+                        if quote.quoteKind == .estimate, let basis = quote.basis {
+                            Text(basis).font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Text(quote.amount, format: .currency(code: "USD"))
+                        .font(.subheadline.weight(.semibold)).monospacedDigit()
+                }
+                .accessibilityElement(children: .combine)
+            }
         }
     }
 }
@@ -2272,10 +2312,10 @@ struct HomeBentoGrid: View {
     @Binding var showsCards: Bool
     var onSneakers: () -> Void
     var onScan: () -> Void
-    var onCards: () -> Void
     @ObservedObject private var reports = SaleReportStore.shared
     @ObservedObject private var listings = ListingStore.shared
     @State private var showReports = false
+    @State private var openingBooster = false
 
     private var stock: [ClosetItem] { closetItems.filter(\.isActiveInStock) }
     private var sold: [ClosetItem] { closetItems.filter(\.isSold) }
@@ -2288,7 +2328,7 @@ struct HomeBentoGrid: View {
     var body: some View {
         VStack(spacing: 14) {
             // Banner de cartas
-            Button(action: onCards) {
+            Button { openingBooster = true } label: {
                 ZStack(alignment: .leading) {
                     // Las dos cartas se difuminan hacia el texto y hacia abajo.
                     HStack(spacing: -30) {
@@ -2306,10 +2346,10 @@ struct HomeBentoGrid: View {
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Trading Cards").font(.system(size: 24, weight: .heavy, design: .rounded)).foregroundStyle(.white)
-                        Text("Buy · Sell · Track value").font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.85))
+                        Text("Open Packs").font(.system(size: 24, weight: .heavy, design: .rounded)).foregroundStyle(.white)
+                        Text("Browse Pokémon collections").font(.system(size: 14, weight: .medium)).foregroundStyle(.white.opacity(0.85))
                         HStack(spacing: 6) {
-                            Text("Explore").font(.system(size: 14, weight: .bold))
+                            Text("Open a Pack").font(.system(size: 14, weight: .bold))
                             Image(systemName: "arrow.right").font(.system(size: 12, weight: .bold))
                         }
                         .foregroundStyle(.black).padding(.horizontal, 16).frame(height: 36)
@@ -2324,6 +2364,7 @@ struct HomeBentoGrid: View {
                 .glassEffect(.clear.tint(Color(red: 0.93, green: 0.05, blue: 0.05).opacity(0.35)).interactive(), in: .rect(cornerRadius: 26))
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("home.booster")
 
             GlassEffectContainer(spacing: 10) {
                 VStack(spacing: 10) {
@@ -2341,6 +2382,7 @@ struct HomeBentoGrid: View {
                 }
             }
         }
+        .fullScreenCover(isPresented: $openingBooster) { BoosterPacksView() }
         .fullScreenCover(isPresented: $showReports) {
             NavigationStack {
                 SaleReportsHistoryView()

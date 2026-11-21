@@ -206,7 +206,6 @@ struct CardsMarketView: View {
     @State private var openedCard: PokemonCardData?
     @State private var loadToken = 0
     @State private var failed = false
-    @State private var openingBooster = false
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
 
@@ -225,8 +224,6 @@ struct CardsMarketView: View {
                 Color.clear.frame(height: market.searchOpen ? 108 : 54)
 
                 if !sets.isEmpty { setsStrip }
-
-                openPackButton
 
                 LazyVGrid(columns: columns, spacing: 8) {
                     // La carta de ejemplo (con todos sus datos de mercado) va siempre la primera.
@@ -265,34 +262,7 @@ struct CardsMarketView: View {
         }
         .onChange(of: market.reloadToken) { _, _ in Task { await reload() } }
         .fullScreenCover(item: $report) { SaleReportView(report: $0) }
-        .fullScreenCover(isPresented: $openingBooster) { BoosterPacksView(initialPackID: selectedSet?.id) }
         .navigationDestination(item: $openedCard) { CardDetailView(card: $0) }
-    }
-
-    private var openPackButton: some View {
-        Button { openingBooster = true } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "rectangle.portrait.on.rectangle.portrait")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(Color(red: 0.12, green: 0.23, blue: 0.31), in: .rect(cornerRadius: 11))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Open a Pack")
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(.black)
-                    Text("Browse collections")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("cards.booster")
     }
 
     private var setsStrip: some View {

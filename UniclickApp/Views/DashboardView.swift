@@ -67,8 +67,15 @@ struct DashboardView: View {
                 guard scenePhase == .active else { return }
                 guard let lookup = resolvedMarketLookup() else { homeMarketComparison = nil; return }
                 if homeMarketComparison?.query != lookup.query { homeMarketComparison = nil }
+                let catalog = trendingHighlights.first { $0.id == lookup.sourceID }?.catalogProduct
+                    ?? homeCatalogVM.products.first {
+                        MarketComparison.skuEquals($0.sku, lookup.query)
+                            || $0.name.caseInsensitiveCompare(lookup.fallback ?? lookup.query) == .orderedSame
+                    }
                 await PublicPriceService.poll {
-                    let comparison = await PublicMarketComparison.load(query: lookup.query, fallback: lookup.fallback)
+                    let comparison = await PublicMarketComparison.load(
+                        query: lookup.query, fallback: lookup.fallback, product: catalog
+                    )
                     guard !Task.isCancelled else { return }
                     homeMarketComparison = comparison
                 }

@@ -1859,6 +1859,7 @@ struct StockScanLookupPayload: Identifiable {
     let matchingStockItemID: UUID?
     var initialComparison: MarketComparison? = nil
     var catalogUnavailable = false
+    var relatedStock: [ClosetItem] = []
 }
 
 enum StockScanLookupService {
@@ -1866,7 +1867,8 @@ enum StockScanLookupService {
     static func lookup(code rawCode: String, stock: [ClosetItem]) async -> StockScanLookupPayload {
         let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
         let gtin = ShoeGTIN.normalize(code)
-        let local = stock.first { item in
+        let available = stock.filter { $0.category == .shoes && $0.isActiveInStock }
+        let local = available.first { item in
             [item.resolvedSKU, item.skuText].compactMap { $0 }.contains { stored in
                 if let gtin { return ShoeGTIN.normalize(stored) == gtin }
                 return stored.caseInsensitiveCompare(code) == .orderedSame
@@ -1874,50 +1876,123 @@ enum StockScanLookupService {
         }
         if ShoeGTIN.isNumeric(code) {
             guard let gtin else { return unidentified(code) }
+            var unavailable = false
             do {
                 if let match = try await ShoeCatalogService.variant(gtin: gtin) {
-                    return resolved(match, code: code, local: local)
+                    return resolved(match, code: code, local: local, available: available)
                 }
             } catch {
-                if gtin != ShoeCatalogVariant.lostAndFoundGTIN && local == nil {
-                    return unidentified(code, unavailable: true)
-                }
+                unavailable = true
             }
             if gtin == ShoeCatalogVariant.lostAndFoundGTIN {
-                return resolved(ShoeCatalogVariant.lostAndFound, code: code, local: local)
+                return resolved(ShoeCatalogVariant.lostAndFound, code: code, local: local, available: available)
             }
             if let local {
-                return localMatch(local, code: code)
+                return localMatch(local, code: code, available: available)
             }
-            return unidentified(code)
+            if let product = await publicProduct(gtin: gtin, scannedCode: code) {
+                return matchInventory(product, local: nil, available: available)
+            }
+            return unidentified(code, unavailable: unavailable)
         }
 
-        if let local { return localMatch(local, code: code) }
+        if let local { return localMatch(local, code: code, available: available) }
 
         // A QR containing unrelated text or a URL is not a manufacturer style code.
         guard let style = SneakerSKU.extract(from: code), style.contains(where: \.isNumber),
               style.caseInsensitiveCompare(code) == .orderedSame else { return unidentified(code) }
+        if let item = available.first(where: { MarketComparison.skuEquals($0.resolvedSKU, style) }) {
+            return localMatch(item, code: code, available: available)
+        }
         let comparison = await PublicMarketComparison.load(query: style)
         guard let title = comparison.matchedTitle else { return unidentified(code) }
-        return StockScanLookupPayload(scannedCode: code, productTitle: title, brand: "",
+        let result = StockScanLookupPayload(scannedCode: code, productTitle: title, brand: "",
                                       sku: comparison.matchedSKU ?? style, imageURL: comparison.imageURL?.absoluteString,
                                       size: nil, sizeSystem: nil, matchingStockItemID: nil, initialComparison: comparison)
+        return matchInventory(result, local: nil, available: available)
     }
 
-    private static func resolved(_ variant: ShoeCatalogVariant, code: String, local: ClosetItem?) -> StockScanLookupPayload {
+    private static func resolved(_ variant: ShoeCatalogVariant, code: String, local: ClosetItem?,
+                                 available: [ClosetItem]) -> StockScanLookupPayload {
         let model = variant.model
-        return StockScanLookupPayload(scannedCode: code, productTitle: model.title, brand: model.brand ?? "",
+        let result = StockScanLookupPayload(scannedCode: code, productTitle: model.title, brand: model.brand ?? "",
                                       sku: model.styleCode, imageURL: model.imageURL, size: variant.usSize,
                                       sizeSystem: model.sizeSystem, matchingStockItemID: local?.id)
+        return matchInventory(result, local: local, available: available)
     }
 
-    private static func localMatch(_ item: ClosetItem, code: String) -> StockScanLookupPayload {
+    private static func localMatch(_ item: ClosetItem, code: String, available: [ClosetItem]) -> StockScanLookupPayload {
         let sku = item.resolvedSKU.flatMap { value in
             value.contains(where: \.isNumber) && !ShoeGTIN.isNumeric(value) ? value : nil
         }
         let size = item.sizeText.map(PublicPriceService.normalizeSize)
-        return StockScanLookupPayload(scannedCode: code, productTitle: item.catalogDisplayName, brand: item.brand ?? "",
+        let result = StockScanLookupPayload(scannedCode: code, productTitle: item.catalogDisplayName, brand: item.brand ?? "",
                                       sku: sku, imageURL: nil, size: size, sizeSystem: nil, matchingStockItemID: item.id)
+        return matchInventory(result, local: item, available: available)
+    }
+
+    private static func matchInventory(_ payload: StockScanLookupPayload, local: ClosetItem?,
+                                       available: [ClosetItem]) -> StockScanLookupPayload {
+        let name = tokens(payload.productTitle ?? "")
+        let brand = tokens(payload.brand)
+        let exact = local ?? available.first { item in
+            MarketComparison.skuEquals(item.resolvedSKU, payload.sku) &&
+                (payload.size == nil || item.sizeText.map(PublicPriceService.normalizeSize) == payload.size)
+        }
+        let ranked = available.compactMap { item -> (ClosetItem, Int)? in
+            guard item.id != exact?.id else { return nil }
+            let sameStyle = MarketComparison.skuEquals(item.resolvedSKU, payload.sku)
+            let shared = name.intersection(tokens(item.catalogDisplayName))
+            let sameBrand = !brand.isDisjoint(with: tokens(item.brand ?? ""))
+            let modelWords = shared.subtracting(brand).subtracting(["nike", "adidas", "jordan", "new", "balance"])
+            guard sameStyle || modelWords.count >= 2 || (sameBrand && !modelWords.isEmpty) else { return nil }
+            let sameSize = payload.size != nil && item.sizeText.map(PublicPriceService.normalizeSize) == payload.size
+            let score = (sameStyle ? 100 : 0) + shared.count * 5 + (sameBrand ? 3 : 0) + (sameSize ? 2 : 0)
+            return (item, score)
+        }.sorted {
+            $0.1 == $1.1 ? $0.0.catalogDisplayName < $1.0.catalogDisplayName : $0.1 > $1.1
+        }
+        return StockScanLookupPayload(scannedCode: payload.scannedCode, productTitle: payload.productTitle,
+                                      brand: payload.brand, sku: payload.sku, imageURL: payload.imageURL,
+                                      size: payload.size, sizeSystem: payload.sizeSystem, matchingStockItemID: exact?.id,
+                                      initialComparison: payload.initialComparison, relatedStock: ranked.prefix(6).map(\.0))
+    }
+
+    private static func tokens(_ text: String) -> Set<String> {
+        Set(text.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty && ($0.count > 1 || $0.first?.isNumber == true) })
+            .subtracting(["sneaker", "sneakers", "shoe", "shoes", "mens", "womens", "size", "us"])
+    }
+
+    private static func publicProduct(gtin: String, scannedCode: String) async -> StockScanLookupPayload? {
+        struct Result: Decodable {
+            struct Product: Decodable {
+                let upc: String?
+                let ean: String?
+                let gtin: String?
+                let title: String
+                let brand: String?
+                let model: String?
+                let category: String?
+                let images: [String]?
+            }
+            let items: [Product]
+        }
+        var url = URLComponents(string: "https://api.upcitemdb.com/prod/trial/lookup")!
+        url.queryItems = [.init(name: "upc", value: scannedCode)]
+        guard let endpoint = url.url,
+              let (data, response) = try? await URLSession.shared.data(for: URLRequest(url: endpoint, timeoutInterval: 5)),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let result = try? JSONDecoder().decode(Result.self, from: data),
+              let item = result.items.first(where: {
+                  [$0.upc, $0.ean, $0.gtin].compactMap { $0 }.contains { ShoeGTIN.normalize($0) == gtin } &&
+                      ["shoe", "sneaker", "footwear"].contains(where: ([$0.title, $0.category ?? ""].joined(separator: " ").lowercased()).contains)
+              }) else { return nil }
+        let style = SneakerSKU.extract(from: item.model ?? item.title)
+        let image = item.images?.first { URL(string: $0)?.scheme == "https" }
+        return StockScanLookupPayload(scannedCode: scannedCode, productTitle: item.title,
+                                      brand: item.brand ?? "", sku: style, imageURL: image,
+                                      size: nil, sizeSystem: nil, matchingStockItemID: nil)
     }
 
     private static func unidentified(_ code: String, unavailable: Bool = false) -> StockScanLookupPayload {
@@ -2330,6 +2405,26 @@ struct StockScanResultSheet: View {
                         if let itemID = payload.matchingStockItemID {
                             Button(L10n.tr("closet.scanViewInStock")) { onViewStockItem(itemID) }
                                 .buttonStyle(.bordered)
+                        }
+                        if !payload.relatedStock.isEmpty {
+                            Text("Similar shoes in stock").font(.headline)
+                            ForEach(payload.relatedStock) { item in
+                                Button { onViewStockItem(item.id) } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(item.catalogDisplayName).font(.subheadline.weight(.semibold))
+                                            if let size = item.sizeText, !size.isEmpty {
+                                                Text("Size \(size)").font(.caption).foregroundStyle(.secondary)
+                                            }
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                                    }
+                                    .padding(12)
+                                    .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 12))
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     } else {
                         Label(payload.catalogUnavailable ? "Catalog temporarily unavailable" : "Product not found in the catalog",

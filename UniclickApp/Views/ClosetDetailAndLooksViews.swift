@@ -3450,7 +3450,7 @@ struct CatalogShoeBody: View {
             }
 
             Group {
-                if let market = product.marketPrices, !market.quotes.isEmpty {
+                if (marketComparison?.rows.isEmpty ?? true), let market = product.marketPrices, !market.quotes.isEmpty {
                     // El precio de mercado guardado en el catálogo, con su diseño de siempre.
                     CatalogStoredPriceCard(market: market)
                 } else {
@@ -3466,7 +3466,12 @@ struct CatalogShoeBody: View {
                 (icon: "paintpalette", title: "Colorway", value: sample?.colorway ?? CatalogShelf.colorway(of: product.name)),
                 (icon: "shippingbox", title: "Condition", value: "New"),
             ] + (sample?.details ?? [])).padding(.top, 22)
-            DashboardMarketPricesSection(comparison: marketComparison, maxVisibleRows: nil, selectedSize: size)
+            DashboardMarketPricesSection(
+                comparison: marketComparison,
+                maxVisibleRows: nil,
+                selectedSize: size,
+                initialReferences: MarketReferenceStore.saved("product:\(product.slug)")
+            )
                 .tourTarget("shoe.compare").padding(.top, 18)
             ShoeMarketHistoryCard(sales: [])
                 .tourTarget("shoe.history")
@@ -3481,7 +3486,7 @@ struct CatalogShoeBody: View {
             let hasManufacturerCode = HomeSneakerHighlight.isRealStyleCode(sku) && !ShoeGTIN.isNumeric(sku)
             let query = hasManufacturerCode ? sku : product.name
             await PublicPriceService.poll {
-                let result = await PublicMarketComparison.load(query: query, fallback: hasManufacturerCode ? product.name : nil)
+                let result = await PublicMarketComparison.load(query: query, fallback: hasManufacturerCode ? product.name : nil, product: product)
                 guard !Task.isCancelled else { return }
                 marketComparison = result
             }

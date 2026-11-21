@@ -1,4 +1,60 @@
 import Foundation
+import Supabase
+
+struct MarketReferenceQuote: Decodable, Sendable, Identifiable {
+    enum Kind: String, Decodable, Sendable {
+        case snapshot, market, estimate, listing
+
+        var label: String {
+            switch self {
+            case .snapshot: "Marketplace snapshot"
+            case .market: "Market reference"
+            case .estimate: "Comparable estimate"
+            case .listing: "Catalog asking price"
+            }
+        }
+    }
+
+    let source: String
+    let quoteKind: Kind
+    let amount: Double
+    let observedOn: String
+    let basis: String?
+    let sourceURL: URL?
+    var id: String { "\(source)-\(quoteKind.rawValue)" }
+
+    private enum CodingKeys: String, CodingKey {
+        case source, amount, basis
+        case quoteKind = "quote_kind"
+        case observedOn = "observed_on"
+        case sourceURL = "source_url"
+    }
+}
+
+enum MarketReferenceStore {
+    private static let bundled: [String: [MarketReferenceQuote]] = {
+        guard let url = Bundle.main.url(forResource: "MarketReferences", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let records = try? JSONDecoder().decode([String: [MarketReferenceQuote]].self, from: data)
+        else { return [:] }
+        return records
+    }()
+
+    static func saved(_ key: String) -> [MarketReferenceQuote] {
+        bundled[key] ?? []
+    }
+
+    static func load(_ key: String) async -> [MarketReferenceQuote] {
+        let local = saved(key)
+        let remote: [MarketReferenceQuote]? = try? await SupabaseClientProvider.catalogAnon
+            .from("market_references")
+            .select("source,quote_kind,amount,observed_on,basis,source_url")
+            .eq("item_key", value: key)
+            .execute().value
+        guard let remote, !remote.isEmpty else { return local }
+        return remote.sorted { $0.source.localizedStandardCompare($1.source) == .orderedAscending }
+    }
+}
 
 struct PublicProductOffer: Sendable {
     let source: String

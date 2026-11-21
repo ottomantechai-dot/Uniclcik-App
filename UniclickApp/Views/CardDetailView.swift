@@ -12,12 +12,21 @@ struct CardDetailView: View {
     @State private var report: SaleReport?
     @State private var checkedCardID: String?
     @State private var publicPrices: PublicCardPrices?
+    @State private var storedReference: MarketReferenceQuote?
+    @State private var referenceCardID: String?
     /// Cartas de cada colección ya pedidas: al volver a una colección salen al instante.
     private static var relatedCache: [String: [PokemonCardData]] = [:]
 
     private let gray = Color(red: 0.965, green: 0.965, blue: 0.975)
     private var number: String { card.id.split(separator: "-").last.map { "#" + $0 } ?? "—" }
     private var quotes: PublicCardPrices? { checkedCardID == card.id ? publicPrices : nil }
+    private var tcgReference: MarketReferenceQuote? {
+        if referenceCardID == card.id, let storedReference { return storedReference }
+        return MarketReferenceStore.saved("card:\(card.id)").first { $0.source == "TCGplayer" }
+    }
+    private var tcgMarket: Double? {
+        tcgReference?.amount ?? card.tcgMarketUSD.flatMap { $0 > 0 ? $0 : nil }
+    }
     private let priceSources = ["PriceCharting", "TCGplayer", "eBay"]
     private static let saleDateFormat = Date.FormatStyle(date: .abbreviated, time: .omitted, timeZone: .gmt)
     private var setLogo: URL? { PokemonTCGClient.storedSets().first { $0.name == card.setName }?.logoURL }
@@ -140,6 +149,13 @@ struct CardDetailView: View {
                 CardImage.prefetch(found.compactMap(\.thumbURL))
                 related = found.filter { $0.id != card.id }
             }
+            .task(id: card.id) {
+                let id = card.id
+                let references = await MarketReferenceStore.load("card:\(id)")
+                guard !Task.isCancelled else { return }
+                storedReference = references.first { $0.source == "TCGplayer" }
+                referenceCardID = id
+            }
             .task(id: scenePhase == .active ? card.id : nil) {
                 guard scenePhase == .active else { return }
                 let id = card.id
@@ -176,11 +192,19 @@ struct CardDetailView: View {
     private var priceCard: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Ungraded market estimate")
+                Text(tcgMarket == nil ? "Ungraded market estimate" : "Ungraded market price")
                     .font(.system(size: 13, weight: .medium)).foregroundStyle(.black.opacity(0.55))
-                Text(quotes?.estimates["Raw"].map(SaleReport.usd) ?? "—")
+                Text((tcgMarket ?? quotes?.estimates["Raw"]).map(SaleReport.usd) ?? "—")
                     .font(.system(size: 34, weight: .heavy, design: .rounded)).foregroundStyle(.black)
-                if let quotes {
+                if tcgMarket != nil {
+                    if let reference = tcgReference, let url = reference.sourceURL {
+                        Link("TCGplayer · \(reference.observedOn)", destination: url)
+                            .font(.system(size: 11, weight: .medium))
+                    } else {
+                        Text("TCGplayer market price")
+                            .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                    }
+                } else if let quotes {
                     Link("PriceCharting · Checked \(quotes.checkedAt.formatted(date: .omitted, time: .shortened))", destination: quotes.url)
                         .font(.system(size: 11, weight: .medium))
                 } else {
@@ -246,7 +270,7 @@ struct CardDetailView: View {
                     }
                 }
             }
-            Text("PriceCharting shows estimates. eBay and TCGplayer show sales recorded by PriceCharting.")
+            Text("PriceCharting shows estimates. Dated entries are recorded sales. TCGplayer also shows the ungraded market price when available.")
                 .font(.system(size: 12, weight: .medium)).foregroundStyle(.black.opacity(0.45))
                 .frame(maxWidth: .infinity).padding(.top, 4)
         }
@@ -257,7 +281,8 @@ struct CardDetailView: View {
 
     private func gradeCell(source: String, grade: String) -> some View {
         let sale = quotes?.latestSale(source: source, grade: grade)
-        let value = source == "PriceCharting" ? quotes?.estimates[grade] : sale?.amount
+        let reference = source == "TCGplayer" && grade == "Raw" && sale == nil ? tcgMarket : nil
+        let value = source == "PriceCharting" ? quotes?.estimates[grade] : (sale?.amount ?? reference)
         let cell = VStack(spacing: 2) {
             Text(value.map(SaleReport.usd) ?? "—")
                 .font(.system(size: 14, weight: value == nil ? .semibold : .heavy, design: .rounded))
@@ -266,13 +291,16 @@ struct CardDetailView: View {
             if let sale {
                 Text(sale.date, format: Self.saleDateFormat)
                     .font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
+            } else if reference != nil {
+                Text("Market")
+                    .font(.system(size: 9)).foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, minHeight: 42)
         .background { RoundedRectangle(cornerRadius: 11).strokeBorder(Color.black.opacity(0.08)) }
 
         return Group {
-            if let url = sale?.url {
+            if let url = sale?.url ?? (reference != nil ? tcgReference?.sourceURL : nil) {
                 Link(destination: url) { cell }.buttonStyle(.plain)
             } else {
                 cell
