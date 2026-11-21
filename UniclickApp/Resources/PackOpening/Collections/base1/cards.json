@@ -1,0 +1,101 @@
+[
+  {
+    "id": "base1-23",
+    "name": "Arcanine",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "base1-23",
+    "referencePrice": 3.95
+  },
+  {
+    "id": "base1-29",
+    "name": "Haunter",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "base1-29",
+    "referencePrice": 2.51
+  },
+  {
+    "id": "base1-36",
+    "name": "Magmar",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "base1-36",
+    "referencePrice": 2.88
+  },
+  {
+    "id": "base1-42",
+    "name": "Wartortle",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "base1-42",
+    "referencePrice": 7.62
+  },
+  {
+    "id": "base1-49",
+    "name": "Drowzee",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "base1-49",
+    "referencePrice": 0.8
+  },
+  {
+    "id": "base1-55",
+    "name": "Nidoran ♂",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "base1-55",
+    "referencePrice": 1.02
+  },
+  {
+    "id": "base1-62",
+    "name": "Sandshrew",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "base1-62",
+    "referencePrice": 1.13
+  },
+  {
+    "id": "base1-69",
+    "name": "Weedle",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "base1-69",
+    "referencePrice": 0.55
+  },
+  {
+    "id": "base1-4",
+    "name": "Charizard",
+    "rarity": "Rare Holo",
+    "special": true,
+    "featured": true,
+    "marketID": "base1-4",
+    "referencePrice": 1001.05
+  },
+  {
+    "id": "base1-2",
+    "name": "Blastoise",
+    "rarity": "Rare Holo",
+    "special": true,
+    "featured": true,
+    "marketID": "base1-2",
+    "referencePrice": 232.43
+  },
+  {
+    "id": "base1-15",
+    "name": "Venusaur",
+    "rarity": "Rare Holo",
+    "special": true,
+    "featured": true,
+    "marketID": "base1-15",
+    "referencePrice": 134.84
+  }
+]

@@ -1,0 +1,101 @@
+[
+  {
+    "id": "sv3pt5-1",
+    "name": "Bulbasaur",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv03.5-001",
+    "referencePrice": 0.26
+  },
+  {
+    "id": "sv3pt5-21",
+    "name": "Spearow",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv03.5-021",
+    "referencePrice": 0.21
+  },
+  {
+    "id": "sv3pt5-42",
+    "name": "Golbat",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "sv03.5-042",
+    "referencePrice": 0.19
+  },
+  {
+    "id": "sv3pt5-59",
+    "name": "Arcanine",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "sv03.5-059",
+    "referencePrice": 0.25
+  },
+  {
+    "id": "sv3pt5-78",
+    "name": "Rapidash",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "sv03.5-078",
+    "referencePrice": 0.22
+  },
+  {
+    "id": "sv3pt5-96",
+    "name": "Drowzee",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv03.5-096",
+    "referencePrice": 0.14
+  },
+  {
+    "id": "sv3pt5-117",
+    "name": "Seadra",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "sv03.5-117",
+    "referencePrice": 0.15
+  },
+  {
+    "id": "sv3pt5-148",
+    "name": "Dragonair",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "sv03.5-148",
+    "referencePrice": 0.25
+  },
+  {
+    "id": "sv3pt5-199",
+    "name": "Charizard ex",
+    "rarity": "Special Illustration Rare",
+    "special": true,
+    "featured": true,
+    "marketID": "sv03.5-199",
+    "referencePrice": 279.23
+  },
+  {
+    "id": "sv3pt5-200",
+    "name": "Blastoise ex",
+    "rarity": "Special Illustration Rare",
+    "special": true,
+    "featured": true,
+    "marketID": "sv03.5-200",
+    "referencePrice": 106.38
+  },
+  {
+    "id": "sv3pt5-198",
+    "name": "Venusaur ex",
+    "rarity": "Special Illustration Rare",
+    "special": true,
+    "featured": true,
+    "marketID": "sv03.5-198",
+    "referencePrice": 84.85
+  }
+]

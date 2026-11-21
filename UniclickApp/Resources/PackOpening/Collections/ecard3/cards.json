@@ -1,0 +1,101 @@
+[
+  {
+    "id": "ecard3-36",
+    "name": "Electrode",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "ecard3-36",
+    "referencePrice": 19.48
+  },
+  {
+    "id": "ecard3-47",
+    "name": "Buried Fossil",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "ecard3-47",
+    "referencePrice": 20.77
+  },
+  {
+    "id": "ecard3-59",
+    "name": "Gligar",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "ecard3-59",
+    "referencePrice": 8.38
+  },
+  {
+    "id": "ecard3-71",
+    "name": "Lapras",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "ecard3-71",
+    "referencePrice": 33.43
+  },
+  {
+    "id": "ecard3-82",
+    "name": "Nidoran ♀",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "ecard3-82",
+    "referencePrice": 27.68
+  },
+  {
+    "id": "ecard3-94",
+    "name": "Seel",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "ecard3-94",
+    "referencePrice": 42.46
+  },
+  {
+    "id": "ecard3-106",
+    "name": "Sunkern",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "ecard3-106",
+    "referencePrice": 12.52
+  },
+  {
+    "id": "ecard3-118",
+    "name": "Zubat",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "ecard3-118",
+    "referencePrice": 39.06
+  },
+  {
+    "id": "ecard3-146",
+    "name": "Charizard",
+    "rarity": "Crystal Rare",
+    "special": true,
+    "featured": true,
+    "marketID": "ecard3-146",
+    "referencePrice": 2999.99
+  },
+  {
+    "id": "ecard3-149",
+    "name": "Ho-oh",
+    "rarity": "Crystal Rare",
+    "special": true,
+    "featured": true,
+    "marketID": "ecard3-149",
+    "referencePrice": 900.0
+  },
+  {
+    "id": "ecard3-145",
+    "name": "Celebi",
+    "rarity": "Crystal Rare",
+    "special": true,
+    "featured": true,
+    "marketID": "ecard3-145",
+    "referencePrice": 775.0
+  }
+]

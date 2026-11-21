@@ -1,0 +1,101 @@
+[
+  {
+    "id": "swsh11-1",
+    "name": "Oddish",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh11-001",
+    "referencePrice": 0.15
+  },
+  {
+    "id": "swsh11-18",
+    "name": "Blipbug",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh11-018",
+    "referencePrice": 0.21
+  },
+  {
+    "id": "swsh11-36",
+    "name": "Seadra",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh11-036",
+    "referencePrice": 0.08
+  },
+  {
+    "id": "swsh11-54",
+    "name": "Electrike",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh11-054",
+    "referencePrice": 0.1
+  },
+  {
+    "id": "swsh11-86",
+    "name": "Machop",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh11-086",
+    "referencePrice": 0.2
+  },
+  {
+    "id": "swsh11-102",
+    "name": "Gastrodon",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh11-102",
+    "referencePrice": 0.15
+  },
+  {
+    "id": "swsh11-125",
+    "name": "Bronzor",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh11-125",
+    "referencePrice": 0.15
+  },
+  {
+    "id": "swsh11-150",
+    "name": "Skwovet",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh11-150",
+    "referencePrice": 0.12
+  },
+  {
+    "id": "swsh11-186",
+    "name": "Giratina V",
+    "rarity": "Alternate Art",
+    "special": true,
+    "featured": true,
+    "marketID": "swsh11-186",
+    "referencePrice": 820.91
+  },
+  {
+    "id": "swsh11-180",
+    "name": "Aerodactyl V",
+    "rarity": "Alternate Art",
+    "special": true,
+    "featured": true,
+    "marketID": "swsh11-180",
+    "referencePrice": 196.35
+  },
+  {
+    "id": "swsh11-177",
+    "name": "Rotom V",
+    "rarity": "Alternate Art",
+    "special": true,
+    "featured": true,
+    "marketID": "swsh11-177",
+    "referencePrice": 25.71
+  }
+]

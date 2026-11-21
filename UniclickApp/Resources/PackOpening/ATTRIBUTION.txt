@@ -1,3 +1,18 @@
 Pokémon Card 3D by Johana-PS (geometry adapted to the app’s rounded card).
 https://sketchfab.com/3d-models/pokemon-card-3d-bf8b809b801248e7a316d4ad7727345a
 Licensed under CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+
+Collection pack photography (TCGplayer product listings)
+Evolving Skies: https://www.tcgplayer.com/product/244337/pokemon-swsh07-evolving-skies-evolving-skies-booster-pack
+Fusion Strike: https://www.tcgplayer.com/product/247646/pokemon-swsh08-fusion-strike-fusion-strike-booster-pack
+Lost Origin: https://www.tcgplayer.com/product/277325/pokemon-swsh11-lost-origin-lost-origin-booster-pack
+151: https://www.tcgplayer.com/product/504467/pokemon-sv-scarlet-and-violet-151-151-booster-pack
+Prismatic Evolutions: https://www.tcgplayer.com/product/593294/pokemon-sv-prismatic-evolutions-prismatic-evolutions-booster-pack
+Destined Rivals: https://www.tcgplayer.com/product/624683/pokemon-sv10-destined-rivals-destined-rivals-booster-pack
+Skyridge: https://www.tcgplayer.com/product/138153/pokemon-skyridge-skyridge-booster-pack
+Base Set: https://www.tcgplayer.com/product/138130/pokemon-base-set-base-set-booster-pack-revised-unlimited-edition
+Neo Destiny: https://www.tcgplayer.com/product/138147/pokemon-neo-destiny-neo-destiny-booster-pack-unlimited-edition
+Team Up: https://www.tcgplayer.com/product/181699/pokemon-sm-team-up-team-up-booster-pack
+
+Card illustrations and collection data: Pokémon TCG API (https://pokemontcg.io/).
+Market reference snapshot: TCGplayer data via TCGCSV, 2026-11-21 (USD).

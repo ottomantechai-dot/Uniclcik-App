@@ -2,21 +2,38 @@ import CoreImage.CIFilterBuiltins
 import SceneKit
 import SwiftUI
 
+struct BoosterPack: Decodable, Identifiable {
+    let id: String
+    let name: String
+    let series: String
+    let year: Int
+
+    static let paradoxRift = BoosterPack(id: "sv4", name: "Paradox Rift", series: "Scarlet & Violet", year: 2023)
+    static let library = [paradoxRift] + ((try? BoosterResources.load("collections.json") as [BoosterPack]) ?? [])
+
+    var catalog: String { id == "sv4" ? "paradox-rift.json" : "Collections/\(id)/cards.json" }
+    var front: String { id == "sv4" ? "pack-front.jpg" : "Collections/\(id)/front.jpg" }
+    var back: String { id == "sv4" ? "pack-back.jpg" : "Collections/back.jpg" }
+    var logo: UIImage? {
+        BoosterResources.image(id == "sv4" ? "paradox-rift-logo.png" : "Collections/\(id)/logo.png")
+    }
+}
+
 struct BoosterCard: Decodable, Identifiable {
     let id: String
     let name: String
     let rarity: String
     let special: Bool
+    let featured: Bool?
+    let marketID: String?
+    let referencePrice: Double?
 
-    /// Carta especial de verdad: las de arte completo, numeradas por encima de la colección
-    /// (Illustration Rare, Ultra Rare, Special Illustration Rare e Hyper Rare).
     var isHit: Bool {
-        ["Illustration Rare", "Ultra Rare", "Special Illustration Rare", "Hyper Rare"].contains(rarity)
+        featured ?? ["Illustration Rare", "Ultra Rare", "Special Illustration Rare", "Hyper Rare"].contains(rarity)
     }
 
     func image() -> UIImage? {
-        UIImage(contentsOfFile: BoosterResources.folder
-            .appendingPathComponent("Cards/\(id).jpg").path)
+        BoosterResources.image("Cards/\(id).jpg")
     }
 }
 
@@ -29,11 +46,18 @@ enum BoosterResources {
         try JSONDecoder().decode(T.self, from: Data(contentsOf: folder.appendingPathComponent(name)))
     }
 
+    static func image(_ name: String) -> UIImage? {
+        UIImage(contentsOfFile: folder.appendingPathComponent(name).path)
+    }
+
     static func draw(from catalog: [BoosterCard]) throws -> [BoosterCard] {
         let standard = Dictionary(grouping: catalog.filter { !$0.special }, by: \.id)
             .values.compactMap(\.first)
         // La última carta es siempre de las más raras de la colección.
-        let top = catalog.filter { ["Special Illustration Rare", "Hyper Rare"].contains($0.rarity) }
+        let featured = catalog.filter { $0.featured == true }
+        let top = featured.isEmpty
+            ? catalog.filter { ["Special Illustration Rare", "Hyper Rare"].contains($0.rarity) }
+            : featured
         guard standard.count >= 4, let hit = (top.isEmpty ? catalog.filter(\.isHit) : top).randomElement() else {
             throw CocoaError(.fileReadCorruptFile)
         }
@@ -99,6 +123,148 @@ final class BoosterScene {
         }
     }
 
+    private struct Model {
+        let manifest: Manifest
+        let meshes: [String: ModelMesh]
+
+        init() throws {
+            manifest = try BoosterResources.load("scene.json")
+            guard manifest.poses.count > 1,
+                  manifest.poses.allSatisfy({ $0.values.allSatisfy { $0.transform.count == 16 } }) else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+
+            let bytes = try Data(contentsOf: BoosterResources.folder.appendingPathComponent("geometry.bin"),
+                                 options: .mappedIfSafe)
+            func data(at span: [Int]) throws -> Data {
+                guard span.count == 2, span[0] >= 0, span[0] <= bytes.count, span[1] >= 0,
+                      span[1] <= (bytes.count - span[0]) / 4 else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                return bytes.subdata(in: span[0]..<(span[0] + span[1] * 4))
+            }
+
+            func source(_ span: [Int], _ semantic: SCNGeometrySource.Semantic, _ size: Int) throws -> SCNGeometrySource {
+                let block = try data(at: span)
+                return SCNGeometrySource(data: block, semantic: semantic, vectorCount: block.count / (4 * size),
+                                         usesFloatComponents: true, componentsPerVector: size,
+                                         bytesPerComponent: 4, dataOffset: 0, dataStride: 4 * size)
+            }
+
+            meshes = try manifest.geometry.mapValues { mesh in
+                let elements = try mesh.parts.map { part in
+                    let indices = try data(at: part.triangles)
+                    return SCNGeometryElement(data: indices, primitiveType: .triangles,
+                                              primitiveCount: indices.count / 12, bytesPerIndex: 4)
+                }
+                let mapping = try source(mesh.uvs, .texcoord, 2)
+                func geometry(positions: [Int], normals: [Int]) throws -> SCNGeometry {
+                    SCNGeometry(sources: [
+                        try source(positions, .vertex, 3), try source(normals, .normal, 3), mapping
+                    ], elements: elements)
+                }
+                return try ModelMesh(
+                    geometry: geometry(positions: mesh.positions, normals: mesh.normals),
+                    materials: mesh.parts.map(\.material),
+                    morphs: mesh.morphs.map { try geometry(positions: $0.positions, normals: $0.normals) }
+                )
+            }
+        }
+    }
+
+    private struct ModelMesh {
+        let geometry: SCNGeometry
+        let materials: [String]
+        let morphs: [SCNGeometry]
+
+        func node(materials palette: [String: SCNMaterial], morphing: Bool) throws -> SCNNode {
+            guard let geometry = geometry.copy() as? SCNGeometry else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            geometry.materials = try materials.map {
+                guard let material = palette[$0] else { throw CocoaError(.fileReadCorruptFile) }
+                return material
+            }
+            let node = SCNNode(geometry: geometry)
+            if morphing && !morphs.isEmpty {
+                let morpher = SCNMorpher()
+                morpher.calculationMode = .additive
+                morpher.targets = morphs
+                node.morpher = morpher
+            }
+            return node
+        }
+    }
+
+    private static let model = Result { try Model() }
+    private static let studio = BoosterResources.image("studio.jpg")
+
+    @MainActor
+    final class Wheel {
+        let scene = SCNScene()
+        let camera = SCNNode()
+        private let model: Model
+        private var packs: [String: SCNNode] = [:]
+
+        init(library: [BoosterPack]) throws {
+            model = try BoosterScene.model.get()
+            BoosterScene.configureStage(scene, camera: camera, fieldOfView: model.manifest.fieldOfView)
+            for pack in library {
+                packs[pack.id] = try makePack(pack)
+            }
+        }
+
+        var preparedNodes: [SCNNode] { Array(packs.values) }
+
+        func place(_ library: [BoosterPack], layout: BoosterWheelLayout, position: Double,
+                   tilt: CGSize, reduceMotion: Bool) {
+            guard layout.size.width > 0 else { return }
+            let sceneWidth = 12 * tan(model.manifest.fieldOfView * .pi / 360)
+            let unitsPerPoint = sceneWidth / layout.size.width
+            let packScale = layout.packWidth * unitsPerPoint / (2 * model.manifest.packHalfWidth)
+            for (index, pack) in library.enumerated() {
+                let placement = layout.placement(index: index, count: library.count, position: position)
+                guard placement.isVisible else {
+                    packs[pack.id]?.isHidden = true
+                    continue
+                }
+                guard let node = packs[pack.id] else { continue }
+                let inspection = reduceMotion ? 0 : max(0, 1 - placement.depth)
+                let yaw = (reduceMotion ? 0 : placement.yaw) + tilt.width * inspection
+                let pitch = tilt.height * inspection
+                let z = -placement.depth * 0.17
+                let perspective = (6 - z) / 6
+                let scale = Float(packScale * placement.scale * perspective)
+                node.isHidden = false
+                node.opacity = placement.opacity
+                node.simdScale = SIMD3(repeating: scale)
+                node.simdPosition = SIMD3(
+                    Float((placement.x + tilt.width * inspection * 0.55) * unitsPerPoint * perspective),
+                    Float(-(placement.y + tilt.height * inspection * 0.55) * unitsPerPoint * perspective),
+                    Float(z)
+                )
+                node.simdOrientation = simd_quatf(angle: Float(yaw) * .pi / 180, axis: SIMD3(0, 1, 0))
+                    * simd_quatf(angle: Float(pitch) * .pi / 180, axis: SIMD3(1, 0, 0))
+            }
+        }
+
+        private func makePack(_ pack: BoosterPack) throws -> SCNNode {
+            let materials = try BoosterScene.packMaterials(for: pack)
+            let root = SCNNode()
+            for label in ["wrapper", "flap", "bottom"] {
+                guard let mesh = model.meshes[label], let pose = model.manifest.poses[0][label] else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                let node = try mesh.node(materials: materials, morphing: false)
+                node.simdTransform = pose.matrix
+                root.addChildNode(node)
+            }
+            root.isHidden = true
+            scene.rootNode.addChildNode(root)
+            return root
+        }
+    }
+
     let scene = SCNScene()
     let camera = SCNNode()
     private let pivot = SCNNode()
@@ -159,74 +325,23 @@ final class BoosterScene {
         abs(location.y - viewport.height / 2) < viewport.width * manifest.packTopHeight / sceneWidth + 12
     }
 
-    init() throws {
-        manifest = try BoosterResources.load("scene.json")
+    init(pack: BoosterPack) throws {
+        let model = try Self.model.get()
+        manifest = model.manifest
         settledCardY = Double(manifest.poses.last?["card"]?.matrix.columns.3.y ?? 0)
-        let bytes = try Data(contentsOf: BoosterResources.folder.appendingPathComponent("geometry.bin"),
-                             options: .mappedIfSafe)
-        guard manifest.poses.count > 1,
-              manifest.poses.allSatisfy({ $0.values.allSatisfy { $0.transform.count == 16 } }) else {
-            throw CocoaError(.fileReadCorruptFile)
-        }
 
-        func data(at span: [Int]) throws -> Data {
-            guard span.count == 2, span[0] >= 0, span[0] <= bytes.count, span[1] >= 0,
-                  span[1] <= (bytes.count - span[0]) / 4 else {
-                throw CocoaError(.fileReadCorruptFile)
-            }
-            return bytes.subdata(in: span[0]..<(span[0] + span[1] * 4))
-        }
-
-        func source(_ span: [Int], _ semantic: SCNGeometrySource.Semantic, _ size: Int) throws -> SCNGeometrySource {
-            let block = try data(at: span)
-            return SCNGeometrySource(data: block, semantic: semantic, vectorCount: block.count / (4 * size),
-                                     usesFloatComponents: true, componentsPerVector: size,
-                                     bytesPerComponent: 4, dataOffset: 0, dataStride: 4 * size)
-        }
-
-        let materials: [String: SCNMaterial] = [
-            "front": try Self.printed("pack-front.jpg", vivid: true),
-            "reverse": try Self.printed("pack-back.jpg", vivid: true),
-            "crimp": Self.metal(.init(white: 0.64, alpha: 1), roughness: 0.28),
-            "edge": try Self.brushed("foil-edge.jpg", roughness: 0.45),
-            "liner": try Self.brushed("foil-liner.jpg", roughness: 0.55),
-            "cardBack": try Self.printed("card-back.jpg", metalness: 0.04),
-            "cardTrim": Self.metal(.init(white: 0.52, alpha: 1), roughness: 0.47)
-        ]
+        var materials = try Self.packMaterials(for: pack)
+        materials["cardBack"] = try Self.printed("card-back.jpg", metalness: 0.04)
+        materials["cardTrim"] = Self.metal(.init(white: 0.52, alpha: 1), roughness: 0.47)
         Self.configurePrint(face, metalness: 0.04)
+        materials["cardFace"] = face
 
-        for (label, mesh) in manifest.geometry {
-            let parts = try mesh.parts.map { part in
-                let indices = try data(at: part.triangles)
-                return SCNGeometryElement(data: indices, primitiveType: .triangles,
-                                          primitiveCount: indices.count / 12, bytesPerIndex: 4)
-            }
-            let mapping = try source(mesh.uvs, .texcoord, 2)
-            let geometry = SCNGeometry(sources: [
-                try source(mesh.positions, .vertex, 3),
-                try source(mesh.normals, .normal, 3),
-                mapping
-            ], elements: parts)
-            geometry.materials = try mesh.parts.map {
-                if $0.material == "cardFace" { return face }
-                guard let material = materials[$0.material] else { throw CocoaError(.fileReadCorruptFile) }
-                return material
-            }
-            let object = SCNNode(geometry: geometry)
+        for (label, mesh) in model.meshes {
+            let object = try mesh.node(materials: materials, morphing: true)
             object.name = label
-            if !mesh.morphs.isEmpty {
-                let morpher = SCNMorpher()
-                morpher.calculationMode = .additive
-                morpher.targets = try mesh.morphs.map { morph in
-                    SCNGeometry(sources: [
-                        try source(morph.positions, .vertex, 3),
-                        try source(morph.normals, .normal, 3),
-                        mapping
-                    ], elements: parts)
-                }
-                object.morpher = morpher
+            if label == "flap", let geometry = object.geometry {
+                applyTearShader(to: geometry, heightOffset: 0)
             }
-            if label == "flap" { applyTearShader(to: geometry, heightOffset: 0) }
             pivot.addChildNode(object)
             nodes[label] = object
         }
@@ -254,16 +369,7 @@ final class BoosterScene {
         nodes["card"] = nil
         makeSpecialEffects(for: geometry)
 
-        scene.background.contents = nil
-        scene.lightingEnvironment.contents = try Self.image("studio.jpg")
-        scene.lightingEnvironment.intensity = 1.04
-        camera.camera = SCNCamera()
-        camera.camera?.projectionDirection = .horizontal
-        camera.camera?.fieldOfView = manifest.fieldOfView
-        camera.camera?.zNear = 0.12
-        camera.camera?.zFar = 30
-        camera.position = SCNVector3(0, 0, Float(cameraDistance))
-        scene.rootNode.addChildNode(camera)
+        Self.configureStage(scene, camera: camera, fieldOfView: manifest.fieldOfView)
         scene.rootNode.addChildNode(pivot)
 
         sealGuideGeometry.materials = [Self.glowingSealMaterial(Self.sealGuideTexture())]
@@ -276,9 +382,6 @@ final class BoosterScene {
         sealGlint.opacity = 0
         sealGuide.addChildNode(sealGlint)
 
-        addLight(x: -2.2, y: 2.4, z: 4.2, intensity: 560, color: .white)
-        addLight(x: 2.6, y: -0.8, z: 2.8, intensity: 270,
-                 color: UIColor(red: 0.71, green: 0.84, blue: 1, alpha: 1))
         apply(frame: 0, viewport: .zero, focus: 0, firstCard: 0, slide: 0, cut: 0, cutWeight: 0)
     }
 
@@ -557,16 +660,43 @@ final class BoosterScene {
         return t * t * (3 - 2 * t)
     }
 
-    private func addLight(x: Float, y: Float, z: Float, intensity: CGFloat, color: UIColor) {
-        let node = SCNNode()
-        let light = SCNLight()
-        light.type = .directional
-        light.intensity = intensity
-        light.color = color
-        node.light = light
-        node.position = SCNVector3(x, y, z)
-        scene.rootNode.addChildNode(node)
-        node.look(at: SCNVector3Zero)
+    private static func configureStage(_ scene: SCNScene, camera: SCNNode, fieldOfView: Double) {
+        scene.lightingEnvironment.contents = studio
+        scene.lightingEnvironment.intensity = 1.04
+        let lens = SCNCamera()
+        lens.projectionDirection = .horizontal
+        lens.fieldOfView = fieldOfView
+        lens.zNear = 0.12
+        lens.zFar = 30
+        camera.camera = lens
+        camera.position = SCNVector3(0, 0, 6)
+        scene.rootNode.addChildNode(camera)
+
+        let lights: [(position: SCNVector3, intensity: CGFloat, color: UIColor)] = [
+            (.init(-2.2, 2.4, 4.2), 560, .white),
+            (.init(2.6, -0.8, 2.8), 270, .init(red: 0.71, green: 0.84, blue: 1, alpha: 1))
+        ]
+        for spec in lights {
+            let node = SCNNode()
+            let light = SCNLight()
+            light.type = .directional
+            light.intensity = spec.intensity
+            light.color = spec.color
+            node.light = light
+            node.position = spec.position
+            scene.rootNode.addChildNode(node)
+            node.look(at: .init(0, 0, 0))
+        }
+    }
+
+    private static func packMaterials(for pack: BoosterPack) throws -> [String: SCNMaterial] {
+        [
+            "front": try printed(pack.front, colorStrength: pack.id == "sv4" ? 1 : 0.42),
+            "reverse": try printed(pack.back, colorStrength: pack.id == "sv4" ? 1 : 0),
+            "crimp": metal(.init(white: 0.64, alpha: 1), roughness: 0.28),
+            "edge": try brushed("foil-edge.jpg", roughness: 0.45),
+            "liner": try brushed("foil-liner.jpg", roughness: 0.55)
+        ]
     }
 
     private func updateSealGuide(viewport: CGSize, scale: Double, lowered: Double,
@@ -645,7 +775,7 @@ final class BoosterScene {
     }
 
     private static func image(_ name: String) throws -> UIImage {
-        guard let image = UIImage(contentsOfFile: BoosterResources.folder.appendingPathComponent(name).path) else {
+        guard let image = BoosterResources.image(name) else {
             throw CocoaError(.fileReadCorruptFile)
         }
         return image
@@ -656,29 +786,33 @@ final class BoosterScene {
         material.metalness.contents = metalness
         material.roughness.contents = metalness > 0.1 ? 0.25 : 0.40
         material.emission.intensity = metalness > 0.1 ? 0.42 : 0.35
-        material.diffuse.mipFilter = .linear
-        material.emission.mipFilter = .linear
+        for channel in [material.diffuse, material.emission] {
+            channel.minificationFilter = .linear
+            channel.magnificationFilter = .linear
+            channel.mipFilter = .linear
+            channel.maxAnisotropy = 8
+        }
     }
 
     private static let printColorContext = CIContext(options: [.cacheIntermediates: false])
 
-    private static func vividPrint(_ image: UIImage) -> UIImage {
+    private static func vividPrint(_ image: UIImage, strength: Float) -> UIImage {
         guard let source = CIImage(image: image) else { return image }
         let color = CIFilter.colorControls()
         color.inputImage = source
-        color.saturation = 1.26
-        color.contrast = 1.04
-        color.brightness = 0.018
+        color.saturation = 1 + 0.26 * strength
+        color.contrast = 1 + 0.04 * strength
+        color.brightness = 0.018 * strength
         guard let output = color.outputImage,
               let corrected = printColorContext.createCGImage(output, from: source.extent) else { return image }
         return UIImage(cgImage: corrected, scale: image.scale, orientation: image.imageOrientation)
     }
 
-    private static func printed(_ name: String, metalness: CGFloat = 0.47, vivid: Bool = false) throws -> SCNMaterial {
+    private static func printed(_ name: String, metalness: CGFloat = 0.47, colorStrength: Float = 0) throws -> SCNMaterial {
         let material = SCNMaterial()
         configurePrint(material, metalness: metalness)
         let source = try image(name)
-        let print = vivid ? vividPrint(source) : source
+        let print = colorStrength > 0 ? vividPrint(source, strength: colorStrength) : source
         material.diffuse.contents = print
         material.emission.contents = print
         return material
@@ -701,6 +835,71 @@ final class BoosterScene {
         material.diffuse.wrapT = .repeat
         material.diffuse.contentsTransform = SCNMatrix4MakeScale(4, 4, 1)
         return material
+    }
+}
+
+struct BoosterWheelLayout {
+    let size: CGSize
+
+    var packWidth: CGFloat { min(size.width * 0.49, size.height * 0.31, 240) }
+    var packHeight: CGFloat { packWidth * 1.90 }
+    var spacing: CGFloat { max(1, min(size.width * 0.49, packWidth * 1.15)) }
+    private var raised: CGFloat { min(28, size.height * 0.045) }
+
+    struct Placement {
+        let distance: Double
+        let x: CGFloat
+        let y: CGFloat
+
+        var depth: Double { abs(distance) }
+        var scale: CGFloat { 1 - min(2.5, depth) * 0.14 }
+        var yaw: Double { -distance * 29 }
+        var opacity: CGFloat {
+            let edge = min(1, max(0, (2.65 - depth) / 1.45))
+            return (1 - min(depth, 1.2) * 0.23) * edge * edge * (3 - 2 * edge)
+        }
+        var isVisible: Bool { depth < 2.65 }
+    }
+
+    func placement(index: Int, count: Int, position: Double) -> Placement {
+        let count = Double(count)
+        let raw = Double(index) - position
+        let distance = raw - count * (raw / count).rounded()
+        let x = sin(distance * 0.70) / sin(0.70) * spacing
+        return Placement(distance: distance, x: x, y: -raised - min(2.5, abs(distance)) * 14)
+    }
+}
+
+struct BoosterWheelStage: UIViewRepresentable, Animatable {
+    let renderer: BoosterScene.Wheel
+    let packs: [BoosterPack]
+    let layout: BoosterWheelLayout
+    var position: Double
+    var tilt: CGSize
+    let reduceMotion: Bool
+
+    var animatableData: AnimatablePair<Double, AnimatablePair<CGFloat, CGFloat>> {
+        get { .init(position, .init(tilt.width, tilt.height)) }
+        set {
+            position = newValue.first
+            tilt = .init(width: newValue.second.first, height: newValue.second.second)
+        }
+    }
+
+    func makeUIView(context: Context) -> SCNView {
+        let view = BoosterStage.renderView(scene: renderer.scene, camera: renderer.camera)
+        view.prepare(renderer.preparedNodes, completionHandler: nil)
+        return view
+    }
+
+    func updateUIView(_ view: SCNView, context: Context) {
+        renderer.place(packs, layout: layout, position: position, tilt: tilt, reduceMotion: reduceMotion)
+        let moving = tilt != .zero || position != position.rounded()
+        if view.rendersContinuously != moving {
+            view.rendersContinuously = moving
+            view.isPlaying = moving
+        }
+        view.setNeedsDisplay()
     }
 }
 
@@ -729,10 +928,10 @@ struct BoosterStage: UIViewRepresentable, Animatable {
         }
     }
 
-    func makeUIView(context: Context) -> SCNView {
+    static func renderView(scene: SCNScene, camera: SCNNode) -> SCNView {
         let view = SCNView()
-        view.scene = renderer.scene
-        view.pointOfView = renderer.camera
+        view.scene = scene
+        view.pointOfView = camera
         view.antialiasingMode = .multisampling4X
         view.backgroundColor = .clear
         view.isOpaque = false
@@ -740,6 +939,11 @@ struct BoosterStage: UIViewRepresentable, Animatable {
         view.isUserInteractionEnabled = false
         view.rendersContinuously = false
         view.preferredFramesPerSecond = 60
+        return view
+    }
+
+    func makeUIView(context: Context) -> SCNView {
+        let view = Self.renderView(scene: renderer.scene, camera: renderer.camera)
         // Compila ya los brillos de la carta especial para que no haya parón al mostrarla.
         view.prepare(renderer.specialEffectNodes, completionHandler: nil)
         return view

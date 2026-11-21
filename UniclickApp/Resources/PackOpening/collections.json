@@ -1,0 +1,62 @@
+[
+  {
+    "id": "swsh7",
+    "name": "Evolving Skies",
+    "series": "Sword & Shield",
+    "year": 2021
+  },
+  {
+    "id": "swsh8",
+    "name": "Fusion Strike",
+    "series": "Sword & Shield",
+    "year": 2021
+  },
+  {
+    "id": "swsh11",
+    "name": "Lost Origin",
+    "series": "Sword & Shield",
+    "year": 2022
+  },
+  {
+    "id": "sv3pt5",
+    "name": "151",
+    "series": "Scarlet & Violet",
+    "year": 2023
+  },
+  {
+    "id": "sv8pt5",
+    "name": "Prismatic Evolutions",
+    "series": "Scarlet & Violet",
+    "year": 2025
+  },
+  {
+    "id": "sv10",
+    "name": "Destined Rivals",
+    "series": "Scarlet & Violet",
+    "year": 2025
+  },
+  {
+    "id": "ecard3",
+    "name": "Skyridge",
+    "series": "e-Card",
+    "year": 2003
+  },
+  {
+    "id": "base1",
+    "name": "Base Set",
+    "series": "Base",
+    "year": 1999
+  },
+  {
+    "id": "neo4",
+    "name": "Neo Destiny",
+    "series": "Neo",
+    "year": 2002
+  },
+  {
+    "id": "sm9",
+    "name": "Team Up",
+    "series": "Sun & Moon",
+    "year": 2019
+  }
+]

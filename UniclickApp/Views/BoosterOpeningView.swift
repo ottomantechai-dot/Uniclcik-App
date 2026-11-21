@@ -1,10 +1,465 @@
 import AVFAudio
+import ImageIO
 import SwiftUI
 
-struct BoosterOpeningView: View {
+struct BoosterPacksView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("packTour.browseLearned") private var browseLearned = false
+    @AppStorage("packTour.selectLearned") private var selectLearned = false
+    @State private var position: Double
+    @State private var gestureOrigin: Double?
+    @State private var tilt = CGSize.zero
+    @State private var inspectionReturn: Task<Void, Never>?
+    @State private var snap: Task<Void, Never>?
+    @State private var paging = false
+    @State private var selected: BoosterPack?
+    @State private var renderer: BoosterScene.Wheel?
+
+    private static let packs = BoosterPack.library
+    private static let logos = Dictionary(uniqueKeysWithValues: packs.compactMap { pack in
+        pack.logo.map { (pack.id, $0) }
+    })
+    private static let previews: [String: UIImage] = Dictionary(uniqueKeysWithValues: packs.compactMap { pack in
+        let url = BoosterResources.folder.appendingPathComponent(pack.front)
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 800
+        ]
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+        else { return nil }
+        return (pack.id, UIImage(cgImage: image))
+    })
+
+    private var centeredIndex: Int { wrapped(Int(position.rounded())) }
+
+    init(initialPackID: String? = nil) {
+        let index = Self.packs.firstIndex { $0.id == initialPackID } ?? 0
+        _position = State(initialValue: Double(index))
+    }
+
+    var body: some View {
+        ZStack {
+            if let selected {
+                BoosterOpeningView(pack: selected) {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) {
+                        self.selected = nil
+                    }
+                }
+                .id(selected.id)
+                .transition(.opacity)
+            } else {
+                picker
+                    .transition(.opacity)
+            }
+        }
+        .background { BoosterBackdrop() }
+        .preferredColorScheme(.light)
+        .task {
+            guard renderer == nil else { return }
+            renderer = try? BoosterScene.Wheel(library: Self.packs)
+        }
+        .onDisappear {
+            inspectionReturn?.cancel()
+            snap?.cancel()
+        }
+    }
+
+    private var picker: some View {
+        let pack = Self.packs[centeredIndex]
+        return VStack(spacing: 0) {
+            ZStack(alignment: .leading) {
+                BoosterCollectionBadge(name: pack.name, logo: Self.logos[pack.id])
+                    .accessibilityIdentifier("cards.booster.collection")
+
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close packs")
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 6)
+
+            wheel
+                .frame(maxHeight: .infinity)
+        }
+        .foregroundStyle(.primary)
+    }
+
+    private var wheel: some View {
+        GeometryReader { proxy in
+            let layout = BoosterWheelLayout(size: proxy.size)
+            ZStack {
+                ForEach(Self.packs.indices, id: \.self) { index in
+                    let placement = layout.placement(index: index, count: Self.packs.count, position: position)
+                    if placement.isVisible {
+                        let pack = Self.packs[index]
+                        Button {
+                            if index == centeredIndex && snap == nil {
+                                inspectionReturn?.cancel()
+                                tilt = .zero
+                                selectLearned = true
+                                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) {
+                                    selected = pack
+                                }
+                            } else {
+                                settle(at: (position + placement.distance).rounded())
+                            }
+                        } label: {
+                            packSurface(pack, layout: layout)
+                        }
+                        .buttonStyle(.plain)
+                        .scaleEffect(placement.scale)
+                        .rotation3DEffect(.degrees(reduceMotion ? 0 : placement.yaw),
+                                          axis: (x: 0, y: 1, z: 0), perspective: 0.40)
+                        .offset(x: placement.x, y: placement.y)
+                        .opacity(placement.opacity)
+                        .zIndex(-placement.depth)
+                        .accessibilityLabel(pack.name)
+                        .accessibilityHint("Double-tap to select. Swipe horizontally to browse more packs.")
+                        .accessibilityIdentifier("cards.booster.pack.\(pack.id)")
+                        .accessibilityHidden(index != centeredIndex)
+                    }
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .overlay {
+                if let renderer {
+                    BoosterWheelStage(renderer: renderer, packs: Self.packs, layout: layout,
+                                      position: position, tilt: tilt, reduceMotion: reduceMotion)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+            .overlay {
+                if gestureOrigin == nil && snap == nil && (!browseLearned || !selectLearned) {
+                    let kind: BoosterGestureCoach.Kind = browseLearned ? .select : .browse
+                    let center = layout.placement(index: centeredIndex, count: Self.packs.count, position: position)
+                    BoosterGestureCoach(kind: kind, travel: layout.packWidth * 0.64, captionOffset: 59)
+                        .position(x: proxy.size.width / 2,
+                                  y: proxy.size.height / 2 + center.y + layout.packHeight * 0.26)
+                }
+            }
+            .contentShape(Rectangle())
+            .clipped()
+            .highPriorityGesture(wheelGesture(layout))
+            .accessibilityElement(children: .contain)
+            .accessibilityAdjustableAction { action in
+                switch action {
+                case .increment: settle(by: 1)
+                case .decrement: settle(by: -1)
+                @unknown default: break
+                }
+            }
+        }
+        .sensoryFeedback(.selection, trigger: centeredIndex)
+    }
+
+    private func packSurface(_ pack: BoosterPack, layout: BoosterWheelLayout) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 5)
+        return Color.clear
+            .frame(width: layout.packWidth, height: layout.packHeight)
+            .overlay {
+                if let image = Self.previews[pack.id] {
+                    if renderer == nil {
+                        Image(uiImage: image).resizable().interpolation(.high).clipShape(shape)
+                    }
+                    Image(uiImage: image).resizable().interpolation(.high)
+                        .clipShape(shape)
+                        .scaleEffect(x: 1, y: -1)
+                        .mask(alignment: .top) {
+                            LinearGradient(colors: [.white.opacity(0.21), .clear],
+                                           startPoint: .top, endPoint: .bottom)
+                                .frame(height: layout.packWidth * 0.68)
+                        }
+                        .offset(y: layout.packHeight + 9)
+                        .allowsHitTesting(false)
+                }
+            }
+            .contentShape(shape)
+    }
+
+    private func wheelGesture(_ layout: BoosterWheelLayout) -> some Gesture {
+        DragGesture(minimumDistance: 6)
+            .onChanged { value in
+                if gestureOrigin == nil {
+                    let interrupted = snap != nil
+                    snap?.cancel()
+                    snap = nil
+                    inspectionReturn?.cancel()
+                    inspectionReturn = nil
+                    gestureOrigin = position
+                    paging = interrupted
+                }
+                guard let gestureOrigin else { return }
+                let movement = value.translation
+                if paging || isBrowse(movement, spacing: layout.spacing) {
+                    let threshold = paging && gestureOrigin != gestureOrigin.rounded() ? 0 : browseThreshold(layout.spacing)
+                    paging = true
+                    tilt = .zero
+                    position = gestureOrigin + browseOffset(movement.width, spacing: layout.spacing, threshold: threshold)
+                } else if !reduceMotion {
+                    tilt = inspectionTilt(for: movement)
+                }
+            }
+            .onEnded { value in
+                let origin = gestureOrigin ?? position
+                gestureOrigin = nil
+                let movement = value.translation
+                let shouldBrowse = paging || isBrowse(movement, spacing: layout.spacing)
+                paging = false
+                guard shouldBrowse else {
+                    guard !reduceMotion else { return }
+                    tilt = inspectionTilt(for: movement)
+                    inspectionReturn = Task { @MainActor in
+                        do {
+                            try await Task.sleep(for: .milliseconds(75))
+                        } catch {
+                            return
+                        }
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) { tilt = .zero }
+                        inspectionReturn = nil
+                    }
+                    return
+                }
+                let threshold = origin == origin.rounded() ? browseThreshold(layout.spacing) : 0
+                let offset = browseOffset(movement.width, spacing: layout.spacing, threshold: threshold)
+                let fling = (movement.width - value.predictedEndTranslation.width) / layout.spacing
+                let projected = offset + min(0.60, max(-0.60, fling * 0.5))
+                let bias = abs(projected) >= 0.32 ? (projected > 0 ? 0.17 : -0.17) : 0
+                let target = (origin + projected + bias).rounded()
+                if target != origin.rounded() { browseLearned = true }
+                settle(at: target)
+            }
+    }
+
+    private func browseThreshold(_ spacing: CGFloat) -> CGFloat {
+        min(32, spacing * 0.16)
+    }
+
+    private func isBrowse(_ movement: CGSize, spacing: CGFloat) -> Bool {
+        abs(movement.width) > browseThreshold(spacing) && abs(movement.width) > abs(movement.height) * 1.15
+    }
+
+    private func browseOffset(_ horizontal: CGFloat, spacing: CGFloat, threshold: CGFloat) -> Double {
+        min(2.25, max(0, abs(horizontal) - threshold) / spacing) * (horizontal < 0 ? 1 : -1)
+    }
+
+    private func inspectionTilt(for movement: CGSize) -> CGSize {
+        CGSize(width: 18 * tanh(movement.width / 28),
+               height: 15 * tanh(movement.height / 36))
+    }
+
+    private func wrapped(_ index: Int) -> Int {
+        let count = Self.packs.count
+        return (index % count + count) % count
+    }
+
+    private func settle(by step: Int) {
+        settle(at: position.rounded() + Double(step))
+    }
+
+    private func settle(at target: Double) {
+        inspectionReturn?.cancel()
+        inspectionReturn = nil
+        snap?.cancel()
+        snap = nil
+        tilt = .zero
+        let start = position
+        let distance = target - start
+        guard !reduceMotion, abs(distance) > 0.001 else {
+            position = target
+            return
+        }
+
+        // The same position drives the foil, reflections, hit targets and logo throughout the snap.
+        let duration = min(0.36, 0.20 + abs(distance) * 0.11)
+        snap = Task { @MainActor in
+            let clock = ContinuousClock()
+            let began = clock.now
+            while !Task.isCancelled {
+                let elapsed = began.duration(to: clock.now).components
+                let seconds = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
+                let progress = min(1, seconds / duration)
+                position = start + distance * (1 - pow(1 - progress, 3))
+                if progress >= 1 {
+                    position = target
+                    snap = nil
+                    return
+                }
+                try? await clock.sleep(for: .milliseconds(16))
+            }
+        }
+    }
+}
+
+private struct BoosterGestureCoach: View {
+    enum Kind: String {
+        case browse, select, cut
+
+        var title: LocalizedStringKey {
+            switch self {
+            case .browse: "Swipe to browse"
+            case .select: "Tap the pack"
+            case .cut: "Swipe along the seal"
+            }
+        }
+    }
+
+    let kind: Kind
+    let travel: CGFloat
+    let captionOffset: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Color.clear.frame(width: 1, height: 1)
+            .overlay {
+                TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+                    let cycle = reduceMotion ? 0.42 : context.date.timeIntervalSinceReferenceDate
+                        .truncatingRemainder(dividingBy: 2.30) / 2.30
+                    let progress = min(1, max(0, (cycle - 0.17) / 0.55))
+                    let slide = progress * progress * (3 - 2 * progress)
+                    let opacity = reduceMotion ? 1 : min(1, cycle / 0.12, (1 - cycle) / 0.22)
+                    let x = kind == .select ? 0 : travel * (kind == .browse ? 0.5 - slide : slide - 0.5)
+                    let pulse = max(0, 1 - abs(cycle - 0.43) / 0.17)
+                    let hover = kind == .select ? 11 * (1 - pulse) : 0
+
+                    ZStack {
+                        Circle()
+                            .strokeBorder(.white.opacity(kind == .select ? 0.9 * pulse : 0.76), lineWidth: 1.4)
+                            .background(.cyan.opacity(0.25), in: .circle)
+                            .frame(width: 13, height: 13)
+                            .scaleEffect(kind == .select ? 1 + 1.1 * pulse : 1)
+                            .shadow(color: .blue.opacity(0.45), radius: 4)
+                        Image(systemName: "hand.point.up.left.fill")
+                            .font(.system(size: 29, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.60), radius: 1)
+                            .shadow(color: .black.opacity(0.22), radius: 4, y: 2)
+                            .offset(x: 12, y: 14 + hover)
+                    }
+                    .fixedSize()
+                    .offset(x: x)
+                    .opacity(opacity)
+                }
+                .accessibilityHidden(true)
+            }
+            .overlay {
+                Text(kind.title)
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .glassEffect(.regular, in: .capsule)
+                    .fixedSize()
+                    .offset(y: captionOffset)
+                    .accessibilityIdentifier("cards.booster.coach.\(kind.rawValue)")
+            }
+            .allowsHitTesting(false)
+    }
+}
+
+private struct BoosterBackdrop: View {
+    var special = false
+    private static let art = BoosterResources.image("opening-sky.png")
+
+    var body: some View {
+        ZStack {
+            if special {
+                BoosterSpecialSky()
+            } else {
+                GeometryReader { proxy in
+                    if let art = Self.art {
+                        Image(uiImage: art).resizable()
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                    } else {
+                        Color(red: 0.80, green: 0.90, blue: 0.96)
+                    }
+                }
+            }
+            BoosterBrandPattern()
+            if special { BoosterSpecialSparkles() }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct BoosterBrandPattern: View {
+    var body: some View {
+        Canvas { context, size in
+            let logo = context.resolve(Image("LoginBrandPattern"))
+            let spacing = min(104, max(64, size.width / 4.7))
+            let rowSpacing = spacing * 0.87
+            let rows = Int(ceil(size.height / rowSpacing))
+            let columns = Int(ceil(size.width / spacing))
+            let opacities = [0.10, 0.17, 0.12, 0.20]
+            let angles = [-11.0, 6.0, -4.0, 12.0]
+
+            for row in 0..<rows {
+                for column in 0..<columns {
+                    let variation = (row * 3 + column) % opacities.count
+                    let width = spacing * (0.38 + 0.04 * CGFloat(variation))
+                    let height = width * 726 / 663
+                    let stagger = row.isMultiple(of: 2) ? 0.32 : 0.74
+
+                    var stamp = context
+                    stamp.opacity = opacities[variation]
+                    stamp.translateBy(x: (CGFloat(column) + stagger) * spacing,
+                                      y: (CGFloat(row) + 0.45) * rowSpacing)
+                    stamp.rotate(by: .degrees(angles[variation]))
+                    stamp.draw(logo, in: CGRect(x: -width / 2, y: -height / 2, width: width, height: height))
+                }
+            }
+        }
+    }
+}
+
+private struct BoosterCollectionBadge: View {
+    let name: String
+    let logo: UIImage?
+
+    var body: some View {
+        Group {
+            if let logo {
+                Image(uiImage: logo).resizable().interpolation(.high).scaledToFit()
+                    .frame(width: 102, height: 38)
+            } else {
+                Text(name).font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .frame(height: 38)
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 4)
+        .glassEffect(.regular, in: .capsule)
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(.isHeader)
+        .padding(.horizontal, 56)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct BoosterOpeningView: View {
+    let pack: BoosterPack
+    let close: () -> Void
+    private let packLogo: UIImage?
+
+    init(pack: BoosterPack, close: @escaping () -> Void) {
+        self.pack = pack
+        self.close = close
+        packLogo = pack.logo
+    }
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("packTour.cutLearned") private var cutLearned = false
 
     private enum Phase: Equatable { case sealed, positioning, ready, opening, cards, finished }
     @State private var phase: Phase = .sealed
@@ -46,11 +501,6 @@ struct BoosterOpeningView: View {
     private let cutDuration = 0.20
     private let openingDuration = 1.36
     private let sealRelease = 0.29
-    private static let setLogo = UIImage(contentsOfFile: BoosterResources.folder
-        .appendingPathComponent("paradox-rift-logo.png").path)
-    private let sky = Color(red: 0.80, green: 0.90, blue: 0.96)
-    private static let backgroundArt = UIImage(contentsOfFile: BoosterResources.folder
-        .appendingPathComponent("opening-sky.png").path)
     private var card: BoosterCard? { hand.indices.contains(index) ? hand[index] : nil }
     private let specialDuration = 2.0
     /// La carta especial es la que está delante: fondo arcoíris, giro y brillo.
@@ -88,29 +538,16 @@ struct BoosterOpeningView: View {
         openingContent
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
-            ZStack {
-                GeometryReader { proxy in
-                    if let art = Self.backgroundArt {
-                        Image(uiImage: art)
-                            .resizable()
-                            .frame(width: proxy.size.width, height: proxy.size.height)
-                    } else {
-                        sky
-                    }
-                }
-                if specialActive { BoosterSpecialSky().transition(.opacity) }
-                brandPattern
-                if specialActive { BoosterSpecialSparkles().transition(.opacity) }
+            if specialActive {
+                BoosterBackdrop(special: true)
+                    .transition(.opacity)
             }
-            .animation(.easeInOut(duration: 0.55), value: specialActive)
-            .ignoresSafeArea()
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
         }
+        .animation(.easeInOut(duration: 0.55), value: specialActive)
         .preferredColorScheme(.light)
         .task(id: loadAttempt) { load() }
         .task(id: hand.map(\.id)) {
-            let quotes = await BoosterMarketPrices.load(hand.map(\.id))
+            let quotes = await BoosterMarketPrices.load(hand)
             if !Task.isCancelled { prices = quotes }
         }
         .task(id: phase) {
@@ -176,34 +613,6 @@ struct BoosterOpeningView: View {
         .sensoryFeedback(.selection, trigger: index)
     }
 
-    private var brandPattern: some View {
-        Canvas { context, size in
-            let logo = context.resolve(Image("LoginBrandPattern"))
-            let spacing = min(104, max(64, size.width / 4.7))
-            let rowSpacing = spacing * 0.87
-            let rows = Int(ceil(size.height / rowSpacing))
-            let columns = Int(ceil(size.width / spacing))
-            let opacities = [0.10, 0.17, 0.12, 0.20]
-            let angles = [-11.0, 6.0, -4.0, 12.0]
-
-            for row in 0..<rows {
-                for column in 0..<columns {
-                    let variation = (row * 3 + column) % opacities.count
-                    let width = spacing * (0.38 + 0.04 * CGFloat(variation))
-                    let height = width * 726 / 663
-                    let stagger = row.isMultiple(of: 2) ? 0.32 : 0.74
-
-                    var stamp = context
-                    stamp.opacity = opacities[variation]
-                    stamp.translateBy(x: (CGFloat(column) + stagger) * spacing,
-                                      y: (CGFloat(row) + 0.45) * rowSpacing)
-                    stamp.rotate(by: .degrees(angles[variation]))
-                    stamp.draw(logo, in: CGRect(x: -width / 2, y: -height / 2, width: width, height: height))
-                }
-            }
-        }
-    }
-
     private var openingContent: some View {
         ZStack {
             if phase == .finished {
@@ -257,7 +666,7 @@ struct BoosterOpeningView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            Button(action: { dismiss() }) {
+            Button(action: close) {
                 Text("Save")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
@@ -363,18 +772,9 @@ struct BoosterOpeningView: View {
 
     private var header: some View {
         ZStack(alignment: .leading) {
-            if let logo = Self.setLogo {
-                Image(uiImage: logo)
-                    .resizable().scaledToFit()
-                    .frame(width: 96, height: 38)
-                    .padding(.horizontal, 14).padding(.vertical, 4)
-                    .glassEffect(.regular, in: .capsule)
-                    .accessibilityLabel("Paradox Rift")
-                    .accessibilityAddTraits(.isHeader)
-                    .frame(maxWidth: .infinity)
-            }
+            BoosterCollectionBadge(name: pack.name, logo: packLogo)
 
-            Button { dismiss() } label: {
+            Button(action: close) {
                 Image(systemName: "xmark").font(.system(size: 16, weight: .semibold))
                     .frame(width: 44, height: 44)
                     .glassEffect(.regular.interactive(), in: .circle)
@@ -472,6 +872,12 @@ struct BoosterOpeningView: View {
                 }
             .accessibilityHidden(true)
             .overlay {
+                if phase == .ready && !cutLearned {
+                    BoosterGestureCoach(kind: .cut, travel: seal.width * 0.84, captionOffset: -42)
+                        .position(x: seal.midX, y: seal.midY)
+                }
+            }
+            .overlay {
                 Color.clear
                     .contentShape(Rectangle())
                     .gesture(interaction(in: size, seal: seal))
@@ -490,7 +896,9 @@ struct BoosterOpeningView: View {
                 gestureHint("Tap the pack", icon: "hand.tap")
                     .accessibilityAction(named: Text("Position pack")) { positionPack() }
             case .ready:
-                gestureHint("Swipe across the seal", icon: "hand.draw")
+                Color.clear.frame(width: 1, height: 1)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Pack seal")
                     .accessibilityAction(named: Text("Open pack")) { begin() }
             case .positioning, .opening, .finished:
                 EmptyView()
@@ -691,16 +1099,20 @@ struct BoosterOpeningView: View {
         guard renderer == nil else { return }
         loadError = false
         do {
-            let available: [BoosterCard] = try BoosterResources.load("paradox-rift.json")
+            let available: [BoosterCard] = try BoosterResources.load(pack.catalog)
             let cards = try BoosterResources.draw(from: available)
-            let scene = try BoosterScene()
+            let scene = try BoosterScene(pack: pack)
             hand = cards
+            prices = Dictionary(uniqueKeysWithValues: cards.compactMap { card in
+                card.referencePrice.map { (card.id, $0) }
+            })
             renderer = scene
             BoosterSounds.prepare()
             BoosterSounds.play(.appear)
             BoosterMusic.start()
+            positionPack()
         } catch {
-            print("[Booster] Could not load Paradox Rift: \(error)")
+            print("[Booster] Could not load \(pack.name): \(error)")
             loadError = true
         }
     }
@@ -716,6 +1128,7 @@ struct BoosterOpeningView: View {
 
     private func begin() {
         guard phase == .ready, renderer != nil else { return }
+        cutLearned = true
         BoosterSounds.play(.cut)
         dragTilt = .zero
         dragShift = .zero
@@ -947,10 +1360,10 @@ private enum BoosterMarketPrices {
         let pricing: Pricing?
     }
 
-    static func load(_ ids: [String]) async -> [String: Double] {
+    static func load(_ cards: [BoosterCard]) async -> [String: Double] {
         await withTaskGroup(of: (String, Double?).self) { group in
-            for id in ids {
-                group.addTask { (id, await quote(for: id)) }
+            for card in cards {
+                group.addTask { (card.id, await quote(for: card) ?? card.referencePrice) }
             }
 
             var quotes: [String: Double] = [:]
@@ -961,12 +1374,16 @@ private enum BoosterMarketPrices {
         }
     }
 
-    private static func quote(for id: String) async -> Double? {
-        guard id.hasPrefix("sv4-"), let number = Int(id.dropFirst(4)), (1...266).contains(number) else {
+    private static func quote(for card: BoosterCard) async -> Double? {
+        let catalogID: String
+        if let marketID = card.marketID {
+            catalogID = marketID
+        } else if card.id.hasPrefix("sv4-"), let number = Int(card.id.dropFirst(4)), (1...266).contains(number) {
+            catalogID = String(format: "sv04-%03d", number)
+        } else {
             return nil
         }
 
-        let catalogID = String(format: "sv04-%03d", number)
         guard let url = URL(string: "https://api.tcgdex.net/v2/en/cards/\(catalogID)"),
               let (data, response) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 8)),
               (response as? HTTPURLResponse)?.statusCode == 200,

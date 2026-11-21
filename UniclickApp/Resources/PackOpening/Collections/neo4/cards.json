@@ -1,0 +1,100 @@
+[
+  {
+    "id": "neo4-31",
+    "name": "Chansey",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "neo4-31",
+    "referencePrice": 31.77
+  },
+  {
+    "id": "neo4-39",
+    "name": "Dark Quilava",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "neo4-39",
+    "referencePrice": 5.16
+  },
+  {
+    "id": "neo4-48",
+    "name": "Light Jolteon",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "neo4-48",
+    "referencePrice": 82.62
+  },
+  {
+    "id": "neo4-56",
+    "name": "Togepi",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "neo4-56",
+    "referencePrice": 46.68
+  },
+  {
+    "id": "neo4-65",
+    "name": "Gastly",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "neo4-65",
+    "referencePrice": 2.48
+  },
+  {
+    "id": "neo4-73",
+    "name": "Machop",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "neo4-73",
+    "referencePrice": 0.89
+  },
+  {
+    "id": "neo4-82",
+    "name": "Slugma",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "neo4-82",
+    "referencePrice": 0.64
+  },
+  {
+    "id": "neo4-91",
+    "name": "Vulpix",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "neo4-91",
+    "referencePrice": 5.29
+  },
+  {
+    "id": "neo4-107",
+    "name": "Shining Charizard",
+    "rarity": "Rare Shining",
+    "special": true,
+    "featured": true,
+    "marketID": "neo4-107"
+  },
+  {
+    "id": "neo4-109",
+    "name": "Shining Mewtwo",
+    "rarity": "Rare Shining",
+    "special": true,
+    "featured": true,
+    "marketID": "neo4-109",
+    "referencePrice": 553.0
+  },
+  {
+    "id": "neo4-106",
+    "name": "Shining Celebi",
+    "rarity": "Rare Shining",
+    "special": true,
+    "featured": true,
+    "marketID": "neo4-106",
+    "referencePrice": 749.99
+  }
+]

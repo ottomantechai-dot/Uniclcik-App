@@ -19,7 +19,7 @@ struct AuthRootView: View {
                 // Solo en compilaciones de desarrollo y con el argumento -uniclickPreview: enseña las
                 // secciones nuevas sin iniciar sesión, para poder probarlas en el simulador.
                 MainTabView()
-                    .fullScreenCover(isPresented: $previewsBooster) { BoosterOpeningView() }
+                    .fullScreenCover(isPresented: $previewsBooster) { BoosterPacksView() }
             } else if auth.isRestoringSession {
                 ZStack {
                     Color(.systemGroupedBackground)

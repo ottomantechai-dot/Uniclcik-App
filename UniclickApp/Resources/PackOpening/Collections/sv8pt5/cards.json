@@ -1,0 +1,101 @@
+[
+  {
+    "id": "sv8pt5-1",
+    "name": "Exeggcute",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv08.5-001",
+    "referencePrice": 0.05
+  },
+  {
+    "id": "sv8pt5-10",
+    "name": "Dipplin",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "sv08.5-010",
+    "referencePrice": 0.18
+  },
+  {
+    "id": "sv8pt5-21",
+    "name": "Seaking",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "sv08.5-021",
+    "referencePrice": 0.18
+  },
+  {
+    "id": "sv8pt5-47",
+    "name": "Larvitar",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv08.5-047",
+    "referencePrice": 0.13
+  },
+  {
+    "id": "sv8pt5-61",
+    "name": "Sneasel",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv08.5-061",
+    "referencePrice": 0.1
+  },
+  {
+    "id": "sv8pt5-71",
+    "name": "Dreepy",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv08.5-071",
+    "referencePrice": 0.19
+  },
+  {
+    "id": "sv8pt5-83",
+    "name": "Buneary",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv08.5-083",
+    "referencePrice": 0.11
+  },
+  {
+    "id": "sv8pt5-90",
+    "name": "Noibat",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv08.5-090",
+    "referencePrice": 0.1
+  },
+  {
+    "id": "sv8pt5-161",
+    "name": "Umbreon ex",
+    "rarity": "Special Illustration Rare",
+    "special": true,
+    "featured": true,
+    "marketID": "sv08.5-161",
+    "referencePrice": 1132.83
+  },
+  {
+    "id": "sv8pt5-156",
+    "name": "Sylveon ex",
+    "rarity": "Special Illustration Rare",
+    "special": true,
+    "featured": true,
+    "marketID": "sv08.5-156",
+    "referencePrice": 377.39
+  },
+  {
+    "id": "sv8pt5-144",
+    "name": "Leafeon ex",
+    "rarity": "Special Illustration Rare",
+    "special": true,
+    "featured": true,
+    "marketID": "sv08.5-144",
+    "referencePrice": 254.87
+  }
+]

@@ -1,0 +1,101 @@
+[
+  {
+    "id": "swsh7-2",
+    "name": "Hoppip",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh7-2",
+    "referencePrice": 0.16
+  },
+  {
+    "id": "swsh7-23",
+    "name": "Pyroar",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh7-23",
+    "referencePrice": 0.09
+  },
+  {
+    "id": "swsh7-42",
+    "name": "Tympole",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh7-42",
+    "referencePrice": 0.09
+  },
+  {
+    "id": "swsh7-55",
+    "name": "Flaaffy",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh7-55",
+    "referencePrice": 0.2
+  },
+  {
+    "id": "swsh7-76",
+    "name": "Pumpkaboo",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh7-76",
+    "referencePrice": 0.19
+  },
+  {
+    "id": "swsh7-96",
+    "name": "Nuzleaf",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh7-96",
+    "referencePrice": 0.07
+  },
+  {
+    "id": "swsh7-126",
+    "name": "Teddiursa",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh7-126",
+    "referencePrice": 0.18
+  },
+  {
+    "id": "swsh7-139",
+    "name": "Fletchinder",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "swsh7-139",
+    "referencePrice": 0.08
+  },
+  {
+    "id": "swsh7-215",
+    "name": "Umbreon VMAX",
+    "rarity": "Alternate Art",
+    "special": true,
+    "featured": true,
+    "marketID": "swsh7-215",
+    "referencePrice": 2195.1
+  },
+  {
+    "id": "swsh7-218",
+    "name": "Rayquaza VMAX",
+    "rarity": "Alternate Art",
+    "special": true,
+    "featured": true,
+    "marketID": "swsh7-218",
+    "referencePrice": 1217.92
+  },
+  {
+    "id": "swsh7-192",
+    "name": "Dragonite V",
+    "rarity": "Alternate Art",
+    "special": true,
+    "featured": true,
+    "marketID": "swsh7-192",
+    "referencePrice": 473.87
+  }
+]

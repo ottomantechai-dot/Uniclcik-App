@@ -265,7 +265,7 @@ struct CardsMarketView: View {
         }
         .onChange(of: market.reloadToken) { _, _ in Task { await reload() } }
         .fullScreenCover(item: $report) { SaleReportView(report: $0) }
-        .fullScreenCover(isPresented: $openingBooster) { BoosterOpeningView() }
+        .fullScreenCover(isPresented: $openingBooster) { BoosterPacksView(initialPackID: selectedSet?.id) }
         .navigationDestination(item: $openedCard) { CardDetailView(card: $0) }
     }
 
@@ -280,7 +280,7 @@ struct CardsMarketView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Open a Pack")
                         .font(.subheadline.weight(.semibold)).foregroundStyle(.black)
-                    Text("Paradox Rift")
+                    Text("Browse collections")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()

@@ -1,0 +1,101 @@
+[
+  {
+    "id": "sv10-1",
+    "name": "Ethan's Pinsir",
+    "rarity": "Uncommon",
+    "special": false,
+    "featured": false,
+    "marketID": "sv10-001",
+    "referencePrice": 0.12
+  },
+  {
+    "id": "sv10-24",
+    "name": "Rellor",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv10-024",
+    "referencePrice": 0.12
+  },
+  {
+    "id": "sv10-48",
+    "name": "Misty's Magikarp",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv10-048",
+    "referencePrice": 0.26
+  },
+  {
+    "id": "sv10-73",
+    "name": "Team Rocket's Flaaffy",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv10-073",
+    "referencePrice": 0.16
+  },
+  {
+    "id": "sv10-94",
+    "name": "Team Rocket's Larvitar",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv10-094",
+    "referencePrice": 0.16
+  },
+  {
+    "id": "sv10-115",
+    "name": "Team Rocket's Nidorina",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv10-115",
+    "referencePrice": 0.17
+  },
+  {
+    "id": "sv10-137",
+    "name": "Marnie's Morpeko",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv10-137",
+    "referencePrice": 0.22
+  },
+  {
+    "id": "sv10-160",
+    "name": "Squawkabilly",
+    "rarity": "Common",
+    "special": false,
+    "featured": false,
+    "marketID": "sv10-160",
+    "referencePrice": 0.14
+  },
+  {
+    "id": "sv10-231",
+    "name": "Team Rocket's Mewtwo ex",
+    "rarity": "Special Illustration Rare",
+    "special": true,
+    "featured": true,
+    "marketID": "sv10-231",
+    "referencePrice": 279.99
+  },
+  {
+    "id": "sv10-232",
+    "name": "Cynthia's Garchomp ex",
+    "rarity": "Special Illustration Rare",
+    "special": true,
+    "featured": true,
+    "marketID": "sv10-232",
+    "referencePrice": 145.61
+  },
+  {
+    "id": "sv10-230",
+    "name": "Ethan's Ho-Oh ex",
+    "rarity": "Special Illustration Rare",
+    "special": true,
+    "featured": true,
+    "marketID": "sv10-230",
+    "referencePrice": 114.92
+  }
+]
