@@ -249,11 +249,21 @@ extension UserProfileService {
         let table = SupabaseClientProvider.profilesTableName
         let uid = userId.uuidString.lowercased()
 
+        struct AvatarRow: Encodable {
+            let userId: String
+            let avatarUrl: String
+            enum CodingKeys: String, CodingKey {
+                case userId = "user_id"
+                case avatarUrl = "avatar_url"
+            }
+        }
+
         do {
+            // Crea la fila de perfil si aún no existe y guarda la foto; con solo actualizar,
+            // una cuenta sin fila se quedaba sin foto y sin aviso.
             try await client
                 .from(table)
-                .update(patch)
-                .eq("user_id", value: uid)
+                .upsert(AvatarRow(userId: uid, avatarUrl: path), onConflict: "user_id")
                 .execute()
         } catch {
             // Some schemas use `id` = auth.users.id instead of `user_id`.

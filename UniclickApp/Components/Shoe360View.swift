@@ -47,7 +47,39 @@ final class Shoe360Loader: ObservableObject {
                 frames[frame] = image
             }
         }
+        // Las fotos que fallaron (red lenta, servidor saturado) se vuelven a pedir: sin ellas el giro da saltos.
+        for attempt in 1...3 {
+            let missing = frames.indices.filter { frames[$0] == nil }
+            guard !missing.isEmpty, loadedTitle == key else { break }
+            try? await Task.sleep(for: .milliseconds(500 * attempt))
+            await withTaskGroup(of: (Int, UIImage?).self) { group in
+                for frame in missing {
+                    group.addTask { (frame, await Self.image(slug: slug, frame: frame)) }
+                }
+                for await (frame, image) in group where loadedTitle == key {
+                    if let image {
+                        frames[frame] = image
+                        if !available { available = true }
+                    }
+                }
+            }
+        }
     }
+
+    #if DEBUG
+    /// Revisión de desarrollo: resuelve el giro de un producto y cuenta cuántas de sus 36 fotos cargan.
+    nonisolated static func audit(title: String, imageURL: URL?) async -> (slug: String?, loaded: Int) {
+        guard let slug = await resolveSlug(titles: [title], imageURLs: [imageURL].compactMap { $0 }, queries: []) else {
+            return (nil, 0)
+        }
+        var loaded = 0
+        await withTaskGroup(of: Bool.self) { group in
+            for frame in 0..<frameCount { group.addTask { await image(slug: slug, frame: frame) != nil } }
+            for await ok in group where ok { loaded += 1 }
+        }
+        return (slug, loaded)
+    }
+    #endif
 
     /// Descarga el giro por adelantado (lista del stock, tendencias) para que al abrir el zapato ya esté.
     nonisolated static func prefetch(titles: [String], imageURLs: [URL] = [], queries: [String] = []) async {
@@ -123,7 +155,7 @@ final class Shoe360Loader: ObservableObject {
         }
         guard let url = url(slug: slug, frame: frame) else { return nil }
         var request = URLRequest(url: url)
-        request.timeoutInterval = 15
+        request.timeoutInterval = 20
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               (response as? HTTPURLResponse)?.statusCode == 200, let image = UIImage(data: data) else { return nil }
         cache.setObject(image, forKey: name)
@@ -137,16 +169,26 @@ final class Shoe360Loader: ObservableObject {
 enum ShoeCutout {
     private nonisolated(unsafe) static let cache = NSCache<UIImage, UIImage>()
     private nonisolated(unsafe) static let trims = NSCache<UIImage, UIImage>()
+    private static let lock = NSLock()
+    private nonisolated(unsafe) static var working = Set<ObjectIdentifier>()
 
     /// Recorta por adelantado, fuera del hilo de la pantalla, para que el giro no dé tirones.
     /// `done` avisa (en el hilo principal) cada vez que hay recortes nuevos listos.
     static func prepare(_ sources: [UIImage], done: (@MainActor () -> Void)? = nil) {
-        let pending = sources.filter { cache.object(forKey: $0) == nil }
+        // Cada foto se recorta una sola vez aunque se pida muchas veces mientras llegan las demás.
+        lock.lock()
+        let pending = sources.filter { cache.object(forKey: $0) == nil && working.insert(ObjectIdentifier($0)).inserted }
+        lock.unlock()
         guard !pending.isEmpty else { return }
-        Task.detached(priority: .userInitiated) {
-            for (offset, source) in pending.enumerated() where cache.object(forKey: source) == nil {
-                if let result = cut(source) { cache.setObject(result, forKey: source) }
-                if offset == 0 || offset % 6 == 5 || offset == pending.count - 1, let done { await MainActor.run { done() } }
+        // Varias fotos a la vez y avisando en cada una: el giro se completa antes y sin saltos.
+        let lanes = 3
+        for lane in 0..<lanes {
+            Task.detached(priority: .userInitiated) {
+                for (offset, source) in pending.enumerated() where offset % lanes == lane {
+                    if cache.object(forKey: source) == nil, let result = cut(source) { cache.setObject(result, forKey: source) }
+                    lock.lock(); working.remove(ObjectIdentifier(source)); lock.unlock()
+                    if let done { await MainActor.run { done() } }
+                }
             }
         }
     }
@@ -332,20 +374,45 @@ struct Shoe360View: View {
 
     private var ready: Int { loader.frames.compactMap { $0 }.count }
 
+    /// La foto del ángulo actual o, si aún no está, la más cercana que sí: el giro nunca salta al frente.
+    private func nearest<T>(_ pick: (UIImage) -> T?) -> T? {
+        let count = Shoe360Loader.frameCount
+        for distance in 0...(count / 2) {
+            for candidate in [index + distance, index - distance] {
+                let frame = ((candidate % count) + count) % count
+                if let photo = loader.frames[frame], let hit = pick(photo) { return hit }
+            }
+        }
+        return nil
+    }
+
+    /// Fotos ordenadas desde el ángulo que se está viendo hacia fuera, para recortar primero las cercanas.
+    private var framesNearFirst: [UIImage] {
+        let count = Shoe360Loader.frameCount
+        var order: [UIImage] = []
+        for distance in 0...(count / 2) {
+            for candidate in Set([index + distance, index - distance]) {
+                if let photo = loader.frames[((candidate % count) + count) % count] { order.append(photo) }
+            }
+        }
+        return order
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
-            if loader.available, let image = loader.frames[index] ?? loader.frames[0] {
+            if loader.available, let image = nearest({ $0 }) {
+                let _ = cutTick
                 Group {
                     if !cutout {
                         Image(uiImage: image).resizable().scaledToFit()
-                    } else if let cut = ShoeCutout.cached(image) ?? loader.frames.lazy.compactMap({ $0 }).compactMap(ShoeCutout.cached).first {
+                    } else if let cut = nearest(ShoeCutout.cached) {
                         Image(uiImage: cut).resizable().scaledToFit()
                     } else {
                         // Aún no hay ninguna foto recortada: la silueta, nunca el recuadro blanco.
                         skeleton
                     }
                 }
-                    .id(cutTick)
+                    .contentShape(Rectangle())
                     .gesture(
                         DragGesture(minimumDistance: 2)
                             .onChanged { value in
@@ -361,10 +428,9 @@ struct Shoe360View: View {
                 // Con fondo de color: la foto de respaldo también va recortada, y mientras tanto la silueta.
                 if let fallbackCut { Image(uiImage: fallbackCut).resizable().scaledToFit() } else { skeleton }
             } else {
+                // Sin giro todavía: la foto del producto, y mientras llega, su silueta con brillo.
                 AsyncImage(url: fallbackURL) { phase in
-                    if let image = phase.image { image.resizable().scaledToFit() } else {
-                        Image(systemName: "shoe.2").font(.system(size: 40)).foregroundStyle(.black.opacity(0.2))
-                    }
+                    if let image = phase.image { image.resizable().scaledToFit() } else { skeleton }
                 }
             }
         }
@@ -395,7 +461,7 @@ struct Shoe360View: View {
             .allowsHitTesting(false)
         }
         .onChange(of: ready, initial: true) { _, _ in
-            if cutout { ShoeCutout.prepare(loader.frames.compactMap { $0 }) { cutTick += 1 } }
+            if cutout { ShoeCutout.prepare(framesNearFirst) { cutTick += 1 } }
         }
         .task(id: (cutout ? "cut:" : "") + (fallbackURL?.absoluteString ?? "")) {
             guard cutout, fallbackCut == nil, let fallbackURL else { return }

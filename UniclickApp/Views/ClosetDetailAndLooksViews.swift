@@ -354,7 +354,15 @@ struct ClosetGarmentDetailView: View {
 
             shoeSizeSelectorRow
 
-            shoeBuyMarketCard.padding(.top, 4)
+            Group {
+                if shoeBuyNowUSD == nil, let market = CatalogShelf.product(named: item.catalogDisplayName)?.marketPrices, !market.quotes.isEmpty {
+                    // Sin precio en vivo: el precio de mercado guardado en el catálogo.
+                    CatalogStoredPriceCard(market: market)
+                } else {
+                    shoeBuyMarketCard
+                }
+            }
+            .padding(.top, 4)
 
             shoeInlineMarketPrices
                 .padding(.top, 12)
@@ -2240,10 +2248,8 @@ private struct ClosetDiskThumbnail: View {
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ZStack {
-                    Color.white
-                    ProgressView().tint(.black)
-                }
+                // Mientras carga: la silueta con brillo, nunca la bolita.
+                ShoeSkeleton().padding(.horizontal, 30).padding(.vertical, 20)
             }
         }
         .background(Color.white)
@@ -3443,8 +3449,15 @@ struct CatalogShoeBody: View {
             .glassEffect(.regular, in: .rect(cornerRadius: 20))
             }
 
-            CatalogMarketPriceCard(comparison: marketComparison, size: size, isShoe: isShoe)
-                .tourTarget("shoe.price").padding(.top, 12)
+            Group {
+                if let market = product.marketPrices, !market.quotes.isEmpty {
+                    // El precio de mercado guardado en el catálogo, con su diseño de siempre.
+                    CatalogStoredPriceCard(market: market)
+                } else {
+                    CatalogMarketPriceCard(comparison: marketComparison, size: size, isShoe: isShoe)
+                }
+            }
+            .tourTarget("shoe.price").padding(.top, 12)
             SellButton(item: .shoe(name: product.name, brand: product.brand ?? "", imageURL: product.primaryImageURL)).padding(.top, 14)
             ShoeUsedListingsStrip(listings: [], title: product.name.firstUppercased).padding(.top, 18)
             ShoeRelatedShelf(name: product.name, brand: product.brand ?? "", onSelect: onSelect).padding(.top, 22)

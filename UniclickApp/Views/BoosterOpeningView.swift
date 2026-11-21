@@ -1,5 +1,6 @@
 import AVFAudio
 import ImageIO
+import PassKit
 import SwiftUI
 
 struct BoosterPacksView: View {
@@ -14,6 +15,8 @@ struct BoosterPacksView: View {
     @State private var snap: Task<Void, Never>?
     @State private var paging = false
     @State private var selected: BoosterPack?
+    @State private var purchasing = false
+    @State private var pendingPurchase: BoosterPack?
     @State private var renderer: BoosterScene.Wheel?
 
     private static let packs = BoosterPack.library
@@ -34,6 +37,7 @@ struct BoosterPacksView: View {
     })
 
     private var centeredIndex: Int { wrapped(Int(position.rounded())) }
+    private static let buyIcon = BoosterResources.image("buy-pack-icon.png")
 
     init(initialPackID: String? = nil) {
         let index = Self.packs.firstIndex { $0.id == initialPackID } ?? 0
@@ -61,9 +65,21 @@ struct BoosterPacksView: View {
             guard renderer == nil else { return }
             renderer = try? BoosterScene.Wheel(library: Self.packs)
         }
+        .onAppear {
+            BoosterSounds.prepare()
+            BoosterSounds.play(.appear)
+        }
+        .onChange(of: snap == nil) { _, settled in
+            if settled { purchasePending() }
+        }
+        .onChange(of: centeredIndex) {
+            // Cada sobre que pasa por el centro del carrusel suena.
+            if selected == nil { BoosterSounds.browse() }
+        }
         .onDisappear {
             inspectionReturn?.cancel()
             snap?.cancel()
+            BoosterMusic.stop()
         }
     }
 
@@ -102,14 +118,12 @@ struct BoosterPacksView: View {
                         let pack = Self.packs[index]
                         Button {
                             if index == centeredIndex && snap == nil {
-                                inspectionReturn?.cancel()
-                                tilt = .zero
-                                selectLearned = true
-                                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) {
-                                    selected = pack
-                                }
+                                buy(pack)
                             } else {
+                                // Tocar otro sobre lo trae al centro y abre el pago de ese sobre.
+                                pendingPurchase = pack
                                 settle(at: (position + placement.distance).rounded())
+                                if snap == nil { purchasePending() }
                             }
                         } label: {
                             packSurface(pack, layout: layout)
@@ -149,6 +163,40 @@ struct BoosterPacksView: View {
             .contentShape(Rectangle())
             .clipped()
             .highPriorityGesture(wheelGesture(layout))
+            .overlay {
+                // Botón de compra centrado justo debajo del sobre del centro.
+                let pack = Self.packs[centeredIndex]
+                let center = layout.placement(index: centeredIndex, count: Self.packs.count, position: Double(centeredIndex))
+                Button { buy(pack) } label: {
+                    HStack(spacing: 9) {
+                        if let icon = Self.buyIcon {
+                            Image(uiImage: icon).resizable().interpolation(.high).scaledToFit()
+                                .frame(width: 30, height: 30)
+                        }
+                        Text("Buy pack").font(.headline)
+                        if let price = pack.packPrice {
+                            Text(price, format: .currency(code: "USD"))
+                                .font(.headline.weight(.bold).monospacedDigit())
+                                .contentTransition(.numericText())
+                        }
+                    }
+                    .padding(.leading, 14).padding(.trailing, 20)
+                    .frame(height: 50)
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                }
+                .buttonStyle(.plain)
+                .disabled(purchasing)
+                .opacity(gestureOrigin == nil && snap == nil ? 1 : 0.35)
+                .animation(.easeOut(duration: 0.18), value: gestureOrigin == nil && snap == nil)
+                .animation(.easeOut(duration: 0.2), value: pack.id)
+                .accessibilityLabel(pack.packPrice.map {
+                    "Buy \(pack.name) pack for \($0.formatted(.currency(code: "USD")))"
+                } ?? "Buy \(pack.name) pack")
+                .accessibilityIdentifier("cards.booster.buy")
+                .position(x: proxy.size.width / 2,
+                          y: min(proxy.size.height - 34,
+                                 proxy.size.height / 2 + center.y + layout.packHeight / 2 + 46))
+            }
             .accessibilityElement(children: .contain)
             .accessibilityAdjustableAction { action in
                 switch action {
@@ -159,6 +207,28 @@ struct BoosterPacksView: View {
             }
         }
         .sensoryFeedback(.selection, trigger: centeredIndex)
+    }
+
+    private func purchasePending() {
+        guard let pack = pendingPurchase else { return }
+        pendingPurchase = nil
+        if Self.packs[centeredIndex].id == pack.id, gestureOrigin == nil { buy(pack) }
+    }
+
+    /// Pide el pago con Apple Pay y, cuando se autoriza, abre el sobre elegido.
+    private func buy(_ pack: BoosterPack) {
+        guard !purchasing, selected == nil else { return }
+        purchasing = true
+        inspectionReturn?.cancel()
+        tilt = .zero
+        BoosterCheckout.shared.pay(for: pack) { paid in
+            purchasing = false
+            guard paid else { return }
+            selectLearned = true
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) {
+                selected = pack
+            }
+        }
     }
 
     private func packSurface(_ pack: BoosterPack, layout: BoosterWheelLayout) -> some View {
@@ -189,6 +259,7 @@ struct BoosterPacksView: View {
         DragGesture(minimumDistance: 6)
             .onChanged { value in
                 if gestureOrigin == nil {
+                    pendingPurchase = nil
                     let interrupted = snap != nil
                     snap?.cancel()
                     snap = nil
@@ -231,7 +302,10 @@ struct BoosterPacksView: View {
                 let threshold = origin == origin.rounded() ? browseThreshold(layout.spacing) : 0
                 let offset = browseOffset(movement.width, spacing: layout.spacing, threshold: threshold)
                 let fling = (movement.width - value.predictedEndTranslation.width) / layout.spacing
-                let projected = offset + min(0.60, max(-0.60, fling * 0.5))
+                // Un gesto rápido lanza el carrusel varios sobres con inercia; uno lento pasa de uno en uno.
+                let projected = abs(fling) > 0.9
+                    ? offset + min(9, max(-9, fling * 1.25))
+                    : offset + min(0.60, max(-0.60, fling * 0.5))
                 let bias = abs(projected) >= 0.32 ? (projected > 0 ? 0.17 : -0.17) : 0
                 let target = (origin + projected + bias).rounded()
                 if target != origin.rounded() { browseLearned = true }
@@ -279,7 +353,8 @@ struct BoosterPacksView: View {
         }
 
         // The same position drives the foil, reflections, hit targets and logo throughout the snap.
-        let duration = min(0.36, 0.20 + abs(distance) * 0.11)
+        let long = abs(distance) > 2
+        let duration = long ? min(1.9, 0.34 + abs(distance) * 0.17) : min(0.36, 0.20 + abs(distance) * 0.11)
         snap = Task { @MainActor in
             let clock = ContinuousClock()
             let began = clock.now
@@ -287,7 +362,7 @@ struct BoosterPacksView: View {
                 let elapsed = began.duration(to: clock.now).components
                 let seconds = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
                 let progress = min(1, seconds / duration)
-                position = start + distance * (1 - pow(1 - progress, 3))
+                position = start + distance * (1 - pow(1 - progress, long ? 4 : 3))
                 if progress >= 1 {
                     position = target
                     snap = nil
@@ -416,6 +491,69 @@ private struct BoosterBrandPattern: View {
                     stamp.rotate(by: .degrees(angles[variation]))
                     stamp.draw(logo, in: CGRect(x: -width / 2, y: -height / 2, width: width, height: height))
                 }
+            }
+        }
+    }
+}
+
+/// Hoja de Apple Pay para comprar un sobre. De momento el total es $0: no se cobra nada.
+@MainActor
+private final class BoosterCheckout: NSObject, PKPaymentAuthorizationControllerDelegate {
+    static let shared = BoosterCheckout()
+    static let merchant = "merchant.com.upsoledd.app"
+
+    private var controller: PKPaymentAuthorizationController?
+    private var authorized = false
+    private var finish: ((Bool) -> Void)?
+
+    func pay(for pack: BoosterPack, done: @escaping (Bool) -> Void) {
+        let request = PKPaymentRequest()
+        request.merchantIdentifier = Self.merchant
+        request.countryCode = "US"
+        request.currencyCode = "USD"
+        request.supportedNetworks = [.visa, .masterCard, .amex, .discover]
+        request.merchantCapabilities = .threeDSecure
+        var items: [PKPaymentSummaryItem] = []
+        if let packPrice = pack.packPrice {
+            let price = NSDecimalNumber(string: String(format: "%.2f", packPrice))
+            items = [
+                PKPaymentSummaryItem(label: "\(pack.name) booster pack", amount: price),
+                PKPaymentSummaryItem(label: "Launch credit", amount: price.multiplying(by: -1))
+            ]
+        } else {
+            items = [PKPaymentSummaryItem(label: "\(pack.name) booster pack", amount: .zero)]
+        }
+        request.paymentSummaryItems = items + [PKPaymentSummaryItem(label: "Uniclick", amount: .zero)]
+
+        let controller = PKPaymentAuthorizationController(paymentRequest: request)
+        controller.delegate = self
+        self.controller = controller
+        authorized = false
+        finish = done
+        controller.present { presented in
+            Task { @MainActor in
+                guard !presented else { return }
+                print("[Booster] Apple Pay sheet could not be presented")
+                self.controller = nil
+                self.finish?(false)
+                self.finish = nil
+            }
+        }
+    }
+
+    nonisolated func paymentAuthorizationController(_ controller: PKPaymentAuthorizationController,
+                                                    didAuthorizePayment payment: PKPayment,
+                                                    handler completion: @escaping (PKPaymentAuthorizationResult) -> Void) {
+        Task { @MainActor in self.authorized = true }
+        completion(PKPaymentAuthorizationResult(status: .success, errors: nil))
+    }
+
+    nonisolated func paymentAuthorizationControllerDidFinish(_ controller: PKPaymentAuthorizationController) {
+        controller.dismiss {
+            Task { @MainActor in
+                self.controller = nil
+                self.finish?(self.authorized)
+                self.finish = nil
             }
         }
     }
@@ -590,7 +728,8 @@ private struct BoosterOpeningView: View {
         }
         .onChange(of: specialActive) { _, active in
             specialDate = active ? .now : nil
-            BoosterMusic.duck(active)
+            // Sin música de fondo: solo suena mientras está la carta especial.
+            if active { BoosterMusic.start() } else { BoosterMusic.stop() }
         }
         .onChange(of: scenePhase) { _, next in
             if next == .active { BoosterMusic.resume() } else { BoosterMusic.pause() }
@@ -1108,8 +1247,6 @@ private struct BoosterOpeningView: View {
             })
             renderer = scene
             BoosterSounds.prepare()
-            BoosterSounds.play(.appear)
-            BoosterMusic.start()
             positionPack()
         } catch {
             print("[Booster] Could not load \(pack.name): \(error)")
@@ -1227,7 +1364,7 @@ private struct BoosterSpecialSparkles: View {
     }
 }
 
-/// Música de fondo, solo mientras la pantalla de sobres está abierta.
+/// Música que suena únicamente mientras se muestra la carta especial.
 @MainActor
 private enum BoosterMusic {
     private static let level: Float = 0.30
@@ -1242,6 +1379,7 @@ private enum BoosterMusic {
 
     static func start() {
         guard let player else { return }
+        if wanted, player.isPlaying { return }
         wanted = true
         player.currentTime = 0
         player.volume = 0
@@ -1265,8 +1403,8 @@ private enum BoosterMusic {
     static func stop() {
         wanted = false
         guard let player else { return }
-        player.setVolume(0, fadeDuration: 0.35)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+        player.setVolume(0, fadeDuration: 0.6)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
             if !wanted { player.stop() }
         }
     }
@@ -1322,6 +1460,31 @@ private enum BoosterSounds {
 
     static func play(_ cue: Cue) {
         guard let player = players[cue] else { return }
+        player.currentTime = 0
+        player.play()
+    }
+
+    // Carrusel: tres variantes cortas con distinto tono; nunca la misma dos veces seguidas
+    // y con una pausa mínima para que al girar rápido no se amontonen.
+    private static let browsePlayers: [AVAudioPlayer] = (1...3).compactMap { number in
+        let url = BoosterResources.folder.appendingPathComponent("Audio/pocket-browse-\(number).wav")
+        guard let player = try? AVAudioPlayer(contentsOf: url) else { return nil }
+        player.prepareToPlay()
+        return player
+    }
+    private static var lastBrowse = -1
+    private static var lastBrowseTime = Date.distantPast
+
+    static func browse() {
+        guard !browsePlayers.isEmpty else { return }
+        let now = Date.now
+        guard now.timeIntervalSince(lastBrowseTime) > 0.16 else { return }
+        lastBrowseTime = now
+        var next = Int.random(in: 0..<browsePlayers.count)
+        if next == lastBrowse { next = (next + 1) % browsePlayers.count }
+        lastBrowse = next
+        let player = browsePlayers[next]
+        player.volume = Float.random(in: 0.50...0.68)
         player.currentTime = 0
         player.play()
     }

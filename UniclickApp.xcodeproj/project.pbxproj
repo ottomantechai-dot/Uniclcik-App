@@ -872,7 +872,7 @@
 				CODE_SIGN_ENTITLEMENTS = UniclickApp/UniclickApp.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 42;
 				DEVELOPMENT_TEAM = T6PX988URP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = UniclickApp/ExtraInfo.plist;
@@ -912,7 +912,7 @@
 				CODE_SIGN_ENTITLEMENTS = "UniclickApp/UniclickApp-Release.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 42;
 				DEVELOPMENT_TEAM = T6PX988URP;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = UniclickApp/ExtraInfo.plist;

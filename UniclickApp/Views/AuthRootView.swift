@@ -20,6 +20,7 @@ struct AuthRootView: View {
                 // secciones nuevas sin iniciar sesión, para poder probarlas en el simulador.
                 MainTabView()
                     .fullScreenCover(isPresented: $previewsBooster) { BoosterPacksView() }
+                    .task { await Self.audit360IfAsked() }
             } else if auth.isRestoringSession {
                 ZStack {
                     Color(.systemGroupedBackground)
@@ -63,6 +64,23 @@ struct AuthRootView: View {
 }
 
 extension AuthRootView {
+    /// Solo desarrollo (-uniclick360Audit): recorre todos los zapatos del catálogo y dice en la consola
+    /// cuántas de las 36 fotos del giro carga la app para cada uno.
+    static func audit360IfAsked() async {
+        #if DEBUG
+        guard ProcessInfo.processInfo.arguments.contains("-uniclick360Audit") else { return }
+        guard let products = try? await UpsoledProductsService.list(category: "shoes", limit: 1000) else {
+            print("[360AUDIT] could not load catalog"); return
+        }
+        print("[360AUDIT] start \(products.count)")
+        for product in products {
+            let result = await Shoe360Loader.audit(title: product.name, imageURL: product.primaryImageURL)
+            print("[360AUDIT] \(result.loaded)/36 | \(result.slug ?? "NO-SLUG") | \(product.name)")
+        }
+        print("[360AUDIT] done")
+        #endif
+    }
+
     private static var previewsBoosterPack: Bool {
         #if DEBUG
         ProcessInfo.processInfo.arguments.contains("-uniclickPreviewBooster")

@@ -7,8 +7,12 @@ struct BoosterPack: Decodable, Identifiable {
     let name: String
     let series: String
     let year: Int
+    /// Precio de mercado de un sobre sellado en TCGplayer (USD), tomado el 21 nov 2026.
+    /// Sin valor cuando TCGplayer no publica precio de mercado para ese sobre.
+    var packPrice: Double? = nil
 
-    static let paradoxRift = BoosterPack(id: "sv4", name: "Paradox Rift", series: "Scarlet & Violet", year: 2023)
+    static let paradoxRift = BoosterPack(id: "sv4", name: "Paradox Rift", series: "Scarlet & Violet", year: 2023,
+                                         packPrice: 9.11)
     static let library = [paradoxRift] + ((try? BoosterResources.load("collections.json") as [BoosterPack]) ?? [])
 
     var catalog: String { id == "sv4" ? "paradox-rift.json" : "Collections/\(id)/cards.json" }

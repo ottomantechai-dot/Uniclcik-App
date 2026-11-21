@@ -72,9 +72,7 @@ private struct ClosetDiskThumbnail: View {
             } else {
                 ZStack {
                     Color.white
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(Color.black.opacity(0.35))
+                    ShoeSkeleton().padding(6)
                 }
             }
         }
@@ -1083,10 +1081,20 @@ struct ClosetView: View {
         }
 
         if catalogVM.isLoading, catalogVM.products.isEmpty, activeClosetItems.isEmpty {
-            ProgressView()
-                .controlSize(.large)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 40)
+            // Catálogo cargando: tarjetas con la silueta en vez de la bolita.
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible())], spacing: 12) {
+                ForEach(0..<6, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 10) {
+                        ShoeSkeleton().frame(height: 110).padding(.horizontal, 10)
+                        Skeleton(corner: 6).frame(height: 12)
+                        Skeleton(corner: 6).frame(width: 70, height: 12)
+                    }
+                    .padding(14)
+                    .background(.white, in: .rect(cornerRadius: 22))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
         }
 
         if !filteredUnifiedStockSections.isEmpty {
@@ -2766,7 +2774,7 @@ struct AddToClosetPipelineView: View {
                     .scaledToFit()
                     .padding(4)
             } else {
-                ProgressView().tint(.black)
+                ShoeSkeleton().padding(6)
             }
             if busy {
                 Color.white.opacity(0.55)
