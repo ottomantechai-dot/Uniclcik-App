@@ -332,7 +332,16 @@ struct DashboardHomeScreen: View {
             DashboardMarketPricesSection(
                 comparison: marketComparison,
                 // Un zapato distinto de los que ya salen en «Trending Now».
-                featured: marketComparison == nil ? (catalogProducts.filter { $0.name.count <= 29 }.dropFirst(12).first ?? catalogProducts.last) : nil
+                // Con precios de las páginas públicas se enseña el zapato al que pertenecen.
+                featured: marketComparison == nil
+                    ? (catalogProducts.filter { $0.name.count <= 29 }.dropFirst(12).first ?? catalogProducts.last)
+                    : marketComparison.flatMap { comparison in
+                        guard comparison.usesPublicPages else { return nil }
+                        return catalogProducts.first {
+                            MarketComparison.skuEquals($0.sku, comparison.query)
+                                || $0.name.caseInsensitiveCompare(comparison.query) == .orderedSame
+                        }
+                    }
             )
 
             DashboardHomeBottomGrid(
@@ -887,9 +896,13 @@ struct ShoeMarketDetailView: View {
     private func load() async {
         loading = true
         defer { loading = false }
-        guard let lookup = item.marketLookup,
-              let raw = try? await KicksDBClient.fetchComparison(query: lookup.query, fallbackQuery: lookup.fallback) else {
-            comparison = nil
+        guard let lookup = item.marketLookup else { comparison = nil; return }
+        guard let raw = try? await KicksDBClient.fetchComparison(query: lookup.query, fallbackQuery: lookup.fallback),
+              !raw.rows.isEmpty else {
+            // KicksDB sin respuesta: precios por talla de las páginas públicas.
+            let publicPrices = await PublicMarketComparison.load(query: lookup.query, fallback: lookup.fallback)
+            guard !Task.isCancelled else { return }
+            comparison = publicPrices.rows.isEmpty ? nil : publicPrices
             return
         }
         comparison = await HomeMarketTableBuilder.prepareDetailComparison(from: raw, query: lookup.query)
@@ -1588,6 +1601,13 @@ enum HomeMarketTableBuilder {
     ]
     static let homePlatforms = ["StockX", "GOAT", "eBay", "Flight Club"]
 
+    /// Hasta `maxRows` tallas, las de adulto más comunes primero, ordenadas de menor a mayor.
+    static func preferredRows(_ rows: [MarketSizeRow], maxRows: Int) -> [MarketSizeRow] {
+        var chosen = preferredSizes.compactMap { size in rows.first { $0.size == size } }.prefix(maxRows).map { $0 }
+        for row in rows where chosen.count < maxRows && !chosen.contains(where: { $0.size == row.size }) { chosen.append(row) }
+        return chosen.sorted { (numericSize($0.size) ?? 0) < (numericSize($1.size) ?? 0) }
+    }
+
     static func displayRows(from comparison: MarketComparison?, maxRows: Int = 5) -> [MarketSizeRow] {
         Array(buildHomeRows(from: comparison).prefix(maxRows))
     }
@@ -1829,11 +1849,28 @@ struct DashboardMarketPricesSection: View {
     /// Si hay una talla elegida, la tabla enseña solo esa fila.
     var selectedSize: String? = nil
 
-    private let platforms = HomeMarketTableBuilder.homePlatforms
     private let rowHeight: CGFloat = 52
     @State private var lastSale: Double?
 
+    /// Precios de las páginas públicas (cuando KicksDB no responde): sus tiendas pasan a ser las columnas.
+    private var publicComparison: MarketComparison? {
+        guard let comparison, comparison.usesPublicPages, !comparison.rows.isEmpty else { return nil }
+        return comparison
+    }
+
+    private var platforms: [String] {
+        guard let publicComparison else { return HomeMarketTableBuilder.homePlatforms }
+        var seen = Set<String>()
+        return publicComparison.platforms.map(\.platform).filter { seen.insert($0).inserted }
+    }
+
     private var tableRows: [MarketSizeRow] {
+        if let publicComparison {
+            let rows = publicComparison.rows.filter { !$0.asks.isEmpty }
+            if let selectedSize, case let picked = rows.filter({ $0.size == selectedSize }), !picked.isEmpty { return picked }
+            guard let maxVisibleRows else { return rows }
+            return HomeMarketTableBuilder.preferredRows(rows, maxRows: maxVisibleRows)
+        }
         if let selectedSize {
             let rows = HomeMarketTableBuilder.buildAllSizeRows(from: comparison).filter { $0.size == selectedSize }
             if !rows.isEmpty { return rows }
@@ -1851,6 +1888,7 @@ struct DashboardMarketPricesSection: View {
             if let featured {
                 HStack(alignment: .top, spacing: 12) {
                     StockCachedRemoteImage(url: featured.primaryImageURL, maxPixelSide: 320, fillFrame: false)
+                        .id(featured.id)   // al cambiar de zapato, la foto se vuelve a cargar
                         .frame(width: 120, height: 88).blendMode(.multiply)
                         .padding(.top, 10).padding(.trailing, 14)
                         .overlay(alignment: .topTrailing) {
@@ -1860,7 +1898,7 @@ struct DashboardMarketPricesSection: View {
                         }
                     // Las plataformas van arriba, a la misma altura que el círculo de la marca; debajo, el nombre.
                     VStack(alignment: .leading, spacing: 10) {
-                        MarketplaceDots(brands: ["StockX", "GOAT", "eBay", "Flight Club"], size: 30)
+                        MarketplaceDots(brands: platforms, size: 30)
                         Text(featured.name.firstUppercased).font(.system(size: 16, weight: .bold)).foregroundStyle(.black)
                             .lineLimit(2).multilineTextAlignment(.leading)
                     }

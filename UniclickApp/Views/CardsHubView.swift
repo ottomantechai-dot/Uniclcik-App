@@ -312,22 +312,16 @@ struct CardsMarketView: View {
             .aspectRatio(0.72, contentMode: .fit)
             .frame(maxWidth: .infinity)
             .overlay(alignment: .bottomLeading) { CardSourceDots(size: 20).padding(4) }
-            .overlay(alignment: .bottomTrailing) {
-                // Precio de mercado (TCGplayer) a la vista, en una cápsula de cristal, como dentro de la ficha.
-                if let price = tilePrice(card) {
-                    // Desde 100 $ sin céntimos, para que quepa junto a los logos.
-                    Text(price >= 100 ? PieceMarketPrice.formatUSD(Int(price.rounded())) : SaleReport.usd(price))
-                        .font(.system(size: 11, weight: .heavy, design: .rounded)).monospacedDigit()
-                        .foregroundStyle(.black).lineLimit(1).minimumScaleFactor(0.7)
-                        .padding(.horizontal, 7).frame(height: 22)
-                        .background(.white.opacity(0.55), in: .capsule)
-                        .glassEffect(.regular, in: .capsule)
-                        .padding(4)
-                }
-            }
             Text(card.name).font(.system(size: 11, weight: .bold)).foregroundStyle(.black).lineLimit(1)
-            Text(card.rarity)
-                .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
+            // Debajo del nombre, el precio de mercado (TCGplayer) en lugar de la rareza; si no hay precio, la rareza.
+            if let price = tilePrice(card) {
+                Text(SaleReport.usd(price))
+                    .font(.system(size: 12, weight: .heavy, design: .rounded)).monospacedDigit()
+                    .foregroundStyle(.black).lineLimit(1).minimumScaleFactor(0.7)
+            } else {
+                Text(card.rarity)
+                    .font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
+            }
         }
         .padding(6)
         .background(Color.white, in: .rect(cornerRadius: 12))

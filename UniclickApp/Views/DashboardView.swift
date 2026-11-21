@@ -158,7 +158,7 @@ struct DashboardView: View {
                 if let comparison = try await KicksDBClient.fetchComparison(
                     query: lookup.query,
                     fallbackQuery: lookup.fallback
-                ) {
+                ), !comparison.rows.isEmpty {
                     homeMarketComparison = await HomeMarketTableBuilder.prepareHomeComparison(
                         from: comparison,
                         query: lookup.query
@@ -177,6 +177,26 @@ struct DashboardView: View {
            let cached = Self.cachedMarketComparison(for: item) {
             homeMarketComparison = Self.homeReadyComparison(from: cached)
             return
+        }
+
+        // KicksDB sin respuesta: precios por talla de las páginas públicas, en la misma tabla.
+        // Se busca por el código de estilo (SKU) del zapato del catálogo, que es lo que encuentran;
+        // si el elegido no tiene ofertas, se prueba con los siguientes de «Trending Now».
+        let trending = trendingHighlights
+        let ordered = trending.filter { $0.id == lookup.sourceID } + trending.filter { $0.id != lookup.sourceID }
+        for product in ordered.compactMap(\.catalogProduct).prefix(4) {
+            let sku = product.sku?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let hasStyleCode = HomeSneakerHighlight.isRealStyleCode(sku) && !ShoeGTIN.isNumeric(sku)
+            let publicPrices = await PublicMarketComparison.load(
+                query: hasStyleCode ? sku : product.name,
+                fallback: hasStyleCode ? product.name : nil,
+                product: product
+            )
+            guard !Task.isCancelled else { return }
+            if !publicPrices.rows.isEmpty {
+                homeMarketComparison = publicPrices
+                return
+            }
         }
 
         if let cached = Self.cachedMarketComparison(closetItems: closetItems) {

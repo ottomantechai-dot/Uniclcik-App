@@ -1704,6 +1704,13 @@ struct ClosetGarmentDetailView: View {
                 }
             }
         } catch {
+            // KicksDB sin respuesta: se prueba con las páginas públicas antes de avisar.
+            let publicPrices = await PublicMarketComparison.load(query: query, fallback: fallback)
+            guard !Task.isCancelled else { return }
+            if !publicPrices.rows.isEmpty {
+                shoeMarketComparison = publicPrices
+                return
+            }
             let message = (error as NSError).localizedDescription
             if force || shoeMarketComparison == nil {
                 toast = message
@@ -3636,7 +3643,7 @@ struct CatalogShoeBody: View {
                 (icon: "shippingbox", title: "Condition", value: "New"),
             ] + (sample?.details ?? [])).padding(.top, 22)
             if isShoe || sample?.comparison != nil {
-                DashboardMarketPricesSection(comparison: sample?.comparison ?? liveComparison.flatMap { $0.usesPublicPages ? nil : $0 },
+                DashboardMarketPricesSection(comparison: sample?.comparison ?? liveComparison,
                                              maxVisibleRows: sample == nil ? 6 : nil).tourTarget("shoe.compare").padding(.top, 18)
             }
             ShoeMarketHistoryCard(sales: sample?.sales ?? [], summary: sample?.stats, source: sample?.asOf)
